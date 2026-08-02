@@ -38,6 +38,8 @@ export type StageLabels = {
   };
   outside: string;
   outsideDetail: string;
+  /** 場所ごとに置ける自動供給機の名前 */
+  auto: string;
 };
 
 export type StageDef = {
@@ -569,6 +571,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         waitItem: "丼ができるまで待とう",
         waitGuest: "お客さんを待っています",
       },
+      auto: "自動配膳機",
       outside: "歩道",
       outsideDetail: "券売機と呼び込み看板はこの外に置く",
     },
@@ -610,6 +613,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         waitItem: "チケットが刷れるまで待とう",
         waitGuest: "お客さんを待っています",
       },
+      auto: "自動券売機",
       outside: "並木道",
       outsideDetail: "自動改札と園内アナウンスはこの外に置く",
     },

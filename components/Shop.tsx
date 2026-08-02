@@ -10,7 +10,10 @@ import {
   currentObjective,
   inspectAt,
   maxCarry,
+  AUTO_TIME,
+  autoPos,
   customerDraw,
+  hasAuto,
   openSeats,
   openStoves,
   ROBOT_CHARGE,
@@ -3692,6 +3695,45 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.beginPath();
       ctx.arc(lampX, top + 52, 54, 0, Math.PI * 2);
       ctx.fill();
+
+      /* --- 場所ごとの自動供給機 --- */
+      for (const seat of openSeats(state)) {
+        if (!hasAuto(state, seat)) continue;
+        const at = autoPos(seat);
+        shadow(ctx, at.x, at.y + 16, 12);
+        ctx.fillStyle = "#3f4a5a";
+        roundRect(ctx, at.x - 12, at.y - 22, 24, 36, 4);
+        ctx.fill();
+        ctx.fillStyle = "#25303d";
+        roundRect(ctx, at.x - 9, at.y - 18, 18, 14, 2);
+        ctx.fill();
+        for (let i = 0; i < 4; i += 1) {
+          ctx.fillStyle =
+            (i + Math.floor(time * 3)) % 4 === 0 ? "#ffd166" : "#7f8c9c";
+          roundRect(ctx, at.x - 8 + (i % 2) * 9, at.y - 17 + Math.floor(i / 2) * 6, 7, 4, 1);
+          ctx.fill();
+        }
+        // 出てくる口
+        ctx.fillStyle = "#151c25";
+        roundRect(ctx, at.x - 7, at.y - 1, 14, 4, 2);
+        ctx.fill();
+        const busy = (state.autoTimer[seat.id] ?? 0) > 0;
+        ctx.fillStyle = busy
+          ? `rgba(126,231,168,${0.5 + Math.abs(Math.sin(time * 6)) * 0.5})`
+          : "rgba(126,231,168,0.35)";
+        ctx.beginPath();
+        ctx.arc(at.x + 7, at.y - 26, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        if (busy) {
+          const ratio = Math.min(1, (state.autoTimer[seat.id] ?? 0) / AUTO_TIME);
+          ctx.fillStyle = "rgba(0,0,0,0.5)";
+          roundRect(ctx, at.x - 12, at.y + 16, 24, 4, 2);
+          ctx.fill();
+          ctx.fillStyle = "#7ee7a8";
+          roundRect(ctx, at.x - 12, at.y + 16, 24 * ratio, 4, 2);
+          ctx.fill();
+        }
+      }
 
       /* --- 配膳ロボの充電ドック --- */
       for (const worker of state.staff) {
