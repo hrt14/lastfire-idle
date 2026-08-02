@@ -12,9 +12,14 @@ import {
   maxCarry,
   openSeats,
   openStoves,
+  OUTSIDE_DEPTH,
   areas,
   entrancePos,
+  equipPos,
   equipment,
+  hasEquip,
+  outsideTop,
+  padPosOf,
   openAreas,
   stoveCapacity,
   worldBounds,
@@ -109,6 +114,113 @@ const person = (
   ctx.beginPath();
   ctx.arc(x, y - 20 + oy, 7.6, 0, Math.PI * 2);
   ctx.fill();
+};
+
+/** 設備の見た目 */
+const drawEquip = (
+  ctx: CanvasRenderingContext2D,
+  id: string,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  if (id === "noodle") {
+    // 製麺機: 銀色の台に2本のローラー、麺が垂れている
+    ctx.fillStyle = "#4d5661";
+    roundRect(ctx, x - 26, y - 20, 52, 34, 6);
+    ctx.fill();
+    ctx.fillStyle = "#6b7684";
+    roundRect(ctx, x - 26, y - 20, 52, 9, 4);
+    ctx.fill();
+    ctx.fillStyle = "#2b323a";
+    ctx.beginPath();
+    ctx.arc(x - 9, y - 4, 6, 0, Math.PI * 2);
+    ctx.arc(x + 9, y - 4, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#f0e2bd";
+    ctx.lineWidth = 1.4;
+    for (let i = -2; i <= 2; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * 5, y + 2);
+      ctx.lineTo(x + i * 5 + Math.sin(time * 2 + i) * 1.5, y + 15);
+      ctx.stroke();
+    }
+    return;
+  }
+  if (id === "fridge") {
+    // 大型冷蔵庫: 縦長の二枚扉
+    ctx.fillStyle = "#8d98a6";
+    roundRect(ctx, x - 22, y - 34, 44, 50, 6);
+    ctx.fill();
+    ctx.fillStyle = "#a7b3c1";
+    roundRect(ctx, x - 22, y - 34, 44, 8, 4);
+    ctx.fill();
+    ctx.strokeStyle = "#59636f";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 26);
+    ctx.lineTo(x, y + 16);
+    ctx.stroke();
+    ctx.fillStyle = "#59636f";
+    roundRect(ctx, x - 8, y - 18, 3, 12, 1.5);
+    ctx.fill();
+    roundRect(ctx, x + 5, y - 18, 3, 12, 1.5);
+    ctx.fill();
+    ctx.fillStyle = "rgba(150,220,255,0.25)";
+    roundRect(ctx, x - 18, y - 2, 36, 6, 3);
+    ctx.fill();
+    return;
+  }
+  if (id === "ticket") {
+    // 券売機: ボタンの並んだ箱
+    ctx.fillStyle = "#3f4a5a";
+    roundRect(ctx, x - 20, y - 36, 40, 52, 5);
+    ctx.fill();
+    ctx.fillStyle = "#25303d";
+    roundRect(ctx, x - 15, y - 30, 30, 22, 3);
+    ctx.fill();
+    for (let r = 0; r < 3; r += 1) {
+      for (let c = 0; c < 3; c += 1) {
+        ctx.fillStyle = (r + c + Math.floor(time * 2)) % 4 === 0 ? "#ffd166" : "#7f8c9c";
+        roundRect(ctx, x - 13 + c * 9, y - 28 + r * 7, 7, 5, 1.5);
+        ctx.fill();
+      }
+    }
+    ctx.fillStyle = "#151c25";
+    roundRect(ctx, x - 10, y - 3, 20, 4, 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffd166";
+    roundRect(ctx, x - 7, y + 5, 14, 5, 2);
+    ctx.fill();
+    return;
+  }
+  if (id === "sign") {
+    // 呼び込み看板: A型の立て看板
+    ctx.fillStyle = "#4a3524";
+    ctx.beginPath();
+    ctx.moveTo(x - 20, y + 14);
+    ctx.lineTo(x - 6, y - 26);
+    ctx.lineTo(x + 6, y - 26);
+    ctx.lineTo(x + 20, y + 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#f2e3c6";
+    roundRect(ctx, x - 17, y - 22, 34, 30, 3);
+    ctx.fill();
+    ctx.fillStyle = "#c2402f";
+    ctx.font = `800 11px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+    ctx.fillText("らーめん", x, y - 12);
+    ctx.font = SMALL;
+    ctx.fillStyle = "#6b4a2f";
+    ctx.fillText("営業中", x, y + 1);
+    ctx.font = FONT;
+    const glow = 0.4 + Math.sin(time * 3) * 0.3;
+    ctx.fillStyle = `rgba(255,209,102,${glow})`;
+    ctx.beginPath();
+    ctx.arc(x, y - 30, 4, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
 };
 
 /** 配膳ロボ */
@@ -351,27 +463,6 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
-      /* --- 導入した設備 --- */
-      for (const item of equipment) {
-        if (!state.unlocked.includes(`equip-${item.id}`)) continue;
-        const { x, y } = item.pos;
-        ctx.fillStyle = "#3c4652";
-        roundRect(ctx, x - 24, y - 22, 48, 40, 8);
-        ctx.fill();
-        ctx.fillStyle = "#55616f";
-        roundRect(ctx, x - 24, y - 22, 48, 10, 5);
-        ctx.fill();
-        ctx.fillStyle = "#7ee7a8";
-        roundRect(ctx, x - 13, y - 6, 26, 12, 4);
-        ctx.fill();
-        ctx.fillStyle = "#16202c";
-        ctx.font = SMALL;
-        ctx.fillText(item.name, x, y + 26);
-        ctx.fillStyle = "rgba(246,231,207,0.6)";
-        ctx.fillText(item.name, x, y + 26);
-        ctx.font = FONT;
-      }
-
       /* --- 区画の仕切り --- */
       for (const area of openAreas(state)) {
         if (area.price === 0 || area.rect.y0 === 0) continue;
@@ -403,8 +494,12 @@ export default function Shop({ onSample, paused }: Props) {
         const ix0 = Math.max(area.rect.x0, box.x0);
         const iy0 = Math.max(area.rect.y0, box.y0);
         const ix1 = Math.min(area.rect.x1, box.x1);
-        const iy1 = Math.min(area.rect.y1, box.y1);
+        const iy1 = Math.min(area.rect.y1, outsideTop(state));
         if (ix1 > ix0 && iy1 > iy0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(ix0, iy0, ix1 - ix0, iy1 - iy0);
+          ctx.clip();
           ctx.fillStyle = "#150f0c";
           ctx.fillRect(ix0, iy0, ix1 - ix0, iy1 - iy0);
           ctx.fillStyle = "rgba(255,209,102,0.07)";
@@ -417,6 +512,7 @@ export default function Shop({ onSample, paused }: Props) {
             ctx.closePath();
             ctx.fill();
           }
+          ctx.restore();
           ctx.fillStyle = "rgba(246,231,207,0.5)";
           ctx.font = SMALL;
           ctx.fillText("工事中", (ix0 + ix1) / 2, (iy0 + iy1) / 2);
@@ -458,16 +554,68 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
-      /* --- 飾りと入口 --- */
+      /* --- 店の外（歩道と道路） --- */
+      const top = outsideTop(state);
+      ctx.fillStyle = "#332e28";
+      ctx.fillRect(box.x0, top, box.x1 - box.x0, 44);
+      ctx.fillStyle = "#1c1b1d";
+      ctx.fillRect(box.x0, top + 44, box.x1 - box.x0, OUTSIDE_DEPTH - 44);
+      ctx.strokeStyle = "rgba(246,231,207,0.22)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(box.x0, top + 44);
+      ctx.lineTo(box.x1, top + 44);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(246,231,207,0.25)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([16, 14]);
+      ctx.beginPath();
+      ctx.moveTo(box.x0, top + 92);
+      ctx.lineTo(box.x1, top + 92);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 店の壁と入口
+      ctx.fillStyle = "#241d18";
+      ctx.fillRect(box.x0, top - 10, box.x1 - box.x0, 10);
       const entrance = entrancePos(state);
-      ctx.fillStyle = "rgba(255,255,255,0.06)";
-      roundRect(ctx, entrance.x - 42, entrance.y - 10, 84, 20, 8);
+      ctx.fillStyle = "#0f0c0a";
+      roundRect(ctx, entrance.x - 34, top - 12, 68, 14, 4);
       ctx.fill();
-      ctx.fillStyle = "rgba(246,231,207,0.55)";
-      ctx.fillText("入口", entrance.x, entrance.y);
+      ctx.fillStyle = "rgba(246,231,207,0.5)";
+      ctx.font = SMALL;
+      ctx.fillText("入口", entrance.x, top - 5);
+      ctx.font = FONT;
+
+      // 街灯
+      const lampX = box.x0 + 40;
+      ctx.fillStyle = "#3a4048";
+      ctx.fillRect(lampX - 2, top + 46, 4, 40);
+      ctx.fillStyle = "rgba(255,225,160,0.9)";
+      ctx.beginPath();
+      ctx.arc(lampX, top + 44, 5, 0, Math.PI * 2);
+      ctx.fill();
+      const lamp = ctx.createRadialGradient(lampX, top + 52, 2, lampX, top + 52, 54);
+      lamp.addColorStop(0, "rgba(255,215,140,0.18)");
+      lamp.addColorStop(1, "rgba(255,215,140,0)");
+      ctx.fillStyle = lamp;
+      ctx.beginPath();
+      ctx.arc(lampX, top + 52, 54, 0, Math.PI * 2);
+      ctx.fill();
+
+      /* --- 導入した設備の見た目 --- */
+      for (const item of equipment) {
+        if (!hasEquip(state, item.id)) continue;
+        const at = equipPos(state, item);
+        shadow(ctx, at.x, at.y + 16, 18);
+        drawEquip(ctx, item.id, at.x, at.y, time);
+      }
+
+      /* --- 飾りと入口 --- */
 
       /* --- 枠（買い物する場所） --- */
       for (const pad of availablePads(state)) {
+        const at = padPosOf(state, pad);
         const price = padPrice(state, pad);
         const paid = state.padProgress[pad.id] ?? 0;
         const ratio = Math.min(1, paid / price);
@@ -486,8 +634,8 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.fillStyle = near ? "rgba(126,231,168,0.2)" : "rgba(126,231,168,0.08)";
         roundRect(
           ctx,
-          pad.pos.x - PAD_RADIUS,
-          pad.pos.y - PAD_RADIUS + 4,
+          at.x - PAD_RADIUS,
+          at.y - PAD_RADIUS + 4,
           PAD_RADIUS * 2,
           PAD_RADIUS * 2 - 8,
           10,
@@ -501,8 +649,8 @@ export default function Shop({ onSample, paused }: Props) {
           const h = (PAD_RADIUS * 2 - 8) * ratio;
           roundRect(
             ctx,
-            pad.pos.x - PAD_RADIUS,
-            pad.pos.y + PAD_RADIUS - 4 - h,
+            at.x - PAD_RADIUS,
+            at.y + PAD_RADIUS - 4 - h,
             PAD_RADIUS * 2,
             h,
             10,
@@ -513,13 +661,13 @@ export default function Shop({ onSample, paused }: Props) {
         if (pad.kind === "upgrade") {
           ctx.font = SMALL;
           ctx.fillStyle = "#9fe6bd";
-          ctx.fillText(`Lv${level}`, pad.pos.x, pad.pos.y - 16);
+          ctx.fillText(`Lv${level}`, at.x, at.y - 16);
           ctx.font = FONT;
         }
         ctx.fillStyle = "#eafff2";
-        ctx.fillText(pad.label, pad.pos.x, pad.pos.y - 3);
+        ctx.fillText(pad.label, at.x, at.y - 3);
         ctx.fillStyle = "#ffd166";
-        ctx.fillText(formatYen(Math.max(0, price - paid)), pad.pos.x, pad.pos.y + 12);
+        ctx.fillText(formatYen(Math.max(0, price - paid)), at.x, at.y + 12);
       }
 
       /* --- お金 --- */

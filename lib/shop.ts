@@ -197,9 +197,12 @@ export type EquipSpec = {
   id: EquipId;
   name: string;
   detail: string;
+  /** 店内はこの位置。店の外のものは x だけ使い、y は店先に合わせる */
   pos: Vec;
   price: number;
   area: number;
+  /** 店の外（歩道）に置く */
+  outside?: boolean;
 };
 
 export const equipment: EquipSpec[] = [
@@ -223,17 +226,19 @@ export const equipment: EquipSpec[] = [
     id: "ticket",
     name: "券売機",
     detail: "お金が自動で入る・レジ係はホールへ",
-    pos: { x: 620, y: 300 },
+    pos: { x: 112, y: 0 },
     price: 80000,
-    area: 2,
+    area: 0,
+    outside: true,
   },
   {
     id: "sign",
     name: "呼び込み看板",
     detail: "お客さんが 1.5倍のペースで来る",
-    pos: { x: 520, y: 390 },
+    pos: { x: 240, y: 0 },
     price: 120000,
-    area: 2,
+    area: 0,
+    outside: true,
   },
 ];
 
@@ -315,6 +320,8 @@ export type Pad = {
   upgradeId?: UpgradeId;
   /** 解放系のみ。強化系はレベルごとに計算する */
   price?: number;
+  /** 店の外に置く枠 */
+  outside?: boolean;
 };
 
 const hireSub: Record<StaffKind, string> = {
@@ -353,6 +360,7 @@ export const pads: Pad[] = [
     price: item.price,
     label: item.name,
     sub: item.detail,
+    outside: item.outside,
   })),
   ...areas
     .filter((area) => area.price > 0)
@@ -387,28 +395,55 @@ export const padById = new Map(pads.map((pad) => [pad.id, pad]));
 export const openAreas = (state: ShopState) =>
   areas.filter((area) => area.price === 0 || state.unlocked.includes(area.id));
 
-/** いまの店の外周 */
+/** 店先（歩道）の深さ */
+export const OUTSIDE_DEPTH = 118;
+
+/** 建物の南端。ここから下が店の外 */
+export const outsideTop = (state: ShopState) =>
+  openAreas(state).reduce((max, area) => Math.max(max, area.rect.y1), 480);
+
+/** いまの店の外周（店の外を含む） */
 export const worldBounds = (state: ShopState): Rect => {
   const open = openAreas(state);
-  return open.reduce<Rect>(
-    (box, area) => ({
-      x0: Math.min(box.x0, area.rect.x0),
-      y0: Math.min(box.y0, area.rect.y0),
-      x1: Math.max(box.x1, area.rect.x1),
-      y1: Math.max(box.y1, area.rect.y1),
+  const box = open.reduce<Rect>(
+    (acc, area) => ({
+      x0: Math.min(acc.x0, area.rect.x0),
+      y0: Math.min(acc.y0, area.rect.y0),
+      x1: Math.max(acc.x1, area.rect.x1),
+      y1: Math.max(acc.y1, area.rect.y1),
     }),
     { ...areas[0].rect },
   );
+  return { ...box, y1: outsideTop(state) + OUTSIDE_DEPTH };
+};
+
+/** 店の外にある設備・枠の位置 */
+export const outsidePos = (state: ShopState, x: number): Vec => ({
+  x,
+  y: outsideTop(state) + 56,
+});
+
+export const equipPos = (state: ShopState, item: EquipSpec): Vec =>
+  item.outside ? outsidePos(state, item.pos.x) : item.pos;
+
+export const padPosOf = (state: ShopState, pad: Pad): Vec => {
+  if (!pad.outside) return pad.pos;
+  return outsidePos(state, pad.pos.x);
 };
 
 export const worldHeight = (state: ShopState) => worldBounds(state).y1;
 
-/** 入口は左側の列のいちばん奥 */
-export const entrancePos = (state: ShopState): Vec => {
-  const open = openAreas(state).filter((area) => area.rect.x0 === 0);
-  const bottom = open.reduce((max, area) => Math.max(max, area.rect.y1), 480);
-  return { x: 306, y: bottom - 30 };
-};
+/** 入口（建物の南端） */
+export const entrancePos = (state: ShopState): Vec => ({
+  x: 306,
+  y: outsideTop(state) - 16,
+});
+
+/** お客さんが現れる歩道の位置 */
+export const streetPos = (state: ShopState): Vec => ({
+  x: 306,
+  y: outsideTop(state) + 86,
+});
 
 /** 次に買える区画（なければ null） */
 export const nextArea = (state: ShopState) =>
@@ -637,6 +672,7 @@ export const areaOpen = (state: ShopState, area: number) =>
 
 /** まだ買っていない区画の中か（工事中で入れない） */
 export const isBlocked = (state: ShopState, pos: Vec) =>
+  pos.y <= outsideTop(state) &&
   areas.some(
     (area) =>
       area.price > 0 &&
@@ -706,7 +742,7 @@ export const availablePads = (state: ShopState) =>
     const stove = stoveById.get(pad.id);
     if (stove) return areaOpen(state, stove.area);
     const equip = equipById.get(pad.id.replace("equip-", "") as EquipId);
-    if (equip) return areaOpen(state, equip.area);
+    if (equip) return equip.outside || areaOpen(state, equip.area);
 
     // 区画の枠は、ひとつ前の区画が開いてから出す
     const area = areaById.get(pad.id);
@@ -769,7 +805,7 @@ const unlock = (state: ShopState, padId: string) => {
         text: `レジ係 ${moved}人をホールに配置転換した`,
         at: Date.now(),
       };
-      pop(state, { x: 620, y: 280 }, "配置転換！");
+      pop(state, outsidePos(state, 112), "配置転換！");
     }
   }
 };
@@ -792,8 +828,8 @@ const spawnCustomers = (state: ShopState, dt: number) => {
     seatId: free.id,
     state: "walking",
     pos: {
-      x: entrancePos(state).x + (Math.random() * 40 - 20),
-      y: entrancePos(state).y,
+      x: streetPos(state).x + (Math.random() * 40 - 20),
+      y: streetPos(state).y,
     },
     timer: 0,
   });
@@ -849,7 +885,7 @@ const updateCustomers = (state: ShopState, dt: number) => {
         state.served += 1;
       }
     } else if (customer.state === "leaving") {
-      if (moveToward(customer.pos, entrancePos(state), 112, dt)) customer.id = -1;
+      if (moveToward(customer.pos, streetPos(state), 112, dt)) customer.id = -1;
     }
   }
   state.customers = state.customers.filter((customer) => customer.id !== -1);
@@ -935,7 +971,8 @@ const updatePads = (state: ShopState, dt: number) => {
   let active: string | null = null;
 
   for (const pad of availablePads(state)) {
-    if (dist(player.pos, pad.pos) > PAD_RADIUS) continue;
+    const at = padPosOf(state, pad);
+    if (dist(player.pos, at) > PAD_RADIUS) continue;
     active = pad.id;
 
     const price = padPrice(state, pad);
@@ -951,7 +988,7 @@ const updatePads = (state: ShopState, dt: number) => {
       if (pad.kind === "upgrade" && pad.upgradeId) {
         state.levels[pad.upgradeId] += 1;
         state.padProgress[pad.id] = 0;
-        pop(state, { x: pad.pos.x, y: pad.pos.y - 16 }, "強化！");
+        pop(state, { x: at.x, y: at.y - 16 }, "強化！");
         state.toast = { text: `${pad.label}を強化した！`, at: Date.now() };
         state.sfx.push("upgrade");
       } else {
@@ -1158,6 +1195,7 @@ const yen = (value: number) =>
     : `${Math.round(value).toLocaleString("ja-JP")}円`;
 
 const padInspect = (state: ShopState, pad: Pad): Inspect => {
+  const at = padPosOf(state, pad);
   const price = padPrice(state, pad);
   const paid = state.padProgress[pad.id] ?? 0;
   const lines: string[] = [];
@@ -1186,7 +1224,7 @@ const padInspect = (state: ShopState, pad: Pad): Inspect => {
   return {
     title: pad.kind === "upgrade" ? `${pad.label}（強化）` : pad.label,
     lines,
-    pos: pad.pos,
+    pos: at,
   };
 };
 
@@ -1208,8 +1246,39 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
   };
 
   for (const pad of availablePads(state)) {
-    consider(pad.pos, PAD_RADIUS + 10, () => padInspect(state, pad));
+    consider(padPosOf(state, pad), PAD_RADIUS + 10, () =>
+      padInspect(state, pad),
+    );
   }
+
+  // 導入ずみの設備
+  for (const item of equipment) {
+    if (!hasEquip(state, item.id)) continue;
+    const at = equipPos(state, item);
+    consider(at, 34, () => ({
+      title: item.name,
+      lines: [
+        item.detail,
+        item.outside ? "店の外に置いてある" : "厨房の奥に置いてある",
+        "導入ずみ",
+      ],
+      pos: at,
+    }));
+  }
+
+  // 店の外
+  consider(
+    { x: streetPos(state).x, y: streetPos(state).y },
+    40,
+    () => ({
+      title: "歩道",
+      lines: [
+        "お客さんはここから入ってくる",
+        "券売機と呼び込み看板はこの外に置く",
+      ],
+      pos: streetPos(state),
+    }),
+  );
 
   for (const stove of openStoves(state)) {
     consider(stove.pos, 34, () => {
