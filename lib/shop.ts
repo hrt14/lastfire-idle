@@ -479,7 +479,7 @@ export type Staff = {
   trips: number;
   /** 片づけ係が拭いているあいだの残り時間 */
   charge: number;
-  /** 配膳ロボが次の相手を選び直すまでの待ち時間 */
+  /** 次の相手を選び直すまでの待ち時間（くじ引き） */
   wait: number;
   /** いま担当している場所（ほかのスタッフと取り合わないように） */
   target: string | null;
@@ -541,7 +541,7 @@ export const SERVE_RADIUS = 46;
 export const COIN_RADIUS = 34;
 export const PAD_RADIUS = 26;
 export const STOVE_CAPACITY = 5;
-/** 配膳ロボがくじを引く範囲（1〜5番目） */
+/** 運ぶ人がくじを引く範囲（待っている1〜5番目） */
 export const ROBOT_PICKS = 5;
 /** くじが外れたときに待つ時間（秒） */
 export const ROBOT_WAIT = 1.2;
@@ -1738,24 +1738,20 @@ const updateStaff = (state: ShopState, dt: number) => {
       let picked = keep ?? null;
 
       if (!picked) {
-        if (worker.kind === "robot") {
-          // ロボはくじ引き。1〜5番目のどれかを狙い、
-          // その順番に相手がいなければ、少し待ってから引き直す
-          if (worker.wait > 0) {
-            worker.wait -= dt;
-            go(state, worker, idleSpot(state, worker), speed * 0.4, dt);
-            continue;
-          }
-          const rank = Math.floor(Math.random() * ROBOT_PICKS);
-          if (rank < reachable.length) {
-            picked = reachable[rank];
-          } else {
-            worker.wait = ROBOT_WAIT;
-            go(state, worker, idleSpot(state, worker), speed * 0.4, dt);
-            continue;
-          }
+        // くじ引き。1〜5番目のどれかを狙い、
+        // その順番に相手がいなければ、少し待ってから引き直す
+        if (worker.wait > 0) {
+          worker.wait -= dt;
+          go(state, worker, idleSpot(state, worker), speed * 0.4, dt);
+          continue;
+        }
+        const rank = Math.floor(Math.random() * ROBOT_PICKS);
+        if (rank < reachable.length) {
+          picked = reachable[rank];
         } else {
-          picked = reachable[0] ?? null;
+          worker.wait = ROBOT_WAIT;
+          go(state, worker, idleSpot(state, worker), speed * 0.4, dt);
+          continue;
         }
       }
       const seat = picked?.seat ?? null;
@@ -2261,7 +2257,7 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
           `いま ${worker.carry}${unit} 持っている`,
         );
       }
-      if (worker.kind === "robot") {
+      if (worker.kind === "robot" || worker.kind === "waiter") {
         lines.push(
           worker.wait > 0
             ? `次の相手を選び直すまで あと ${worker.wait.toFixed(1)}秒`
