@@ -12,6 +12,9 @@ import {
   maxCarry,
   AUTO_TIME,
   autoPos,
+  boothPos,
+  hasGate,
+  turnstilePos,
   customerDraw,
   hasAuto,
   openSeats,
@@ -3654,6 +3657,58 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.setLineDash([]);
       }
 
+      // 入場券売り場と改札（入場のあるステージだけ）
+      if (hasGate()) {
+        const booth = boothPos(state);
+        const gate = turnstilePos(state);
+
+        // 券売所の小屋
+        shadow(ctx, booth.x, booth.y + 16, 26);
+        ctx.fillStyle = "#37507a";
+        roundRect(ctx, booth.x - 30, booth.y - 30, 60, 44, 6);
+        ctx.fill();
+        ctx.fillStyle = "#4d6b9e";
+        roundRect(ctx, booth.x - 34, booth.y - 38, 68, 12, 5);
+        ctx.fill();
+        ctx.fillStyle = "#16202c";
+        roundRect(ctx, booth.x - 20, booth.y - 20, 40, 16, 3);
+        ctx.fill();
+        ctx.fillStyle = "#ffd166";
+        ctx.font = SMALL;
+        ctx.fillText("入場券", booth.x, booth.y - 32);
+        ctx.font = FONT;
+        ticket(ctx, booth.x, booth.y + 2, 1.1);
+        const selling = hasEquip(state, "vend");
+        ctx.fillStyle = selling
+          ? `rgba(126,231,168,${0.5 + Math.abs(Math.sin(time * 3)) * 0.5})`
+          : "rgba(255,209,102,0.6)";
+        ctx.beginPath();
+        ctx.arc(booth.x + 22, booth.y - 24, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 改札
+        shadow(ctx, gate.x, gate.y + 14, 22);
+        for (const side of [-1, 1]) {
+          ctx.fillStyle = "#3d4c68";
+          roundRect(ctx, gate.x + side * 18 - 8, gate.y - 20, 16, 34, 4);
+          ctx.fill();
+          ctx.fillStyle = "#6bd3ff";
+          roundRect(ctx, gate.x + side * 18 - 6, gate.y - 16, 12, 4, 2);
+          ctx.fill();
+        }
+        const autoGate = hasEquip(state, "turnstile");
+        const flap = autoGate ? (Math.sin(time * 3) + 1) / 2 : 0.15;
+        ctx.fillStyle = "rgba(180,230,255,0.75)";
+        roundRect(ctx, gate.x - 10, gate.y - 8, 9 * (1 - flap) + 1, 20, 2);
+        ctx.fill();
+        roundRect(ctx, gate.x + 10 - (9 * (1 - flap) + 1), gate.y - 8, 9 * (1 - flap) + 1, 20, 2);
+        ctx.fill();
+        ctx.font = SMALL;
+        ctx.fillStyle = "rgba(246,231,207,0.6)";
+        ctx.fillText(autoGate ? "自動改札" : "改札", gate.x, gate.y - 26);
+        ctx.font = FONT;
+      }
+
       // 店の壁と入口
       ctx.fillStyle = isPark ? "#2f3a52" : "#241d18";
       ctx.fillRect(box.x0, top - 10, box.x1 - box.x0, 10);
@@ -3853,6 +3908,18 @@ export default function Shop({ onSample, paused }: Props) {
                 );
                 ctx.fill();
               }
+            }
+            // 入場を待っている人は、頭の上に入場券のしるし
+            if (
+              (customer.state === "buying" || customer.state === "entering") &&
+              customer.timer >= 1
+            ) {
+              const bob = Math.sin(time * 4 + customer.id) * 2;
+              ctx.save();
+              ctx.shadowColor = "rgba(255,209,102,0.8)";
+              ctx.shadowBlur = 8;
+              ticket(ctx, customer.pos.x, customer.pos.y - 34 + bob, 0.9);
+              ctx.restore();
             }
             if (customer.state === "waiting") {
               const bounce = Math.sin(time * 4.5) * 2;

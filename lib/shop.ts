@@ -146,6 +146,8 @@ export type EquipSpec = {
   area: number;
   /** 店の外（歩道）に置く */
   outside?: boolean;
+  /** 外の並び。0 は店より、1 は道より */
+  row?: number;
   /** 集客の倍率（お客さんが来る速さ）。掛け算で効く */
   draw?: number;
   /** この区画が開くまで出てこない */
@@ -164,6 +166,8 @@ export type Upgrade = {
   max: number;
   /** 店の外（入口）に置く強化 */
   outside?: boolean;
+  /** 外の並び。0 は店より、1 は道より */
+  row?: number;
 };
 
 /* ---------- いま遊んでいるステージ ---------- */
@@ -220,6 +224,8 @@ export type Pad = {
   price?: number;
   /** 店の外に置く枠 */
   outside?: boolean;
+  /** 外の並び */
+  row?: number;
 };
 
 /** その場所に付ける自動供給機（自動券売機・自動配膳レール）の id */
@@ -288,6 +294,7 @@ const buildPads = (): Pad[] => [
     label: item.name,
     sub: item.detail,
     outside: item.outside,
+    row: item.row,
   })),
   ...areas
     .filter((area) => area.price > 0)
@@ -315,6 +322,7 @@ const buildPads = (): Pad[] => [
     sub: "何度でも強化できる",
     upgradeId: upgrade.id,
     outside: upgrade.outside,
+    row: upgrade.row,
   })),
 ];
 
@@ -367,18 +375,18 @@ export const worldBounds = (state: ShopState): Rect => {
   return { ...box, y1: outsideTop(state) + OUTSIDE_DEPTH };
 };
 
-/** 店の外にある設備・枠の位置 */
-export const outsidePos = (state: ShopState, x: number): Vec => ({
+/** 店の外にある設備・枠の位置（row 1 は道ぎわの二列目） */
+export const outsidePos = (state: ShopState, x: number, row = 0): Vec => ({
   x,
-  y: outsideTop(state) + 56,
+  y: outsideTop(state) + 50 + row * 40,
 });
 
 export const equipPos = (state: ShopState, item: EquipSpec): Vec =>
-  item.outside ? outsidePos(state, item.pos.x) : item.pos;
+  item.outside ? outsidePos(state, item.pos.x, item.row) : item.pos;
 
 export const padPosOf = (state: ShopState, pad: Pad): Vec => {
   if (!pad.outside) return pad.pos;
-  return outsidePos(state, pad.pos.x);
+  return outsidePos(state, pad.pos.x, pad.row);
 };
 
 export const worldHeight = (state: ShopState) => worldBounds(state).y1;
@@ -387,6 +395,27 @@ export const worldHeight = (state: ShopState) => worldBounds(state).y1;
 export const entrancePos = (state: ShopState): Vec => ({
   x: 306,
   y: outsideTop(state) - 16,
+});
+
+/** 入場券売り場（自分で売る。自動入場券売機を入れると自動になる） */
+export const boothPos = (state: ShopState): Vec => ({
+  x: entrancePos(state).x - 84,
+  y: outsideTop(state) + 30,
+});
+
+/** 入場の改札（自分で通す。自動改札機を入れると自動になる） */
+export const turnstilePos = (state: ShopState): Vec => ({
+  x: entrancePos(state).x,
+  y: outsideTop(state) + 6,
+});
+
+/** 入場の仕組みがあるステージか */
+export const hasGate = () => !!currentStage.admission;
+
+/** 待っている人の並び位置 */
+const queueSpot = (at: Vec, index: number): Vec => ({
+  x: at.x + ((index % 4) - 1.5) * 22,
+  y: at.y + 26 + Math.floor(index / 4) * 20,
 });
 
 /** お客さんが現れる歩道の位置 */
@@ -409,11 +438,21 @@ export type Customer = {
    * walking = 席／棚へ向かう
    * waiting = 待っている（棚なら在庫待ち）
    * eating  = 使っている（乗る・食べる）
+   * buying  = 入場券売り場で券を買うのを待つ
+   * entering = 改札で通してもらうのを待つ
    * paying  = 商品を持ってレジへ向かう
    * roaming = 次に空く場所を園内で待つ
    * leaving = 帰る
    */
-  state: "walking" | "waiting" | "eating" | "paying" | "roaming" | "leaving";
+  state:
+    | "buying"
+    | "entering"
+    | "walking"
+    | "waiting"
+    | "eating"
+    | "paying"
+    | "roaming"
+    | "leaving";
   pos: Vec;
   timer: number;
   /** 今日まわる予定の数（場所が増えるほど増える） */
@@ -503,7 +542,7 @@ export const STOVE_CAPACITY = 5;
 /** 自動供給機が1回動くのにかかる時間（秒） */
 export const AUTO_TIME = 1.2;
 /** 次の場所が空くのを待つ時間（秒） */
-export const ROAM_TIME = 12;
+export const ROAM_TIME = 20;
 export const COOK_TIME = 2.0;
 export const COOK_BOOST = 2.2;
 export const EAT_TIME = 2.8;
@@ -913,11 +952,11 @@ const spawnCustomers = (state: ShopState, dt: number) => {
   if (!free) return;
 
   // 遊べる場所が多いほど、ひとりが何か所もまわる
-  const variety = Math.min(5, Math.floor(openSeats(state).length / 2));
+  const variety = Math.min(9, Math.floor(openSeats(state).length * 0.8));
   state.customers.push({
     id: state.nextId++,
     seatId: free.id,
-    state: "walking",
+    state: hasGate() ? "buying" : "walking",
     pos: {
       x: streetPos(state).x + (Math.random() * 40 - 20),
       y: streetPos(state).y,
@@ -927,23 +966,7 @@ const spawnCustomers = (state: ShopState, dt: number) => {
     visits: 0,
   });
 
-  // 入場券の売上（入口に落ちる。自動改札があるとサイフへ直行）
-  const fee = admissionValue(state);
-  if (fee > 0) {
-    const gate = entrancePos(state);
-    if (hasEquip(state, "ticket")) {
-      state.money += fee;
-      pop(state, { x: gate.x, y: gate.y - 12 }, `+${fee.toLocaleString("ja-JP")}円`);
-      state.sfx.push("coin");
-    } else {
-      state.coins.push({
-        id: state.nextId++,
-        pos: { x: gate.x + (Math.random() * 40 - 20), y: gate.y + 14 },
-        value: fee,
-        age: 0,
-      });
-    }
-  }
+
 };
 
 const updateStoves = (state: ShopState, dt: number) => {
@@ -1027,7 +1050,27 @@ const updateCustomers = (state: ShopState, dt: number) => {
     if (!seat) continue;
     const mode = seatMode(seat);
 
-    if (customer.state === "walking") {
+    if (customer.state === "buying") {
+      // 入場券売り場に並ぶ
+      const line = state.customers.filter((item) => item.state === "buying");
+      const spot = queueSpot(boothPos(state), line.indexOf(customer));
+      const there = moveToward(customer.pos, spot, 96, dt);
+      if (there && customer.timer < 1) customer.timer = 1;
+      if (customer.timer >= 1 && hasEquip(state, "vend")) {
+        customer.timer += dt;
+        if (customer.timer >= 1 + AUTO_TIME * 0.6) sellTicket(state, customer);
+      }
+    } else if (customer.state === "entering") {
+      // 改札の前に並ぶ
+      const line = state.customers.filter((item) => item.state === "entering");
+      const spot = queueSpot(turnstilePos(state), line.indexOf(customer));
+      const there = moveToward(customer.pos, spot, 96, dt);
+      if (there && customer.timer < 1) customer.timer = 1;
+      if (customer.timer >= 1 && hasEquip(state, "turnstile")) {
+        customer.timer += dt;
+        if (customer.timer >= 1 + AUTO_TIME * 0.5) letIn(state, customer);
+      }
+    } else if (customer.state === "walking") {
       if (moveToward(customer.pos, seat.pos, 96, dt)) customer.state = "waiting";
     } else if (customer.state === "waiting" && mode === "shelf") {
       // お土産屋は自分で棚から取る。並んでいなければ待つ
@@ -1083,6 +1126,48 @@ const updateCustomers = (state: ShopState, dt: number) => {
  * 近くの作る場所から1つ受け取る。
  * すでに違う種類のものを持っているときは受け取らない（丼と商品は混ぜられない）
  */
+/** 入場券を売る（お金が落ちる／自動集金ならサイフへ） */
+const sellTicket = (state: ShopState, customer: Customer) => {
+  const fee = admissionValue(state);
+  const at = boothPos(state);
+  if (fee > 0) {
+    if (hasEquip(state, "ticket")) {
+      state.money += fee;
+      pop(state, { x: at.x, y: at.y - 14 }, `+${fee.toLocaleString("ja-JP")}円`);
+      state.sfx.push("coin");
+    } else {
+      state.coins.push({
+        id: state.nextId++,
+        pos: { x: at.x + (Math.random() * 26 - 13), y: at.y + 16 },
+        value: fee,
+        age: 0,
+      });
+    }
+  }
+  customer.state = "entering";
+  customer.timer = 0;
+  pop(state, { x: customer.pos.x, y: customer.pos.y - 30 }, "入場券！");
+  state.sfx.push("serve");
+};
+
+/** 改札を通す */
+const letIn = (state: ShopState, customer: Customer) => {
+  customer.state = "walking";
+  customer.timer = 0;
+  pop(state, { x: customer.pos.x, y: customer.pos.y - 30 }, "いらっしゃい！");
+  state.sfx.push("serve");
+};
+
+/** 入場券売り場・改札で待っている人（近い順） */
+const atBooth = (state: ShopState) =>
+  state.customers.filter(
+    (customer) => customer.state === "buying" && customer.timer >= 1,
+  );
+const atGate = (state: ShopState) =>
+  state.customers.filter(
+    (customer) => customer.state === "entering" && customer.timer >= 1,
+  );
+
 const pickUp = (
   state: ShopState,
   pos: Vec,
@@ -1222,6 +1307,18 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
   }
   // 手ぶらのときは、残った皿を片づける
   if (player.carry === 0) clearTable(state, player.pos);
+
+  // 入場券を売る・改札を通す（近づくだけ）
+  if (hasGate()) {
+    if (dist(player.pos, boothPos(state)) <= SERVE_RADIUS + 14) {
+      const guest = atBooth(state)[0];
+      if (guest) sellTicket(state, guest);
+    }
+    if (dist(player.pos, turnstilePos(state)) <= SERVE_RADIUS + 14) {
+      const guest = atGate(state)[0];
+      if (guest) letIn(state, guest);
+    }
+  }
 
   for (const coin of state.coins) {
     if (dist(player.pos, coin.pos) <= COIN_RADIUS) collectCoin(state, coin);
@@ -1748,6 +1845,24 @@ export const currentObjective = (state: ShopState): Objective => {
   const waiting = state.customers.filter((c) => c.state === "waiting");
   const player = state.player;
 
+  // 入口の仕事が先（自動化するまでは自分でやる）
+  if (hasGate()) {
+    if (!hasEquip(state, "vend") && atBooth(state).length > 0) {
+      return {
+        kind: "serve",
+        pos: boothPos(state),
+        label: `入場券を売ろう（${atBooth(state).length}人 待ち）`,
+      };
+    }
+    if (!hasEquip(state, "turnstile") && atGate(state).length > 0) {
+      return {
+        kind: "serve",
+        pos: turnstilePos(state),
+        label: `改札を通そう（${atGate(state).length}人 待ち）`,
+      };
+    }
+  }
+
   // 商品を持っているときは、空いている棚へ
   if (player.carry > 0 && player.item === "goods") {
     const shelf = openSeats(state)
@@ -1975,6 +2090,31 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
   }
 
   // 店の外
+  if (hasGate()) {
+    consider(boothPos(state), 34, () => ({
+      title: "入場券売り場",
+      lines: [
+        `入場券は 1人 ${yen(admissionValue(state))}`,
+        hasEquip(state, "vend")
+          ? "自動入場券売機が売ってくれる"
+          : "近づくと売れる（自動入場券売機で自動になる）",
+        `いま ${atBooth(state).length}人 待っている`,
+      ],
+      pos: boothPos(state),
+    }));
+    consider(turnstilePos(state), 30, () => ({
+      title: "入場の改札",
+      lines: [
+        "入場券を買った人がここから入る",
+        hasEquip(state, "turnstile")
+          ? "自動改札機が通してくれる"
+          : "近づくと通せる（自動改札機で自動になる）",
+        `いま ${atGate(state).length}人 待っている`,
+      ],
+      pos: turnstilePos(state),
+    }));
+  }
+
   consider(
     { x: streetPos(state).x, y: streetPos(state).y },
     40,
