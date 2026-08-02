@@ -1,15 +1,44 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import Shop, { type Sample } from "@/components/Shop";
 import { OFFLINE_CAP_HOURS, type OfflineReport } from "@/lib/shop";
-import { resetState } from "@/lib/shopStore";
+import {
+  equipSkin,
+  equippedSkin,
+  ownedSkins,
+  pullGacha,
+  resetState,
+  stageProgress,
+  stageUnlocked,
+  switchStage,
+  type GachaResult,
+} from "@/lib/shopStore";
+import { GACHA_COST, GACHA_REFUND, rarityLabel, skins } from "@/data/skins";
+import { stageDefs, stageList, type StageId } from "@/data/stages";
 import { formatDuration, formatYen } from "@/lib/format";
 import { setMuted, unlockAudio } from "@/lib/sfx";
 
+const noop = () => () => {};
+
+/** サーバー描画とずれないように、保存データは画面に出てから読む */
+const useMounted = () =>
+  useSyncExternalStore(
+    noop,
+    () => true,
+    () => false,
+  );
+
 export default function Page() {
+  const mounted = useMounted();
+  const [view, setView] = useState<"top" | "play">("top");
+  const [stageId, setStageId] = useState<StageId>("ramen");
   const [sample, setSample] = useState<Sample | null>(null);
   const [help, setHelp] = useState(false);
+  const [gacha, setGacha] = useState(false);
+  const [result, setResult] = useState<GachaResult | null>(null);
+  const [owned, setOwned] = useState<string[]>([]);
+  const [wearing, setWearing] = useState("default");
   const [offline, setOffline] = useState<OfflineReport | null>(null);
 
   const handleSample = useCallback((next: Sample) => {
@@ -23,8 +52,101 @@ export default function Page() {
     window.location.reload();
   }, []);
 
+  const refreshSkins = useCallback(() => {
+    setOwned([...ownedSkins()]);
+    setWearing(equippedSkin().id);
+  }, []);
+
+  const openGacha = useCallback(() => {
+    refreshSkins();
+    setResult(null);
+    setGacha(true);
+  }, [refreshSkins]);
+
+  const handlePull = useCallback(() => {
+    const got = pullGacha();
+    if (!got) return;
+    setResult(got);
+    refreshSkins();
+  }, [refreshSkins]);
+
+  const handleEquip = useCallback(
+    (id: string) => {
+      equipSkin(id);
+      setWearing(id);
+    },
+    [],
+  );
+
+  const start = useCallback((id: StageId) => {
+    switchStage(id);
+    setStageId(id);
+    setSample(null);
+    setView("play");
+  }, []);
+
   const money = sample?.money ?? 0;
   const mute = sample?.muted ?? false;
+
+  if (view === "top") {
+    return (
+      <main className="top">
+        <header className="top-head">
+          <h1>
+            <span className="top-mark">🍜</span>
+            はたらくシリーズ
+          </h1>
+          <p>スワイプで動かして、店を大きくしていく放置ゲーム</p>
+        </header>
+
+        <ul className="stages">
+          {stageList.map((def) => {
+            const open = mounted ? stageUnlocked(def.id) : def.requiresAreas === 0;
+            const progress = mounted
+              ? stageProgress(def.id)
+              : { started: false, money: 0, served: 0, areas: 1, totalAreas: def.areas.length };
+            return (
+              <li
+                key={def.id}
+                className={`stage-card stage-${def.id}${open ? "" : " is-locked"}`}
+              >
+                <div className="stage-art" aria-hidden>
+                  {def.id === "ramen" ? "🍜" : "🎡"}
+                </div>
+                <div className="stage-body">
+                  <strong>{def.name}</strong>
+                  <p>{def.subtitle}</p>
+                  {open ? (
+                    <span className="stage-progress">
+                      {progress.started
+                        ? `区画 ${progress.areas}/${progress.totalAreas}・${progress.served.toLocaleString("ja-JP")}人`
+                        : "はじめから"}
+                    </span>
+                  ) : (
+                    <span className="stage-progress">
+                      🔒 ラーメン一直線で区画を{stageDefs[def.id].requiresAreas}つ開けると解禁
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="stage-go"
+                  disabled={!open}
+                  onClick={() => start(def.id)}
+                >
+                  {progress.started ? "つづき" : "はじめる"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+
+        <p className="top-note">
+          記録はこの端末に保存されます。ステージごとに別々に進みます。
+        </p>
+      </main>
+    );
+  }
 
   const toggleMute = () => {
     unlockAudio();
@@ -42,8 +164,28 @@ export default function Page() {
           <small>円</small>
         </div>
         <div className="hud-right">
-          <span className="chip">🍜 {sample?.served ?? 0}杯</span>
-          <span className="chip">👥 {sample?.staff ?? 0}人</span>
+          <button
+            type="button"
+            className="chip-button"
+            onClick={() => {
+              setView("top");
+              setSample(null);
+            }}
+            aria-label="ステージ選択へ"
+          >
+            ☰
+          </button>
+          <span className="chip">
+            🍜 {(sample?.served ?? 0).toLocaleString("ja-JP")}
+          </span>
+          <button
+            type="button"
+            className={`chip-button${money >= GACHA_COST ? " is-ready" : ""}`}
+            onClick={openGacha}
+            aria-label="ガチャ"
+          >
+            🎁
+          </button>
           <button
             type="button"
             className="chip-button"
@@ -62,7 +204,11 @@ export default function Page() {
         </div>
       </header>
 
-      <Shop onSample={handleSample} paused={help || offline !== null} />
+      <Shop
+        key={stageId}
+        onSample={handleSample}
+        paused={help || offline !== null}
+      />
 
       <footer className="dock">
         <div className="carry">
@@ -157,6 +303,90 @@ export default function Page() {
             <button type="button" className="ghost" onClick={handleReset}>
               最初からやり直す
             </button>
+          </section>
+        </>
+      ) : null}
+
+      {gacha ? (
+        <>
+          <button
+            type="button"
+            className="scrim"
+            aria-label="閉じる"
+            onClick={() => setGacha(false)}
+          />
+          <section className="sheet">
+            <div className="sheet-head">
+              <h2>ガチャ</h2>
+              <span className="sheet-money">{formatYen(money)}</span>
+              <button
+                type="button"
+                className="sheet-close"
+                onClick={() => setGacha(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="gacha-note">
+              1回 {formatYen(GACHA_COST)}。店主の見た目が当たります。
+              同じものが出たら {formatYen(GACHA_REFUND)} 返ってきます。
+            </p>
+
+            {result ? (
+              <div className={`gacha-result rarity-${result.skin.rarity}`}>
+                <span className="gacha-rarity">
+                  {rarityLabel[result.skin.rarity]}
+                </span>
+                <strong>{result.skin.name}</strong>
+                <small>
+                  {result.duplicate
+                    ? `ダブり ・ ${formatYen(GACHA_REFUND)} 返金`
+                    : "着替えました！"}
+                </small>
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              className="gacha-pull"
+              disabled={money < GACHA_COST}
+              onClick={handlePull}
+            >
+              {money < GACHA_COST
+                ? `あと ${formatYen(GACHA_COST - money)}`
+                : `引く（${formatYen(GACHA_COST)}）`}
+            </button>
+
+            <h3 className="gacha-sub">
+              持っている見た目 {owned.length} / {skins.length}
+            </h3>
+            <ul className="skins">
+              {skins.map((skin) => {
+                const have = owned.includes(skin.id);
+                return (
+                  <li
+                    key={skin.id}
+                    className={`skin rarity-${skin.rarity}${have ? "" : " is-locked"}${
+                      wearing === skin.id ? " is-on" : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      disabled={!have}
+                      onClick={() => handleEquip(skin.id)}
+                    >
+                      <span
+                        className="skin-chip"
+                        style={{ background: have ? skin.coat : "#3a3229" }}
+                      />
+                      <span className="skin-name">{have ? skin.name : "？？？"}</span>
+                      <span className="skin-rarity">{skin.rarity}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </section>
         </>
       ) : null}

@@ -59,11 +59,18 @@ export type HireSpec = {
   area: number;
 };
 
-/** 厨房エリア（歩いて入れる） */
-export const KITCHEN = { top: 38, bottom: 210 };
+import { stageDefs, type StageDef, type StageId } from "@/data/stages";
 
-/** 店の区画。買うと店そのものが広がる（下にも右にも） */
+/** 歩いて入れる作業場（厨房・券売所の帯） */
+export type Room = { top: number; bottom: number };
+
 export type Rect = { x0: number; y0: number; x1: number; y1: number };
+
+export type AreaPalette = {
+  floor: string;
+  deep: string;
+  prop: "none" | "castle" | "snow" | "cactus" | "ship" | "star" | "fossil";
+};
 
 export type AreaSpec = {
   id: string;
@@ -72,124 +79,8 @@ export type AreaSpec = {
   rect: Rect;
   /** 買う枠の位置（すでに開いている区画の中に置く） */
   padPos: Vec;
+  palette: AreaPalette;
 };
-
-export const areas: AreaSpec[] = [
-  {
-    id: "area-0",
-    label: "屋台",
-    price: 0,
-    rect: { x0: 0, y0: 0, x1: 360, y1: 480 },
-    padPos: { x: 0, y: 0 },
-  },
-  {
-    id: "area-1",
-    label: "テーブル席をつくる",
-    price: 2600,
-    rect: { x0: 0, y0: 480, x1: 360, y1: 790 },
-    padPos: { x: 150, y: 452 },
-  },
-  {
-    id: "area-2",
-    label: "製麺所をつくる",
-    price: 22000,
-    rect: { x0: 360, y0: 0, x1: 720, y1: 480 },
-    padPos: { x: 298, y: 250 },
-  },
-  {
-    id: "area-3",
-    label: "宴会場をつくる",
-    price: 140000,
-    rect: { x0: 360, y0: 480, x1: 720, y1: 790 },
-    padPos: { x: 540, y: 452 },
-  },
-];
-
-export const areaById = new Map(areas.map((area) => [area.id, area]));
-
-export const stoves: StoveSpec[] = [
-  { id: "stove-1", pos: { x: 72, y: 176 }, price: 0, area: 0 },
-  { id: "stove-2", pos: { x: 180, y: 176 }, price: 150, area: 0 },
-  { id: "stove-3", pos: { x: 288, y: 176 }, price: 700, area: 0 },
-  { id: "stove-4", pos: { x: 470, y: 176 }, price: 26000, area: 2 },
-  { id: "stove-5", pos: { x: 610, y: 176 }, price: 60000, area: 2 },
-];
-
-/** カウンター・テーブル・座敷 */
-const seatRows = [
-  { area: 0, xs: [60, 140, 220, 300], serveY: 294, trayY: 318, seatY: 358,
-    prices: [0, 0, 100, 300], label: "カウンター席" },
-  { area: 1, xs: [80, 180, 280], serveY: 552, trayY: 574, seatY: 616,
-    prices: [400, 900, 2000], label: "テーブル席" },
-  { area: 3, xs: [432, 516, 600, 684], serveY: 552, trayY: 574, seatY: 616,
-    prices: [9000, 18000, 34000, 60000], label: "座敷席" },
-];
-
-export const seats: SeatSpec[] = seatRows.flatMap((row) =>
-  row.xs.map((x, i) => ({
-    id: `seat-${row.area}-${i + 1}`,
-    pos: { x, y: row.seatY },
-    serve: { x, y: row.serveY },
-    tray: { x, y: row.trayY },
-    price: row.prices[i],
-    area: row.area,
-    label: row.label,
-  })),
-);
-
-export const hires: HireSpec[] = [
-  ...stoves.map((stove, i) => ({
-    id: `cook-${i + 1}`,
-    kind: "cook" as const,
-    pos: { x: stove.pos.x + 40, y: 130 },
-    price: [600, 1800, 4500, 30000, 70000][i],
-    label: "調理人",
-    stoveId: stove.id,
-    area: stove.area,
-  })),
-  {
-    id: "waiter-1", kind: "waiter", pos: { x: 50, y: 394 },
-    price: 280, label: "ホール店員", area: 0,
-  },
-  {
-    id: "waiter-2", kind: "waiter", pos: { x: 130, y: 394 },
-    price: 1500, label: "ホール店員", area: 0,
-  },
-  {
-    id: "collector-1", kind: "collector", pos: { x: 230, y: 394 },
-    price: 900, label: "レジ係", area: 0,
-  },
-  {
-    id: "robot-1", kind: "robot", pos: { x: 310, y: 394 },
-    price: 4000, label: "配膳ロボ", area: 0,
-  },
-  {
-    id: "waiter-3", kind: "waiter", pos: { x: 60, y: 700 },
-    price: 9000, label: "ホール店員", area: 1,
-  },
-  {
-    id: "collector-2", kind: "collector", pos: { x: 180, y: 704 },
-    price: 14000, label: "レジ係", area: 1,
-  },
-  {
-    id: "robot-2", kind: "robot", pos: { x: 300, y: 700 },
-    price: 26000, label: "配膳ロボ", area: 1,
-  },
-  {
-    id: "master-1", kind: "master", pos: { x: 430, y: 700 },
-    price: 180000, label: "板前", area: 3,
-  },
-  {
-    id: "robot-3", kind: "robot", pos: { x: 560, y: 700 },
-    price: 260000, label: "配膳ロボ", area: 3,
-  },
-  {
-    id: "waiter-4", kind: "waiter", pos: { x: 680, y: 700 },
-    price: 90000, label: "ホール店員", area: 3,
-  },
-];
-
-/* ---------- 設備（製麺所で導入する） ---------- */
 
 export type EquipId = "noodle" | "fridge" | "ticket" | "sign";
 
@@ -197,54 +88,13 @@ export type EquipSpec = {
   id: EquipId;
   name: string;
   detail: string;
-  /** 店内はこの位置。店の外のものは x だけ使い、y は店先に合わせる */
+  /** 店内はこの位置。外のものは x だけ使い、y は店先に合わせる */
   pos: Vec;
   price: number;
   area: number;
   /** 店の外（歩道）に置く */
   outside?: boolean;
 };
-
-export const equipment: EquipSpec[] = [
-  {
-    id: "noodle",
-    name: "製麺機",
-    detail: "すべての寸胴の調理が +30%",
-    pos: { x: 420, y: 300 },
-    price: 30000,
-    area: 2,
-  },
-  {
-    id: "fridge",
-    name: "大型冷蔵庫",
-    detail: "寸胴に置ける数 +4杯",
-    pos: { x: 520, y: 300 },
-    price: 45000,
-    area: 2,
-  },
-  {
-    id: "ticket",
-    name: "券売機",
-    detail: "お金が自動で入る・レジ係はホールへ",
-    pos: { x: 112, y: 0 },
-    price: 80000,
-    area: 0,
-    outside: true,
-  },
-  {
-    id: "sign",
-    name: "呼び込み看板",
-    detail: "お客さんが 1.5倍のペースで来る",
-    pos: { x: 240, y: 0 },
-    price: 120000,
-    area: 0,
-    outside: true,
-  },
-];
-
-export const equipById = new Map(equipment.map((item) => [item.id, item]));
-
-/* ---------- 強化（厨房の中の設置物） ---------- */
 
 export type UpgradeId = "carry" | "speed" | "cook" | "price";
 
@@ -258,50 +108,34 @@ export type Upgrade = {
   max: number;
 };
 
+/* ---------- いま遊んでいるステージ ---------- */
+
+let currentStage: StageDef = stageDefs.ramen;
+
+export const stage = (): StageDef => currentStage;
+export const stageLabels = () => currentStage.labels;
+
+export let KITCHEN: Room = currentStage.frontRoom;
+export let areas: AreaSpec[] = currentStage.areas;
+export let stoves: StoveSpec[] = currentStage.stoves;
+export let seats: SeatSpec[] = currentStage.seats;
+export let hires: HireSpec[] = currentStage.hires;
+export let equipment: EquipSpec[] = currentStage.equipment;
+export let upgrades: Upgrade[] = currentStage.upgrades;
+
+export let areaById = new Map(areas.map((item) => [item.id, item]));
+export let seatById = new Map(seats.map((item) => [item.id, item]));
+export let stoveById = new Map(stoves.map((item) => [item.id, item]));
+export let hireById = new Map(hires.map((item) => [item.id, item]));
+export let equipById = new Map(equipment.map((item) => [item.id, item]));
+export let upgradeById = new Map(upgrades.map((item) => [item.id, item]));
+export let pads: Pad[] = [];
+export let padById = new Map<string, Pad>();
+
 export const cookFactor = (level: number) => Math.pow(0.92, level);
-export const coinValue = (level: number) => Math.round(55 * Math.pow(1.4, level));
+export const coinValue = (level: number) =>
+  Math.round(currentStage.baseValue * Math.pow(1.4, level));
 
-export const upgrades: Upgrade[] = [
-  {
-    id: "carry",
-    name: "両手鍋",
-    detail: (level) => `${3 + level}杯まで持てる`,
-    pos: { x: 46, y: 66 },
-    basePrice: 60,
-    growth: 1.7,
-    max: 9,
-  },
-  {
-    id: "speed",
-    name: "厨房シューズ",
-    detail: (level) => `足の速さ +${level * 10}%`,
-    pos: { x: 138, y: 66 },
-    basePrice: 50,
-    growth: 1.65,
-    max: 12,
-  },
-  {
-    id: "cook",
-    name: "業務用寸胴",
-    detail: (level) =>
-      `煮える速さ +${Math.round((1 / cookFactor(level) - 1) * 100)}%`,
-    pos: { x: 230, y: 66 },
-    basePrice: 80,
-    growth: 1.7,
-    max: 14,
-  },
-  {
-    id: "price",
-    name: "看板メニュー",
-    detail: (level) => `一杯 ${coinValue(level)}円`,
-    pos: { x: 314, y: 66 },
-    basePrice: 120,
-    growth: 1.75,
-    max: 20,
-  },
-];
-
-export const upgradeById = new Map(upgrades.map((item) => [item.id, item]));
 
 export const upgradePrice = (id: UpgradeId, level: number) => {
   const upgrade = upgradeById.get(id);
@@ -332,7 +166,7 @@ const hireSub: Record<StaffKind, string> = {
   master: "すべての寸胴が1.4倍速くなる",
 };
 
-export const pads: Pad[] = [
+const buildPads = (): Pad[] => [
   ...stoves
     .filter((stove) => stove.price > 0)
     .map((stove): Pad => ({
@@ -340,7 +174,7 @@ export const pads: Pad[] = [
       kind: "unlock",
       pos: stove.pos,
       price: stove.price,
-      label: "寸胴",
+      label: currentStage.labels.producer,
       sub: "同時に作れる数が増える",
     })),
   ...seats
@@ -390,7 +224,29 @@ export const pads: Pad[] = [
   })),
 ];
 
-export const padById = new Map(pads.map((pad) => [pad.id, pad]));
+
+/** ステージを差し替える */
+export const applyStage = (id: StageId) => {
+  currentStage = stageDefs[id];
+  KITCHEN = currentStage.frontRoom;
+  areas = currentStage.areas;
+  stoves = currentStage.stoves;
+  seats = currentStage.seats;
+  hires = currentStage.hires;
+  equipment = currentStage.equipment;
+  upgrades = currentStage.upgrades;
+  areaById = new Map(areas.map((item) => [item.id, item]));
+  seatById = new Map(seats.map((item) => [item.id, item]));
+  stoveById = new Map(stoves.map((item) => [item.id, item]));
+  hireById = new Map(hires.map((item) => [item.id, item]));
+  equipById = new Map(equipment.map((item) => [item.id, item]));
+  upgradeById = new Map(upgrades.map((item) => [item.id, item]));
+  pads = buildPads();
+  padById = new Map(pads.map((pad) => [pad.id, pad]));
+};
+
+applyStage("ramen");
+
 
 export const openAreas = (state: ShopState) =>
   areas.filter((area) => area.price === 0 || state.unlocked.includes(area.id));
@@ -481,6 +337,7 @@ export type Player = {
 
 export type Persisted = {
   version: number;
+  stageId?: StageId;
   money: number;
   unlocked: string[];
   padProgress: Record<string, number>;
@@ -491,6 +348,7 @@ export type Persisted = {
 };
 
 export type ShopState = Persisted & {
+  stageId: StageId;
   player: Player;
   staff: Staff[];
   customers: Customer[];
@@ -536,9 +394,6 @@ const moveToward = (pos: Vec, target: Vec, speed: number, dt: number) => {
   return false;
 };
 
-export const seatById = new Map(seats.map((seat) => [seat.id, seat]));
-export const stoveById = new Map(stoves.map((stove) => [stove.id, stove]));
-export const hireById = new Map(hires.map((hire) => [hire.id, hire]));
 
 const makeStaff = (hire: HireSpec, id: number): Staff => ({
   id,
@@ -550,6 +405,7 @@ const makeStaff = (hire: HireSpec, id: number): Staff => ({
 
 export const createState = (): ShopState => ({
   version: SAVE_VERSION,
+  stageId: currentStage.id,
   money: 0,
   unlocked: ["stove-1", "seat-0-1", "seat-0-2"],
   padProgress: {},
@@ -576,6 +432,7 @@ const finite = (value: unknown, fallback: number) =>
 
 export const toPersisted = (state: ShopState): Persisted => ({
   version: SAVE_VERSION,
+  stageId: state.stageId,
   money: state.money,
   unlocked: state.unlocked,
   padProgress: state.padProgress,
@@ -1113,7 +970,7 @@ export const currentObjective = (state: ShopState): Objective => {
       return {
         kind: "serve",
         pos: trayPos(seat),
-        label: "光っている配膳口まで運ぼう",
+        label: stageLabels().objective.serve,
       };
     }
   }
@@ -1125,7 +982,11 @@ export const currentObjective = (state: ShopState): Objective => {
         (a, b) => dist(state.player.pos, a.pos) - dist(state.player.pos, b.pos),
       )[0];
     if (stove) {
-      return { kind: "pickup", pos: stove.pos, label: "厨房で丼を受け取ろう" };
+      return {
+        kind: "pickup",
+        pos: stove.pos,
+        label: stageLabels().objective.pickup,
+      };
     }
   }
 
@@ -1133,14 +994,14 @@ export const currentObjective = (state: ShopState): Objective => {
     return {
       kind: "coin",
       pos: state.coins[0].pos,
-      label: "お金を踏んで回収しよう",
+      label: stageLabels().objective.coin,
     };
   }
 
   if (waiting.length > 0) {
-    return { kind: "wait", pos: null, label: "丼ができるまで待とう" };
+    return { kind: "wait", pos: null, label: stageLabels().objective.waitItem };
   }
-  return { kind: "wait", pos: null, label: "お客さんを待っています" };
+  return { kind: "wait", pos: null, label: stageLabels().objective.waitGuest };
 };
 
 /* ---------- 放置収入 ---------- */
@@ -1228,13 +1089,7 @@ const padInspect = (state: ShopState, pad: Pad): Inspect => {
   };
 };
 
-const staffLabel: Record<StaffKind, string> = {
-  waiter: "ホール店員",
-  robot: "配膳ロボ",
-  collector: "レジ係",
-  cook: "調理人",
-  master: "板前",
-};
+const staffLabel = (kind: StaffKind) => stageLabels().staff[kind];
 
 /** その場所にあるものの説明を返す */
 export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
@@ -1271,10 +1126,10 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
     { x: streetPos(state).x, y: streetPos(state).y },
     40,
     () => ({
-      title: "歩道",
+      title: stageLabels().outside,
       lines: [
-        "お客さんはここから入ってくる",
-        "券売機と呼び込み看板はこの外に置く",
+        `${stageLabels().guest}はここから入ってくる`,
+        stageLabels().outsideDetail,
       ],
       pos: streetPos(state),
     }),
@@ -1285,13 +1140,14 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
       const hasCook = stoveHasCook(state, stove.id);
       const seconds =
         (COOK_TIME * cookFactor(state.levels.cook)) / (hasCook ? COOK_BOOST : 1);
+      const L = stageLabels();
       return {
-        title: "寸胴",
+        title: L.producer,
         lines: [
-          `${seconds.toFixed(1)}秒に1杯できる`,
-          `${STOVE_CAPACITY}杯まで置いておける`,
-          hasCook ? "調理人が付いている" : "調理人を雇うと2.2倍速",
-          "近づくと自動で持ち上げる",
+          `${seconds.toFixed(1)}秒に1${L.item === "丼" ? "杯" : "枚"}できる`,
+          `${stoveCapacity(state)}まで置いておける`,
+          hasCook ? `${L.staff.cook}が付いている` : `${L.staff.cook}を雇うと2.2倍速`,
+          "近づくと自動で受け取る",
         ],
         pos: stove.pos,
       };
@@ -1303,9 +1159,9 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
     const make = (): Inspect => ({
       title: seat.label,
       lines: [
-        "お客さんが座って丼を待つ",
-        "光っている配膳口に持っていくと出せる",
-        `食べ終わると ${yen(coinValue(state.levels.price))} 置いていく`,
+        `${stageLabels().guest}が${stageLabels().item}を待つ`,
+        `光っている${stageLabels().tray}に持っていくと渡せる`,
+        `終わると ${yen(coinValue(state.levels.price))} 置いていく`,
       ],
       pos: tray,
     });
@@ -1331,25 +1187,25 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
           `いま ${worker.carry}杯 持っている`,
         );
       }
-      return { title: staffLabel[worker.kind], lines, pos: worker.pos };
+      return { title: staffLabel(worker.kind), lines, pos: worker.pos };
     });
   }
 
   for (const customer of state.customers) {
     consider(customer.pos, 22, () => ({
-      title: "お客さん",
+      title: stageLabels().guest,
       lines:
         customer.state === "waiting"
-          ? ["丼を待っている", "配膳口まで運ぼう"]
+          ? [`${stageLabels().item}を待っている`, `${stageLabels().tray}まで運ぼう`]
           : customer.state === "eating"
-            ? [`食べている（あと ${Math.max(0, customer.timer).toFixed(1)}秒）`]
+            ? [`${stageLabels().using}（あと ${Math.max(0, customer.timer).toFixed(1)}秒）`]
             : ["席へ向かっている"],
       pos: customer.pos,
     }));
   }
 
   consider(state.player.pos, 24, () => ({
-    title: "店主（あなた）",
+    title: "あなた",
     lines: [
       `運べる数 ${state.player.carry} / ${maxCarry(state)}杯`,
       `足の速さ +${state.levels.speed * 10}%`,
