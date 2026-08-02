@@ -54,15 +54,21 @@ export const GACHA_COST = 100_000_000;
 /** ★が上がりきったあと、ダブったときの払い戻し */
 export const GACHA_REFUND = 30_000_000;
 
-/** 同じ見た目がダブるたびに★が増えて、光り方が変わる */
-export const MAX_STARS = 3;
+/** 同じ見た目がダブるたびに★が増えて、光り方が6段階まで変わる */
+export const MAX_STARS = 6;
 
-export const shineLabel = (stars: number): string => {
-  if (stars >= 3) return "虹のオーラ";
-  if (stars === 2) return "きらきら";
-  if (stars === 1) return "ふちが光る";
-  return "光りなし";
-};
+const shineNames = [
+  "光りなし",
+  "ふちが光る",
+  "きらきら",
+  "虹のオーラ",
+  "光の輪",
+  "まわる星",
+  "光の柱",
+];
+
+export const shineLabel = (stars: number): string =>
+  shineNames[Math.max(0, Math.min(MAX_STARS, stars))];
 
 /** ★1つにつき足の速さ +5% */
 export const shineBonus = (stars: number) => stars * 5;

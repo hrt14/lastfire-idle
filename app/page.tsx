@@ -357,7 +357,7 @@ export default function Page() {
             <p className="gacha-note">
               1回 {formatYen(GACHA_COST)}。店主の見た目が当たります。
               同じものが出ると★が増えて光り方が変わり、足の速さも上がります
-              （★1つ +5%・最大 {starMark(MAX_STARS)}）。
+              （★1つ +5%・★{MAX_STARS} まで6段階）。
               ★が上限のあとは {formatYen(GACHA_REFUND)} 返ってきます。
             </p>
 
@@ -372,7 +372,7 @@ export default function Page() {
                 ) : null}
                 <small>
                   {result.shined
-                    ? `ダブり ・ ★${result.stars} になった！ ${shineLabel(result.stars)}`
+                    ? `ダブり ・ ★${result.stars} になった！ ${shineLabel(result.stars)}・足 +${shineBonus(result.stars)}%`
                     : result.refunded
                       ? `★は上限 ・ ${formatYen(GACHA_REFUND)} 返金`
                       : "着替えました！"}
@@ -403,8 +403,8 @@ export default function Page() {
                     className={`skin rarity-${skin.rarity}${have ? "" : " is-locked"}${
                       wearing === skin.id ? " is-on" : ""
                     }${(stars[skin.id] ?? 0) > 0 ? " is-shining" : ""}${
-                      (stars[skin.id] ?? 0) >= MAX_STARS ? " is-rainbow" : ""
-                    }`}
+                      (stars[skin.id] ?? 0) >= 3 ? " is-rainbow" : ""
+                    }${(stars[skin.id] ?? 0) >= MAX_STARS ? " is-max" : ""}`}
                   >
                     <button
                       type="button"
@@ -418,7 +418,7 @@ export default function Page() {
                       <span className="skin-name">{have ? skin.name : "？？？"}</span>
                       {have && (stars[skin.id] ?? 0) > 0 ? (
                         <span className="skin-stars">
-                          {starMark(stars[skin.id] ?? 0)}
+                          ★{stars[skin.id] ?? 0}
                           <em>+{shineBonus(stars[skin.id] ?? 0)}%</em>
                         </span>
                       ) : (

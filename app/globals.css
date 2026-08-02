@@ -808,7 +808,17 @@ button {
     linear-gradient(110deg, #ff6b6b, #ffd166, #7ee7a8, #6bd3ff, #a78bfa);
   background-origin: border-box;
   background-clip: padding-box, border-box;
+}
+
+/* ★が上限まで育った見た目 */
+.skin.is-max button {
+  box-shadow: 0 0 16px rgba(255, 209, 102, 0.45);
   animation: pulse 2.4s ease-in-out infinite;
+}
+
+.skin.is-max .skin-stars {
+  color: #fff3d9;
+  text-shadow: 0 0 8px rgba(255, 209, 102, 0.9);
 }
 
 /* ---------- ポータルへの導線 ---------- */

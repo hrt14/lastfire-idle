@@ -1899,8 +1899,9 @@ const drawEquip = (
 };
 
 /**
- * 同じ見た目がダブると増える★の光り方。
- * ★1 ふちが光る / ★2 きらきら / ★3 虹のオーラ
+ * 同じ見た目がダブると増える★の光り方（6段階）。
+ * ★1 ふちが光る / ★2 きらきら / ★3 虹のオーラ /
+ * ★4 光の輪 / ★5 まわる星 / ★6 光の柱
  */
 const drawShine = (
   ctx: CanvasRenderingContext2D,
@@ -1909,44 +1910,108 @@ const drawShine = (
   stars: number,
   time: number,
 ) => {
-  // 足元の光の輪
   const pulse = 0.6 + Math.sin(time * 3) * 0.4;
   const hue = (time * 90) % 360;
-  const ring =
-    stars >= 3
-      ? `hsla(${hue}, 90%, 65%, ${0.35 + pulse * 0.3})`
-      : stars === 2
-        ? `rgba(150,215,255,${0.3 + pulse * 0.25})`
-        : `rgba(255,209,102,${0.25 + pulse * 0.2})`;
+  const rainbow = stars >= 3;
+
+  // ★6 光の柱
+  if (stars >= 6) {
+    const pillar = ctx.createLinearGradient(x, y - 76, x, y + 10);
+    pillar.addColorStop(0, `hsla(${hue}, 95%, 72%, 0)`);
+    pillar.addColorStop(0.55, `hsla(${(hue + 40) % 360}, 95%, 72%, 0.22)`);
+    pillar.addColorStop(1, `hsla(${(hue + 80) % 360}, 95%, 72%, 0.4)`);
+    ctx.fillStyle = pillar;
+    ctx.beginPath();
+    ctx.moveTo(x - 8, y - 76);
+    ctx.lineTo(x + 8, y - 76);
+    ctx.lineTo(x + 20, y + 8);
+    ctx.lineTo(x - 20, y + 8);
+    ctx.closePath();
+    ctx.fill();
+    // 立ちのぼる光の粒
+    for (let i = 0; i < 6; i += 1) {
+      const t = (time * 0.7 + i * 0.17) % 1;
+      const px = x + Math.sin(time * 2 + i * 2.1) * 12;
+      ctx.fillStyle = `hsla(${(hue + i * 40) % 360}, 95%, 78%, ${1 - t})`;
+      ctx.beginPath();
+      ctx.arc(px, y + 6 - t * 62, 2.4 * (1 - t) + 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // 足元の光の輪（★4 で二重になる）
+  const ring = rainbow
+    ? `hsla(${hue}, 90%, 65%, ${0.35 + pulse * 0.3})`
+    : stars === 2
+      ? `rgba(150,215,255,${0.3 + pulse * 0.25})`
+      : `rgba(255,209,102,${0.25 + pulse * 0.2})`;
   ctx.strokeStyle = ring;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.ellipse(x, y + 7, 15 + pulse * 2, 6 + pulse, 0, 0, Math.PI * 2);
   ctx.stroke();
+  if (stars >= 4) {
+    ctx.strokeStyle = rainbow
+      ? `hsla(${(hue + 120) % 360}, 90%, 70%, ${0.25 + pulse * 0.25})`
+      : `rgba(255,225,150,${0.2 + pulse * 0.2})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 7, 24 + pulse * 4, 10 + pulse * 1.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // 頭上の光の輪
+    ctx.strokeStyle = `hsla(${hue}, 95%, 75%, ${0.5 + pulse * 0.4})`;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 34 - pulse * 1.5, 11, 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
-  if (stars >= 3) {
-    // 虹のオーラ
-    const aura = ctx.createRadialGradient(x, y - 10, 4, x, y - 10, 30);
-    aura.addColorStop(0, `hsla(${hue}, 95%, 70%, 0.35)`);
+  if (rainbow) {
+    // 虹のオーラ（★が増えるほど広く強く）
+    const size = 26 + stars * 3;
+    const aura = ctx.createRadialGradient(x, y - 10, 4, x, y - 10, size);
+    aura.addColorStop(0, `hsla(${hue}, 95%, 70%, ${0.22 + stars * 0.05})`);
     aura.addColorStop(1, `hsla(${(hue + 90) % 360}, 95%, 70%, 0)`);
     ctx.fillStyle = aura;
     ctx.beginPath();
-    ctx.arc(x, y - 10, 30, 0, Math.PI * 2);
+    ctx.arc(x, y - 10, size, 0, Math.PI * 2);
     ctx.fill();
   }
 
+  if (stars >= 5) {
+    // まわる星
+    for (let i = 0; i < 3; i += 1) {
+      const a = time * 2 + (i / 3) * Math.PI * 2;
+      const px = x + Math.cos(a) * 22;
+      const py = y - 14 + Math.sin(a) * 8;
+      const scale = 0.8 + Math.sin(a) * 0.25;
+      ctx.fillStyle = `hsla(${(hue + i * 90) % 360}, 95%, 78%, 0.95)`;
+      ctx.beginPath();
+      for (let k = 0; k < 10; k += 1) {
+        const ra = (k / 10) * Math.PI * 2 - Math.PI / 2;
+        const rr = (k % 2 ? 2 : 5) * scale;
+        const sx = px + Math.cos(ra) * rr;
+        const sy = py + Math.sin(ra) * rr;
+        if (k === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
   if (stars >= 2) {
-    // きらきら
-    for (let i = 0; i < 4; i += 1) {
-      const t = (time * 0.9 + i * 0.25) % 1;
+    // きらきら（★が増えるほど数が増える）
+    const count = Math.min(8, 2 + stars);
+    for (let i = 0; i < count; i += 1) {
+      const t = (time * 0.9 + i / count) % 1;
       const a = i * 1.9 + time * 1.4;
       const px = x + Math.cos(a) * (12 + t * 8);
       const py = y - 6 - t * 24;
       const size = 3.4 * (1 - t);
-      ctx.fillStyle =
-        stars >= 3
-          ? `hsla(${(hue + i * 60) % 360}, 95%, 75%, ${1 - t})`
-          : `rgba(230,245,255,${1 - t})`;
+      ctx.fillStyle = rainbow
+        ? `hsla(${(hue + i * 60) % 360}, 95%, 75%, ${1 - t})`
+        : `rgba(230,245,255,${1 - t})`;
       ctx.beginPath();
       ctx.moveTo(px, py - size);
       ctx.lineTo(px + size * 0.5, py);
@@ -2788,7 +2853,7 @@ export default function Shop({ onSample, paused }: Props) {
                 : stars === 2
                   ? "rgba(180,230,255,0.9)"
                   : "rgba(255,225,150,0.85)";
-            ctx.shadowBlur = 8 + stars * 5 + Math.sin(time * 4) * 2;
+            ctx.shadowBlur = 6 + stars * 4 + Math.sin(time * 4) * 2;
           }
           person(ctx, player.pos.x, player.pos.y, skin.coat, skin.head, player.step);
           if (skin.hat === "none") {
