@@ -12,6 +12,14 @@ import {
   maxCarry,
   openSeats,
   openStoves,
+  ROBOT_CHARGE,
+  seatCost,
+  seatMode,
+  isDirty,
+  shelfStock,
+  SHELF_MAX,
+  stoveItem,
+  type ItemKind,
   OUTSIDE_DEPTH,
   areas,
   entrancePos,
@@ -741,6 +749,66 @@ const drawProps = (
     }
     return;
   }
+  if (palette.prop === "diner") {
+    // レストラン街: ネオンの看板とテーブルの並ぶ通り
+    ctx.fillStyle = "#5d3535";
+    ctx.fillRect(rect.x0, rect.y0 + 24, rect.x1 - rect.x0, 56);
+    ctx.fillStyle = "#3a2222";
+    for (let x = rect.x0; x < rect.x1; x += 40) {
+      ctx.fillRect(x + 6, rect.y0 + 30, 26, 44);
+    }
+    ctx.fillStyle = `rgba(255,120,90,${0.5 + Math.abs(Math.sin(time * 2)) * 0.5})`;
+    ctx.font = `800 16px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+    ctx.fillText("R E S T A U R A N T", cx, rect.y0 + 52);
+    ctx.font = FONT;
+    // 通りのパラソル
+    for (const x of spots) {
+      ctx.fillStyle = "#8a6440";
+      ctx.fillRect(x - 2, baseY - 34, 4, 34);
+      for (let i = 0; i < 6; i += 1) {
+        ctx.fillStyle = i % 2 ? "#e8574a" : "#fff3d9";
+        ctx.beginPath();
+        ctx.moveTo(x, baseY - 36);
+        ctx.arc(x, baseY - 18, 24, Math.PI + (i / 6) * Math.PI, Math.PI + ((i + 1) / 6) * Math.PI);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    return;
+  }
+  if (palette.prop === "market") {
+    // おみやげ通り: 提灯の並ぶアーケード
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(rect.x0 + 8, rect.y0 + 40);
+    ctx.lineTo(rect.x1 - 8, rect.y0 + 40);
+    ctx.stroke();
+    for (let i = 0; i < 8; i += 1) {
+      const lx = rect.x0 + 30 + i * ((rect.x1 - rect.x0 - 60) / 7);
+      const glow = 0.5 + Math.abs(Math.sin(time * 2 + i)) * 0.5;
+      ctx.fillStyle = `rgba(255,170,120,${glow})`;
+      ctx.beginPath();
+      ctx.ellipse(lx, rect.y0 + 52, 7, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#8a4a2f";
+      ctx.fillRect(lx - 7, rect.y0 + 46, 14, 2);
+      ctx.fillRect(lx - 7, rect.y0 + 58, 14, 2);
+    }
+    ctx.fillStyle = "#ffd166";
+    ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+    ctx.fillText("お み や げ 通 り", cx, rect.y0 + 84);
+    ctx.font = FONT;
+    // 積み上げた木箱
+    for (const x of spots) {
+      for (let i = 0; i < 3; i += 1) {
+        ctx.fillStyle = ["#8a6440", "#a9743f", "#7a5433"][i];
+        roundRect(ctx, x - 14 + (i % 2) * 10, baseY - 14 - i * 12, 22, 12, 2);
+        ctx.fill();
+      }
+    }
+    return;
+  }
   if (park && palette.prop === "none") {
     // 入口広場: 噴水と花壇と風船
     const fx = cx;
@@ -773,6 +841,237 @@ const drawProps = (
     ctx.fill();
     balloons(ctx, rect.x0 + 26, rect.y0 + 252, time);
     return;
+  }
+};
+
+/** 料理の皿 */
+const plate = (ctx: CanvasRenderingContext2D, x: number, y: number, s = 1) => {
+  ctx.fillStyle = "#f4f1ea";
+  ctx.beginPath();
+  ctx.ellipse(x, y, 9 * s, 5.4 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#d9d2c4";
+  ctx.beginPath();
+  ctx.ellipse(x, y, 9 * s, 5.4 * s, 0, 0.2, Math.PI - 0.2);
+  ctx.fill();
+  ctx.fillStyle = "#e8574a";
+  ctx.beginPath();
+  ctx.ellipse(x, y - 1.4 * s, 4.6 * s, 2.4 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#7ee7a8";
+  ctx.beginPath();
+  ctx.arc(x + 2.6 * s, y - 2.2 * s, 1.4 * s, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+/** おみやげの箱 */
+const parcel = (ctx: CanvasRenderingContext2D, x: number, y: number, s = 1) => {
+  ctx.fillStyle = "#c8a165";
+  roundRect(ctx, x - 8 * s, y - 6 * s, 16 * s, 12 * s, 2 * s);
+  ctx.fill();
+  ctx.fillStyle = "#e8574a";
+  ctx.fillRect(x - 1.4 * s, y - 6 * s, 2.8 * s, 12 * s);
+  ctx.fillRect(x - 8 * s, y - 1.4 * s, 16 * s, 2.8 * s);
+  ctx.fillStyle = "#f0a6c0";
+  ctx.beginPath();
+  ctx.arc(x - 2 * s, y - 7 * s, 2 * s, 0, Math.PI * 2);
+  ctx.arc(x + 2 * s, y - 7 * s, 2 * s, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+/** 持ちものの絵（種類で変わる） */
+const held = (
+  ctx: CanvasRenderingContext2D,
+  item: ItemKind | null,
+  x: number,
+  y: number,
+  s = 1,
+) => {
+  if (item === "food") plate(ctx, x, y, s);
+  else if (item === "goods") parcel(ctx, x, y, s);
+  else bowl(ctx, x, y, s);
+};
+
+/** レストランのテーブル。皿が残っていると赤い合図が出る */
+const drawTable = (
+  ctx: CanvasRenderingContext2D,
+  art: string,
+  x: number,
+  y: number,
+  time: number,
+  dirty: boolean,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 14, 30, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 店構え
+  if (art === "steak") {
+    ctx.fillStyle = "#7a4a2f";
+    roundRect(ctx, x - 30, y - 52, 60, 26, 4);
+    ctx.fill();
+    ctx.fillStyle = "#e8574a";
+    for (let i = 0; i < 5; i += 1) {
+      ctx.fillRect(x - 30 + i * 12, y - 26, 6, 6);
+    }
+    ctx.fillStyle = "#ffd166";
+    ctx.font = SMALL;
+    ctx.fillText("STEAK", x, y - 40);
+    ctx.font = FONT;
+  } else if (art === "cafe") {
+    ctx.fillStyle = "#f0a6c0";
+    roundRect(ctx, x - 30, y - 52, 60, 24, 6);
+    ctx.fill();
+    tentRoof(ctx, x, y - 28, 64, "#fdf1f6", "#f0a6c0");
+    ctx.fillStyle = "#5d3f26";
+    ctx.font = SMALL;
+    ctx.fillText("CAFE", x, y - 42);
+    ctx.font = FONT;
+  } else if (art === "terrace") {
+    // パラソルつきのテラス席
+    ctx.fillStyle = "#8a6440";
+    ctx.fillRect(x - 2, y - 50, 4, 34);
+    for (let i = 0; i < 6; i += 1) {
+      ctx.fillStyle = i % 2 ? "#e8574a" : "#fff3d9";
+      ctx.beginPath();
+      ctx.moveTo(x, y - 52);
+      ctx.arc(x, y - 30, 30, Math.PI + (i / 6) * Math.PI, Math.PI + ((i + 1) / 6) * Math.PI);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else {
+    ctx.fillStyle = "#c2402f";
+    roundRect(ctx, x - 30, y - 52, 60, 24, 5);
+    ctx.fill();
+    ctx.fillStyle = "#fff3d9";
+    ctx.font = SMALL;
+    ctx.fillText("PASTA", x, y - 40);
+    ctx.font = FONT;
+    ctx.fillStyle = "rgba(255,255,255,0.2)";
+    for (let i = 0; i < 3; i += 1) {
+      const t = (time * 0.6 + i * 0.33) % 1;
+      ctx.beginPath();
+      ctx.arc(x + Math.sin(t * 6 + i) * 5, y - 56 - t * 16, 4 - t * 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // いす
+  ctx.fillStyle = "#5d3f26";
+  for (const cx of [x - 22, x + 22]) {
+    roundRect(ctx, cx - 6, y - 12, 12, 14, 4);
+    ctx.fill();
+  }
+  // テーブル
+  ctx.fillStyle = "#8a6440";
+  ctx.beginPath();
+  ctx.ellipse(x, y - 4, 22, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#a9743f";
+  ctx.beginPath();
+  ctx.ellipse(x, y - 6, 22, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f4f1ea";
+  roundRect(ctx, x - 9, y - 12, 18, 6, 2);
+  ctx.fill();
+
+  if (dirty) {
+    // 残った皿
+    plate(ctx, x - 7, y - 8, 0.85);
+    plate(ctx, x + 6, y - 6, 0.7);
+    ctx.fillStyle = "#8a8f98";
+    ctx.fillRect(x + 1, y - 12, 8, 1.6);
+    ctx.fillStyle = `rgba(255,150,120,${0.4 + Math.abs(Math.sin(time * 4)) * 0.4})`;
+    ctx.beginPath();
+    ctx.arc(x, y - 24, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
+/** お土産の棚。並んでいる数だけ商品が乗る */
+const drawShelf = (
+  ctx: CanvasRenderingContext2D,
+  art: string,
+  x: number,
+  y: number,
+  time: number,
+  stock: number,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 14, 30, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 天幕と看板
+  const tint =
+    art === "sweets" ? "#f0a6c0" : art === "limited" ? "#ffd166" : "#6bd3ff";
+  tentRoof(ctx, x, y - 44, 68, tint, "#fff3d9");
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  roundRect(ctx, x - 26, y - 44, 52, 10, 3);
+  ctx.fill();
+  ctx.fillStyle = "#fff3d9";
+  ctx.font = SMALL;
+  ctx.fillText(
+    art === "sweets" ? "OKASHI" : art === "limited" ? "LIMITED" : "GOODS",
+    x,
+    y - 39,
+  );
+  ctx.font = FONT;
+
+  // 棚
+  ctx.fillStyle = "#7a5433";
+  roundRect(ctx, x - 28, y - 32, 56, 34, 3);
+  ctx.fill();
+  ctx.fillStyle = "#5d3f26";
+  ctx.fillRect(x - 28, y - 18, 56, 3);
+  ctx.fillRect(x - 28, y - 4, 56, 3);
+
+  // 並んでいる商品
+  for (let i = 0; i < stock; i += 1) {
+    const row = i < 2 ? 0 : 1;
+    const col = i % 2;
+    const px = x - 13 + col * 26;
+    const py = y - 24 + row * 14;
+    if (art === "sweets") {
+      ctx.fillStyle = ["#e8574a", "#ffd166", "#7ee7a8", "#6bd3ff"][i % 4];
+      roundRect(ctx, px - 8, py - 5, 16, 10, 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.fillRect(px - 8, py - 1, 16, 1.6);
+    } else if (art === "limited") {
+      ctx.fillStyle = "#ffd166";
+      ctx.beginPath();
+      ctx.moveTo(px, py - 7);
+      ctx.lineTo(px + 7, py + 4);
+      ctx.lineTo(px - 7, py + 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.abs(Math.sin(time * 3 + i)) * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(px, py - 2, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // ぬいぐるみ
+      ctx.fillStyle = ["#f0a6c0", "#6bd3ff", "#7ee7a8", "#ffd166"][i % 4];
+      ctx.beginPath();
+      ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+      ctx.arc(px - 4, py - 5, 2.6, 0, Math.PI * 2);
+      ctx.arc(px + 4, py - 5, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#2b2b33";
+      ctx.beginPath();
+      ctx.arc(px - 2, py - 1, 1, 0, Math.PI * 2);
+      ctx.arc(px + 2, py - 1, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (stock === 0) {
+    ctx.fillStyle = `rgba(255,209,102,${0.4 + Math.abs(Math.sin(time * 3)) * 0.4})`;
+    ctx.font = SMALL;
+    ctx.fillText("品切れ", x, y - 12);
+    ctx.font = FONT;
   }
 };
 
@@ -2318,7 +2617,56 @@ export default function Shop({ onSample, paused }: Props) {
       /* --- 寸胴 --- */
       for (const stove of openStoves(state)) {
         const { x, y } = stove.pos;
-        if (isPark) {
+        const made = stoveItem(stove);
+        if (made === "food") {
+          // 厨房（レストラン）
+          ctx.fillStyle = "#4d4038";
+          roundRect(ctx, x - 30, y - 34, 60, 48, 6);
+          ctx.fill();
+          ctx.fillStyle = "#6b5a4c";
+          roundRect(ctx, x - 30, y - 34, 60, 12, 5);
+          ctx.fill();
+          ctx.fillStyle = "#2f2a26";
+          roundRect(ctx, x - 22, y - 16, 44, 22, 4);
+          ctx.fill();
+          // コンロの火
+          for (const fx of [x - 11, x + 11]) {
+            const flame = 0.6 + Math.abs(Math.sin(time * 6 + fx)) * 0.4;
+            ctx.fillStyle = `rgba(255,140,60,${flame})`;
+            ctx.beginPath();
+            ctx.moveTo(fx, y - 14);
+            ctx.quadraticCurveTo(fx + 5, y - 6, fx, y + 2);
+            ctx.quadraticCurveTo(fx - 5, y - 6, fx, y - 14);
+            ctx.fill();
+          }
+          ctx.fillStyle = "#8d98a6";
+          ctx.beginPath();
+          ctx.ellipse(x, y - 18, 13, 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#f2dcae";
+          ctx.font = SMALL;
+          ctx.fillText("KITCHEN", x, y - 28);
+          ctx.font = FONT;
+        } else if (made === "goods") {
+          // 倉庫（お土産）
+          ctx.fillStyle = "#5a4a38";
+          roundRect(ctx, x - 30, y - 34, 60, 48, 5);
+          ctx.fill();
+          ctx.fillStyle = "#3d3227";
+          roundRect(ctx, x - 24, y - 8, 48, 22, 3);
+          ctx.fill();
+          for (let i = 0; i < 3; i += 1) {
+            ctx.fillStyle = ["#c8a165", "#a9743f", "#c8a165"][i];
+            roundRect(ctx, x - 22 + i * 16, y - 28, 14, 16, 2);
+            ctx.fill();
+            ctx.fillStyle = "#e8574a";
+            ctx.fillRect(x - 22 + i * 16, y - 22, 14, 2);
+          }
+          ctx.fillStyle = "#f2dcae";
+          ctx.font = SMALL;
+          ctx.fillText("STOCK", x, y + 4);
+          ctx.font = FONT;
+        } else if (isPark) {
           // 券売所
           ctx.fillStyle = "#37507a";
           roundRect(ctx, x - 28, y - 30, 56, 44, 7);
@@ -2358,7 +2706,7 @@ export default function Shop({ onSample, paused }: Props) {
         }
 
         const ready = state.ready[stove.id] ?? 0;
-        for (let i = 0; i < ready; i += 1) bowl(ctx, x, y + 22 - i * 5.5);
+        for (let i = 0; i < ready; i += 1) held(ctx, made, x, y + 22 - i * 5.5);
         if (ready >= stoveCapacity(state)) {
           ctx.fillStyle = "#ffd166";
           ctx.fillText("満杯", x, y + 36);
@@ -2376,7 +2724,48 @@ export default function Shop({ onSample, paused }: Props) {
       }
 
       for (const seat of openSeats(state)) {
-        if (isPark) {
+        const mode = seatMode(seat);
+        if (mode === "table" || mode === "shelf") {
+          const { x, y } = seat.pos;
+          const area = openAreas(state).find(
+            (item) => item.id === `area-${seat.area}`,
+          );
+          const tint = area?.palette.floor ?? "#5b6b8c";
+
+          // 店の床
+          ctx.fillStyle = "rgba(0,0,0,0.2)";
+          roundRect(ctx, x - 44, y - 58, 88, 80, 12);
+          ctx.fill();
+          ctx.fillStyle = tint;
+          ctx.globalAlpha = 0.4;
+          roundRect(ctx, x - 42, y - 56, 84, 76, 11);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = "rgba(255,255,255,0.16)";
+          ctx.lineWidth = 1;
+          roundRect(ctx, x - 42, y - 56, 84, 76, 11);
+          ctx.stroke();
+
+          if (mode === "table") {
+            drawTable(ctx, seat.art ?? "pasta", x, y, time, isDirty(state, seat.id));
+          } else {
+            drawShelf(ctx, seat.art ?? "plush", x, y, time, shelfStock(state, seat.id));
+          }
+
+          // 名札
+          ctx.fillStyle = "rgba(0,0,0,0.45)";
+          roundRect(ctx, x - 36, y + 18, 72, 14, 7);
+          ctx.fill();
+          ctx.strokeStyle =
+            mode === "table" ? "rgba(255,150,120,0.6)" : "rgba(160,220,255,0.6)";
+          ctx.lineWidth = 1;
+          roundRect(ctx, x - 36, y + 18, 72, 14, 7);
+          ctx.stroke();
+          ctx.font = SMALL;
+          ctx.fillStyle = mode === "table" ? "#ffd9c2" : "#d6ecff";
+          ctx.fillText(seat.label, x, y + 25);
+          ctx.font = FONT;
+        } else if (isPark) {
           // アトラクションと、その周り（乗り場・柵・看板）
           const area = openAreas(state).find(
             (item) => item.id === `area-${seat.area}`,
@@ -2426,7 +2815,8 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.stroke();
           ctx.font = SMALL;
           ctx.fillStyle = "#ffe6a8";
-          ctx.fillText(seat.label, x, y + 25);
+          const cost = seatCost(seat);
+          ctx.fillText(cost > 1 ? `${seat.label}（${cost}枚）` : seat.label, x, y + 25);
           ctx.font = FONT;
         } else if (seat.area === 0) {
           ctx.fillStyle = "#b0463a";
@@ -2455,11 +2845,77 @@ export default function Shop({ onSample, paused }: Props) {
           .map((customer) => [customer.seatId, customer]),
       );
 
+      // レジ（棚の客がお金を払いに行く場所）
+      const tills = new Map<string, { x: number; y: number }>();
+      for (const seat of openSeats(state)) {
+        if (seatMode(seat) !== "shelf" || !seat.pay) continue;
+        tills.set(`${seat.pay.x},${seat.pay.y}`, seat.pay);
+      }
+      for (const till of tills.values()) {
+        shadow(ctx, till.x, till.y + 14, 20);
+        ctx.fillStyle = "#4a3a2a";
+        roundRect(ctx, till.x - 24, till.y - 6, 48, 20, 4);
+        ctx.fill();
+        ctx.fillStyle = "#6b7a8c";
+        roundRect(ctx, till.x - 14, till.y - 24, 28, 20, 4);
+        ctx.fill();
+        ctx.fillStyle = "#1d2630";
+        roundRect(ctx, till.x - 10, till.y - 20, 20, 9, 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(126,231,168,${0.5 + Math.abs(Math.sin(time * 2)) * 0.4})`;
+        ctx.beginPath();
+        ctx.arc(till.x + 10, till.y - 22, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = SMALL;
+        ctx.fillStyle = "rgba(246,231,207,0.65)";
+        ctx.fillText("レジ", till.x, till.y + 4);
+        ctx.font = FONT;
+      }
+
       for (const seat of openSeats(state)) {
         const tray = trayPos(seat);
+        const mode = seatMode(seat);
         const hot = waitingSeats.has(seat.id);
         const eating = eatingBySeat.get(seat.id);
         const pulse = 0.5 + Math.sin(time * 5) * 0.5;
+
+        if (mode === "shelf") {
+          // 棚は「並べる場所」。空きがあるほど強く光る
+          const stock = shelfStock(state, seat.id);
+          const room = stock < SHELF_MAX;
+          ctx.save();
+          if (room) {
+            ctx.shadowColor = "rgba(150,220,255,0.8)";
+            ctx.shadowBlur = 6 + pulse * 8;
+          }
+          ctx.fillStyle = room
+            ? `rgba(150,220,255,${0.28 + pulse * 0.25})`
+            : "rgba(255,255,255,0.08)";
+          roundRect(ctx, tray.x - 18, tray.y - 8, 36, 16, 8);
+          ctx.fill();
+          ctx.restore();
+          ctx.font = SMALL;
+          ctx.fillStyle = room ? "#d6ecff" : "rgba(246,231,207,0.5)";
+          ctx.fillText(`${stock} / ${SHELF_MAX}`, tray.x, tray.y);
+          ctx.font = FONT;
+          continue;
+        }
+
+        if (mode === "table" && isDirty(state, seat.id)) {
+          // 皿が残っている合図
+          ctx.save();
+          ctx.shadowColor = "rgba(255,150,120,0.8)";
+          ctx.shadowBlur = 8 + pulse * 8;
+          ctx.fillStyle = `rgba(255,150,120,${0.4 + pulse * 0.3})`;
+          roundRect(ctx, tray.x - 18, tray.y - 9, 36, 18, 8);
+          ctx.fill();
+          ctx.restore();
+          ctx.font = SMALL;
+          ctx.fillStyle = "#ffe0d2";
+          ctx.fillText("片づけ", tray.x, tray.y);
+          ctx.font = FONT;
+          continue;
+        }
 
         ctx.save();
         if (hot) {
@@ -2489,9 +2945,20 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fill();
         }
 
+        // 2つ以上いる場所は、必要な数を出す
+        const need = seatCost(seat);
+        if (need > 1) {
+          ctx.fillStyle = hot ? "#3a2a12" : "rgba(246,231,207,0.75)";
+          ctx.font = SMALL;
+          ctx.fillText(`×${need}`, tray.x, tray.y + 1);
+          ctx.font = FONT;
+        }
+
         if (eating) {
-          const left = Math.max(0, eating.timer) / EAT_TIME;
-          bowl(ctx, tray.x, tray.y, left > 0.88 ? 1.35 : 1.15);
+          const span = mode === "table" ? EAT_TIME * 1.6 : EAT_TIME;
+          const left = Math.max(0, eating.timer) / span;
+          if (mode === "table") plate(ctx, tray.x, tray.y, 1.2);
+          else bowl(ctx, tray.x, tray.y, left > 0.88 ? 1.35 : 1.15);
           ctx.strokeStyle = "rgba(255,209,102,0.85)";
           ctx.lineWidth = 2.4;
           ctx.beginPath();
@@ -2663,6 +3130,40 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.arc(lampX, top + 52, 54, 0, Math.PI * 2);
       ctx.fill();
 
+      /* --- 配膳ロボの充電ドック --- */
+      for (const worker of state.staff) {
+        if (worker.kind !== "robot") continue;
+        const { x, y } = worker.home;
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        roundRect(ctx, x - 20, y - 8, 40, 18, 8);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(150,220,255,0.5)";
+        ctx.lineWidth = 1.4;
+        roundRect(ctx, x - 20, y - 8, 40, 18, 8);
+        ctx.stroke();
+        ctx.fillStyle = "#5a6270";
+        roundRect(ctx, x - 7, y - 20, 14, 13, 3);
+        ctx.fill();
+        const charging = worker.charge > 0;
+        const blink = 0.4 + Math.abs(Math.sin(time * (charging ? 6 : 1.5))) * 0.6;
+        ctx.fillStyle = charging
+          ? `rgba(126,231,168,${blink})`
+          : `rgba(150,220,255,${blink * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(x, y - 14, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+        if (charging) {
+          // 充電の残り
+          const ratio = 1 - worker.charge / ROBOT_CHARGE;
+          ctx.fillStyle = "rgba(0,0,0,0.5)";
+          roundRect(ctx, x - 16, y + 14, 32, 5, 2.5);
+          ctx.fill();
+          ctx.fillStyle = "#7ee7a8";
+          roundRect(ctx, x - 16, y + 14, 32 * ratio, 5, 2.5);
+          ctx.fill();
+        }
+      }
+
       /* --- 導入した設備の見た目 --- */
       for (const item of equipment) {
         if (!hasEquip(state, item.id)) continue;
@@ -2750,6 +3251,8 @@ export default function Shop({ onSample, paused }: Props) {
         collector: "#4aa3c7",
         cook: "#eee8dc",
         master: "#2f3b4d",
+        busser: "#4f9e83",
+        stocker: "#b5763f",
       };
 
       for (const customer of state.customers) {
@@ -2831,7 +3334,19 @@ export default function Shop({ onSample, paused }: Props) {
               }
             }
             for (let i = 0; i < worker.carry; i += 1) {
-              bowl(ctx, worker.pos.x, worker.pos.y - 30 - i * 6, 0.85);
+              held(ctx, worker.item, worker.pos.x, worker.pos.y - 30 - i * 6, 0.85);
+            }
+            if (worker.kind === "robot" && worker.charge > 0) {
+              ctx.fillStyle = `rgba(126,231,168,${0.6 + Math.abs(Math.sin(time * 6)) * 0.4})`;
+              ctx.beginPath();
+              ctx.moveTo(worker.pos.x + 2, worker.pos.y - 40);
+              ctx.lineTo(worker.pos.x - 5, worker.pos.y - 30);
+              ctx.lineTo(worker.pos.x, worker.pos.y - 30);
+              ctx.lineTo(worker.pos.x - 2, worker.pos.y - 22);
+              ctx.lineTo(worker.pos.x + 5, worker.pos.y - 32);
+              ctx.lineTo(worker.pos.x, worker.pos.y - 32);
+              ctx.closePath();
+              ctx.fill();
             }
           },
         });
@@ -2871,7 +3386,7 @@ export default function Shop({ onSample, paused }: Props) {
           }
           ctx.restore();
           for (let i = 0; i < player.carry; i += 1) {
-            bowl(ctx, player.pos.x, player.pos.y - 34 - i * 6);
+            held(ctx, player.item, player.pos.x, player.pos.y - 34 - i * 6);
           }
         },
       });

@@ -65,6 +65,7 @@ const seatRow = (
   baseY: number,
   prices: number[],
   label: string,
+  cost = 1,
 ): SeatSpec[] =>
   xs.map((x, i) => ({
     id: `seat-${area}-${i + 1}`,
@@ -74,6 +75,68 @@ const seatRow = (
     price: prices[i],
     area,
     label,
+    cost,
+    value: cost * 1.25,
+  }));
+
+/** レストランのテーブル。料理を運び、食べ終わったら皿を片づける */
+const tableRow = (
+  area: number,
+  baseY: number,
+  tables: {
+    x: number;
+    price: number;
+    label: string;
+    art: string;
+    detail: string;
+    unlockAfter?: string;
+  }[],
+): SeatSpec[] =>
+  tables.map((table, i) => ({
+    id: `table-${area}-${i + 1}`,
+    pos: { x: table.x, y: baseY + 64 },
+    serve: { x: table.x, y: baseY },
+    tray: { x: table.x, y: baseY + 24 },
+    price: table.price,
+    area,
+    label: table.label,
+    art: table.art,
+    detail: table.detail,
+    mode: "table" as const,
+    needs: "food" as const,
+    value: 4,
+    unlockAfter: table.unlockAfter,
+  }));
+
+/** お土産の棚。並べておくと客が自分で取り、レジでお金を払う */
+const shelfRow = (
+  area: number,
+  baseY: number,
+  till: { x: number; y: number },
+  shelves: {
+    x: number;
+    price: number;
+    label: string;
+    art: string;
+    detail: string;
+    unlockAfter?: string;
+  }[],
+): SeatSpec[] =>
+  shelves.map((shelf, i) => ({
+    id: `shelf-${area}-${i + 1}`,
+    pos: { x: shelf.x, y: baseY + 64 },
+    serve: { x: shelf.x, y: baseY },
+    tray: { x: shelf.x, y: baseY + 24 },
+    price: shelf.price,
+    area,
+    label: shelf.label,
+    art: shelf.art,
+    detail: shelf.detail,
+    mode: "shelf" as const,
+    needs: "goods" as const,
+    value: 2.4,
+    pay: till,
+    unlockAfter: shelf.unlockAfter,
   }));
 
 /* ==================== ステージ1: ラーメン屋 ==================== */
@@ -119,12 +182,33 @@ const ramenStoves: StoveSpec[] = [
   { id: "stove-3", pos: { x: 288, y: 176 }, price: 700, area: 0 },
   { id: "stove-4", pos: { x: 470, y: 176 }, price: 26000, area: 2 },
   { id: "stove-5", pos: { x: 610, y: 176 }, price: 60000, area: 2 },
+  // 宴会場まで開くと、製麺所に持ち帰りの倉庫が出せるようになる
+  { id: "store-r1", pos: { x: 400, y: 380 }, price: 900000, area: 2, item: "goods", art: "stock", label: "みやげ倉庫", unlockAfter: "area-3" },
 ];
 
 const ramenSeats: SeatSpec[] = [
   ...seatRow(0, [60, 140, 220, 300], 294, [0, 0, 100, 300], "カウンター席"),
-  ...seatRow(1, [80, 180, 280], 552, [400, 900, 2000], "テーブル席"),
-  ...seatRow(3, [432, 516, 600, 684], 552, [9000, 18000, 34000, 60000], "座敷席"),
+  ...seatRow(1, [80, 180, 280], 552, [400, 900, 2000], "テーブル席", 2),
+  ...seatRow(3, [432, 516, 600, 684], 552, [9000, 18000, 34000, 60000], "座敷席", 3),
+  // あとから出てくる持ち帰りコーナー（並べておくと客が自分で買っていく）
+  ...shelfRow(2, 356, { x: 660, y: 420 }, [
+    {
+      x: 520,
+      price: 1200000,
+      label: "生ラーメン棚",
+      art: "sweets",
+      detail: "家で作れる持ち帰りセット",
+      unlockAfter: "area-3",
+    },
+    {
+      x: 620,
+      price: 3000000,
+      label: "名物どんぶり棚",
+      art: "limited",
+      detail: "店のロゴ入りどんぶり",
+      unlockAfter: "area-3",
+    },
+  ]),
 ];
 
 const ramenHires: HireSpec[] = [
@@ -147,6 +231,8 @@ const ramenHires: HireSpec[] = [
   { id: "master-1", kind: "master", pos: { x: 430, y: 700 }, price: 180000, label: "板前", area: 3 },
   { id: "robot-3", kind: "robot", pos: { x: 560, y: 700 }, price: 260000, label: "配膳ロボ", area: 3 },
   { id: "waiter-4", kind: "waiter", pos: { x: 680, y: 700 }, price: 90000, label: "ホール店員", area: 3 },
+  // 持ち帰りコーナーができると、製麺所に品出しが立てられる
+  { id: "stocker-r1", kind: "stocker", pos: { x: 450, y: 440 }, price: 1800000, label: "品出し", area: 2, unlockAfter: "area-3" },
 ];
 
 const ramenEquipment: EquipSpec[] = [
@@ -222,6 +308,22 @@ const parkAreas: AreaSpec[] = [
     padPos: { x: 658, y: 250 },
     palette: { floor: "#4d6340", deep: "#33452b", prop: "fossil" },
   },
+  {
+    id: "area-7",
+    label: "レストラン街をつくる",
+    price: 60000000,
+    rect: { x0: 720, y0: 480, x1: 1080, y1: 960 },
+    padPos: { x: 900, y: 452 },
+    palette: { floor: "#7a4a4a", deep: "#4f2f2f", prop: "diner" },
+  },
+  {
+    id: "area-8",
+    label: "おみやげ通りをつくる",
+    price: 250000000,
+    rect: { x0: 720, y0: 960, x1: 1080, y1: 1440 },
+    padPos: { x: 900, y: 932 },
+    palette: { floor: "#6a5a86", deep: "#443a5c", prop: "market" },
+  },
 ];
 
 const parkStoves: StoveSpec[] = [
@@ -230,6 +332,15 @@ const parkStoves: StoveSpec[] = [
   { id: "stove-3", pos: { x: 288, y: 176 }, price: 900, area: 0 },
   { id: "stove-4", pos: { x: 180, y: 656 }, price: 34000, area: 2 },
   { id: "stove-5", pos: { x: 540, y: 1136 }, price: 900000, area: 5 },
+  // レストラン街の厨房
+  { id: "kitchen-1", pos: { x: 800, y: 620 }, price: 70000000, area: 7, item: "food", art: "kitchen", label: "厨房" },
+  { id: "kitchen-2", pos: { x: 1000, y: 620 }, price: 160000000, area: 7, item: "food", art: "kitchen", label: "厨房" },
+  // おみやげ通りの倉庫
+  { id: "store-1", pos: { x: 800, y: 1100 }, price: 300000000, area: 8, item: "goods", art: "stock", label: "倉庫" },
+  { id: "store-2", pos: { x: 1000, y: 1100 }, price: 700000000, area: 8, item: "goods", art: "stock", label: "倉庫" },
+  // 区画が増えると、前の区画にも新しい店が出せるようになる
+  { id: "kitchen-0", pos: { x: 300, y: 250 }, price: 90000000, area: 0, item: "food", art: "kitchen", label: "広場のキッチンカー", unlockAfter: "area-7" },
+  { id: "store-0", pos: { x: 620, y: 250 }, price: 320000000, area: 1, item: "goods", art: "stock", label: "丘のみやげ倉庫", unlockAfter: "area-8" },
 ];
 
 /** アトラクションは1つずつ名前も見た目も違う */
@@ -242,6 +353,8 @@ const rideRow = (
     label: string;
     art: string;
     detail: string;
+    /** 一度に必要なチケットの枚数 */
+    cost?: number;
   }[],
 ): SeatSpec[] =>
   rides.map((ride, i) => ({
@@ -254,6 +367,9 @@ const rideRow = (
     label: ride.label,
     art: ride.art,
     detail: ride.detail,
+    cost: ride.cost,
+    // 枚数の多い乗り物は、そのぶん高く売れる
+    value: ride.cost ? ride.cost * 1.25 : 1,
   }));
 
 const parkSeats: SeatSpec[] = [
@@ -261,37 +377,73 @@ const parkSeats: SeatSpec[] = [
     { x: 60, price: 0, label: "コーヒーカップ", art: "teacup", detail: "くるくる回るカップ" },
     { x: 140, price: 0, label: "パンダライド", art: "panda", detail: "小さな子に人気の乗り物" },
     { x: 220, price: 140, label: "射的コーナー", art: "shooting", detail: "的を撃ち抜く縁日ゲーム" },
-    { x: 300, price: 420, label: "ミニ観覧車", art: "wheel", detail: "広場を見下ろす小さな観覧車" },
+    { x: 300, price: 420, label: "ミニ観覧車", cost: 2, art: "wheel", detail: "広場を見下ろす小さな観覧車" },
   ]),
   ...rideRow(1, 294, [
     { x: 432, price: 1200, label: "メリーゴーラウンド", art: "carousel", detail: "白馬がゆっくり上下する" },
-    { x: 540, price: 3000, label: "ゆめの気球", art: "balloonride", detail: "気球のゴンドラで空へ" },
-    { x: 648, price: 7000, label: "おとぎの城ツアー", art: "castleride", detail: "城の中をトロッコで巡る" },
+    { x: 540, price: 3000, label: "ゆめの気球", cost: 2, art: "balloonride", detail: "気球のゴンドラで空へ" },
+    { x: 648, price: 7000, label: "おとぎの城ツアー", cost: 2, art: "castleride", detail: "城の中をトロッコで巡る" },
   ]),
   ...rideRow(2, 774, [
     { x: 72, price: 12000, label: "そりコースター", art: "sled", detail: "雪山を一気に滑り降りる" },
-    { x: 180, price: 26000, label: "スケートリンク", art: "rink", detail: "氷の上をくるくる滑る" },
-    { x: 288, price: 52000, label: "ペンギンボート", art: "penguin", detail: "氷の水路をボートで進む" },
+    { x: 180, price: 26000, label: "スケートリンク", cost: 2, art: "rink", detail: "氷の上をくるくる滑る" },
+    { x: 288, price: 52000, label: "ペンギンボート", cost: 2, art: "penguin", detail: "氷の水路をボートで進む" },
   ]),
   ...rideRow(3, 774, [
     { x: 432, price: 70000, label: "ガンマンショー", art: "showdown", detail: "早撃ち対決の生ショー" },
-    { x: 540, price: 140000, label: "幌馬車ライド", art: "wagon", detail: "馬車に揺られて町を一周" },
-    { x: 648, price: 260000, label: "鉱山トロッコ", art: "minecart", detail: "坑道を走る暴走トロッコ" },
+    { x: 540, price: 140000, label: "幌馬車ライド", cost: 2, art: "wagon", detail: "馬車に揺られて町を一周" },
+    { x: 648, price: 260000, label: "鉱山トロッコ", cost: 3, art: "minecart", detail: "坑道を走る暴走トロッコ" },
   ]),
   ...rideRow(4, 1254, [
-    { x: 72, price: 300000, label: "バイキング船", art: "viking", detail: "大きく揺れる海賊船" },
-    { x: 180, price: 560000, label: "大砲チャレンジ", art: "cannon", detail: "的をねらって大砲を撃つ" },
-    { x: 288, price: 980000, label: "急流いかだ下り", art: "raft", detail: "水しぶきを浴びて川を下る" },
+    { x: 72, price: 300000, label: "バイキング船", cost: 3, art: "viking", detail: "大きく揺れる海賊船" },
+    { x: 180, price: 560000, label: "大砲チャレンジ", cost: 2, art: "cannon", detail: "的をねらって大砲を撃つ" },
+    { x: 288, price: 980000, label: "急流いかだ下り", cost: 3, art: "raft", detail: "水しぶきを浴びて川を下る" },
   ]),
   ...rideRow(5, 1254, [
-    { x: 432, price: 1400000, label: "ロケット発射", art: "rocket", detail: "打ち上げの瞬間を体験" },
-    { x: 540, price: 2600000, label: "無重力スピナー", art: "spinner", detail: "回って浮かぶ無重力体験" },
-    { x: 648, price: 4800000, label: "宇宙シアター", art: "theater", detail: "ドーム映像で宇宙を旅する" },
+    { x: 432, price: 1400000, label: "ロケット発射", cost: 3, art: "rocket", detail: "打ち上げの瞬間を体験" },
+    { x: 540, price: 2600000, label: "無重力スピナー", cost: 3, art: "spinner", detail: "回って浮かぶ無重力体験" },
+    { x: 648, price: 4800000, label: "宇宙シアター", cost: 3, art: "theater", detail: "ドーム映像で宇宙を旅する" },
   ]),
   ...rideRow(6, 294, [
-    { x: 792, price: 6000000, label: "恐竜ライド", art: "dino", detail: "首長竜の背中に乗る" },
-    { x: 900, price: 11000000, label: "化石発掘場", art: "dig", detail: "砂を掘って化石を探す" },
-    { x: 1008, price: 20000000, label: "翼竜フライト", art: "ptera", detail: "翼竜にぶら下がって旋回" },
+    { x: 792, price: 6000000, label: "恐竜ライド", cost: 3, art: "dino", detail: "首長竜の背中に乗る" },
+    { x: 900, price: 11000000, label: "化石発掘場", cost: 2, art: "dig", detail: "砂を掘って化石を探す" },
+    { x: 1008, price: 20000000, label: "翼竜フライト", cost: 3, art: "ptera", detail: "翼竜にぶら下がって旋回" },
+  ]),
+
+  /* レストラン街: 厨房の料理を運ぶ。食べ終わると皿が残るので片づける */
+  ...tableRow(7, 774, [
+    { x: 792, price: 80000000, label: "パスタ食堂", art: "pasta", detail: "湯気の立つパスタが名物" },
+    { x: 900, price: 140000000, label: "ステーキハウス", art: "steak", detail: "鉄板で焼く分厚いステーキ" },
+    { x: 1008, price: 240000000, label: "スイーツカフェ", art: "cafe", detail: "パフェとケーキのお店" },
+  ]),
+
+  /* おみやげ通り: 先に棚へ並べておくと、客が自分で取ってレジで払う */
+  ...shelfRow(8, 1254, { x: 900, y: 1402 }, [
+    { x: 792, price: 400000000, label: "ぬいぐるみ棚", art: "plush", detail: "パークの人気キャラクター" },
+    { x: 900, price: 900000000, label: "お菓子の棚", art: "sweets", detail: "箱入りのおみやげ菓子" },
+    { x: 1008, price: 1800000000, label: "限定グッズ棚", art: "limited", detail: "ここでしか買えない限定品" },
+  ]),
+
+  /* 区画が増えると、前の区画にも新しいスポットが出てくる */
+  ...tableRow(0, 294, [
+    {
+      x: 380,
+      price: 120000000,
+      label: "広場のテラス席",
+      art: "terrace",
+      detail: "キッチンカーの料理を食べられる",
+      unlockAfter: "area-7",
+    },
+  ]),
+  ...shelfRow(1, 294, { x: 560, y: 404 }, [
+    {
+      x: 700,
+      price: 500000000,
+      label: "メルヘンの雑貨棚",
+      art: "plush",
+      detail: "丘の上でしか買えない小物",
+      unlockAfter: "area-8",
+    },
   ]),
 ];
 
@@ -318,6 +470,24 @@ const parkHires: HireSpec[] = [
   { id: "robot-4", kind: "robot", pos: { x: 180, y: 1392 }, price: 2200000, label: "案内ロボ", area: 4 },
   { id: "master-1", kind: "master", pos: { x: 540, y: 1392 }, price: 9000000, label: "園長", area: 5 },
   { id: "robot-5", kind: "robot", pos: { x: 900, y: 434 }, price: 26000000, label: "案内ロボ", area: 6 },
+
+  // レストラン街: 料理人・ホール・テーブル係
+  { id: "cook-6", kind: "cook", pos: { x: 840, y: 574 }, price: 90000000, label: "料理人", stoveId: "kitchen-1", area: 7 },
+  { id: "cook-7", kind: "cook", pos: { x: 1040, y: 574 }, price: 200000000, label: "料理人", stoveId: "kitchen-2", area: 7 },
+  { id: "waiter-6", kind: "waiter", pos: { x: 780, y: 912 }, price: 110000000, label: "ホール係", area: 7 },
+  { id: "busser-1", kind: "busser", pos: { x: 900, y: 912 }, price: 150000000, label: "テーブル係", area: 7 },
+  { id: "busser-2", kind: "busser", pos: { x: 1020, y: 912 }, price: 400000000, label: "テーブル係", area: 7 },
+
+  // おみやげ通り: 倉庫番・品出し・レジ
+  { id: "cook-8", kind: "cook", pos: { x: 840, y: 1054 }, price: 380000000, label: "倉庫番", stoveId: "store-1", area: 8 },
+  { id: "cook-9", kind: "cook", pos: { x: 1040, y: 1054 }, price: 800000000, label: "倉庫番", stoveId: "store-2", area: 8 },
+  { id: "stocker-1", kind: "stocker", pos: { x: 764, y: 1402 }, price: 500000000, label: "品出しスタッフ", area: 8 },
+  { id: "stocker-2", kind: "stocker", pos: { x: 1036, y: 1402 }, price: 1200000000, label: "品出しスタッフ", area: 8 },
+  { id: "collector-3", kind: "collector", pos: { x: 900, y: 1172 }, price: 700000000, label: "レジ係", area: 8 },
+
+  // あとから前の区画に出てくるスタッフ
+  { id: "busser-3", kind: "busser", pos: { x: 380, y: 434 }, price: 200000000, label: "テーブル係", area: 0, unlockAfter: "area-7" },
+  { id: "stocker-3", kind: "stocker", pos: { x: 700, y: 434 }, price: 800000000, label: "品出しスタッフ", area: 1, unlockAfter: "area-8" },
 ];
 
 const parkEquipment: EquipSpec[] = [
@@ -362,6 +532,8 @@ export const stageDefs: Record<StageId, StageDef> = {
         collector: "レジ係",
         cook: "調理人",
         master: "板前",
+        busser: "皿洗い",
+        stocker: "品出し",
       },
       objective: {
         pickup: "厨房で丼を受け取ろう",
@@ -399,6 +571,8 @@ export const stageDefs: Record<StageId, StageDef> = {
         collector: "集金係",
         cook: "券売スタッフ",
         master: "園長",
+        busser: "テーブル係",
+        stocker: "品出しスタッフ",
       },
       objective: {
         pickup: "券売所でチケットを受け取ろう",
