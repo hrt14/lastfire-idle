@@ -35,6 +35,18 @@ export const BUILDING_IDS = [
 
 export type BuildingId = (typeof BUILDING_IDS)[number];
 
+/** 箱庭での見た目の種類 */
+export type BuildingArt =
+  | "bonfire"
+  | "lodge"
+  | "hunter"
+  | "mine"
+  | "tents"
+  | "canteen"
+  | "factory"
+  | "workshop"
+  | "tower";
+
 export type Building = {
   id: BuildingId;
   name: string;
@@ -46,6 +58,9 @@ export type Building = {
   growth: number;
   /** 建物の合計レベルがこの値に達すると解禁される */
   unlockAt: number;
+  /** 箱庭のどのマスに建つか（5×5グリッド） */
+  tile: [number, number];
+  art: BuildingArt;
 };
 
 const percent = (value: number) => `${Math.round(value * 1000) / 10}%`;
@@ -60,9 +75,11 @@ export const buildings: Building[] = [
       `全生産 +${percent(level * 0.08)} ／ 吹雪の消耗 -${percent(
         Math.min(0.4, level * 0.02),
       )}`,
-    baseCost: { wood: 30, coal: 4 },
+    baseCost: { wood: 40 },
     growth: 1.17,
     unlockAt: 0,
+    tile: [2, 2],
+    art: "bonfire",
   },
   {
     id: "lumber",
@@ -74,6 +91,8 @@ export const buildings: Building[] = [
     baseCost: { wood: 20 },
     growth: 1.15,
     unlockAt: 0,
+    tile: [3, 3],
+    art: "lodge",
   },
   {
     id: "hunter",
@@ -84,7 +103,9 @@ export const buildings: Building[] = [
     produces: { resource: "food", perLevel: 0.45 },
     baseCost: { wood: 45 },
     growth: 1.16,
-    unlockAt: 2,
+    unlockAt: 1,
+    tile: [2, 1],
+    art: "hunter",
   },
   {
     id: "mine",
@@ -95,7 +116,9 @@ export const buildings: Building[] = [
     produces: { resource: "coal", perLevel: 0.32 },
     baseCost: { wood: 140, food: 40 },
     growth: 1.17,
-    unlockAt: 6,
+    unlockAt: 5,
+    tile: [3, 1],
+    art: "mine",
   },
   {
     id: "shelter",
@@ -105,7 +128,9 @@ export const buildings: Building[] = [
     effect: (level) => `人口上限 +${level * 3}人`,
     baseCost: { wood: 220, coal: 25 },
     growth: 1.19,
-    unlockAt: 10,
+    unlockAt: 9,
+    tile: [1, 2],
+    art: "tents",
   },
   {
     id: "canteen",
@@ -118,7 +143,9 @@ export const buildings: Building[] = [
       )}`,
     baseCost: { wood: 600, food: 250 },
     growth: 1.2,
-    unlockAt: 18,
+    unlockAt: 16,
+    tile: [3, 2],
+    art: "canteen",
   },
   {
     id: "furnace",
@@ -132,7 +159,9 @@ export const buildings: Building[] = [
     produces: { resource: "steel", perLevel: 0.07 },
     baseCost: { wood: 2400, coal: 800 },
     growth: 1.22,
-    unlockAt: 30,
+    unlockAt: 26,
+    tile: [1, 3],
+    art: "factory",
   },
   {
     id: "workshop",
@@ -143,7 +172,9 @@ export const buildings: Building[] = [
       `全生産 +${percent(level * 0.03)} ／ 手作業 +${percent(level * 0.25)}`,
     baseCost: { wood: 6000, steel: 40 },
     growth: 1.23,
-    unlockAt: 44,
+    unlockAt: 38,
+    tile: [2, 3],
+    art: "workshop",
   },
   {
     id: "watchtower",
@@ -154,7 +185,9 @@ export const buildings: Building[] = [
       `吹雪の消耗 -${percent(Math.min(0.5, level * 0.05))} ／ 放置上限 +${level}時間`,
     baseCost: { wood: 15000, steel: 220 },
     growth: 1.24,
-    unlockAt: 60,
+    unlockAt: 52,
+    tile: [1, 1],
+    art: "tower",
   },
 ];
 

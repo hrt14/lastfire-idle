@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -9,6 +10,7 @@ import {
 } from "react";
 import {
   RESOURCE_IDS,
+  buildingById,
   buildings,
   resources as resourceMeta,
   type BuildingId,
@@ -30,6 +32,7 @@ import {
   dismissOffline,
   getServerSnapshot,
   getSnapshot,
+  grantResources,
   migrateCamp,
   resetGame,
   stokeFire,
@@ -41,18 +44,14 @@ import {
   formatNumber,
   formatRate,
 } from "@/lib/format";
+import CampScene, { iso, type Spark, type Token } from "@/components/CampScene";
 
-type Tab = "camp" | "quest" | "info";
+type Overlay = "quest" | "info" | null;
 type BuyMode = 1 | 10 | "max";
 
-type Floater = {
-  id: number;
-  text: string;
-  x: number;
-  y: number;
-};
-
 const buyModes: BuyMode[] = [1, 10, "max"];
+const TOKEN_SECONDS = 25;
+const TOKEN_LIFE = 11000;
 
 const iconOf = (id: string) =>
   resourceMeta.find((resource) => resource.id === id)?.icon ?? "";
@@ -63,6 +62,8 @@ const costEntries = (cost: Cost) =>
     amount: cost[id] as number,
   }));
 
+const firePos = iso(2, 2);
+
 export default function Page() {
   const { game, offline } = useSyncExternalStore(
     subscribe,
@@ -70,11 +71,15 @@ export default function Page() {
     getServerSnapshot,
   );
 
-  const [tab, setTab] = useState<Tab>("camp");
+  const [selected, setSelected] = useState<BuildingId | null>(null);
+  const [overlay, setOverlay] = useState<Overlay>(null);
   const [buyMode, setBuyMode] = useState<BuyMode>(1);
-  const [floaters, setFloaters] = useState<Floater[]>([]);
+  const [sparks, setSparks] = useState<Spark[]>([]);
+  const [tokens, setTokens] = useState<Token[]>([]);
   const [toast, setToast] = useState<string | null>(null);
-  const floaterId = useRef(0);
+  const nextId = useRef(0);
+
+  const derived = useMemo(() => (game ? computeDerived(game) : null), [game]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -83,30 +88,97 @@ export default function Page() {
     }, 2400);
   }, []);
 
-  const handleStoke = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
-      const gained = stokeFire();
-      const label = costEntries(gained)
-        .map(({ id, amount }) => `+${formatNumber(amount)}${iconOf(id)}`)
-        .join(" ");
-      if (!label) return;
+  const addSpark = useCallback((text: string, x: number, y: number) => {
+    if (!text) return;
+    const id = (nextId.current += 1);
+    setSparks((list) => [...list.slice(-6), { id, text, x, y }]);
+    window.setTimeout(() => {
+      setSparks((list) => list.filter((item) => item.id !== id));
+    }, 900);
+  }, []);
 
-      const rect = event.currentTarget.getBoundingClientRect();
-      const id = (floaterId.current += 1);
-      setFloaters((list) => [
-        ...list.slice(-8),
-        {
-          id,
-          text: label,
-          x: ((event.clientX - rect.left) / rect.width) * 100,
-          y: ((event.clientY - rect.top) / rect.height) * 100,
-        },
-      ]);
-      window.setTimeout(() => {
-        setFloaters((list) => list.filter((item) => item.id !== id));
-      }, 900);
-    },
+  const sparkText = useCallback(
+    (gain: Cost) =>
+      costEntries(gain)
+        .map(({ id, amount }) => `+${formatNumber(amount)}${iconOf(id)}`)
+        .join(" "),
     [],
+  );
+
+  /* 焚き火をかき立てる */
+  const handleStoke = useCallback(() => {
+    const gained = stokeFire();
+    addSpark(
+      sparkText(gained),
+      firePos.x + (Math.random() * 40 - 20),
+      firePos.y - 30,
+    );
+  }, [addSpark, sparkText]);
+
+  /* 箱庭に湧く資源を拾う */
+  const handleCollect = useCallback(
+    (token: Token) => {
+      const gain: Cost = { [token.resource]: token.amount };
+      grantResources(gain);
+      setTokens((list) => list.filter((item) => item.id !== token.id));
+      const building = buildingById.get(token.buildingId);
+      const at = building ? iso(building.tile[0], building.tile[1]) : firePos;
+      addSpark(sparkText(gain), at.x, at.y - 46);
+    },
+    [addSpark, sparkText],
+  );
+
+  /* 一定間隔で建物の上に資源を湧かせる */
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const snapshot = getSnapshot().game;
+      if (!snapshot) return;
+      const producers = buildings.filter(
+        (building) =>
+          building.produces &&
+          snapshot.levels[building.id] > 0 &&
+          !(building.id === "furnace" && snapshot.resources.coal <= 0),
+      );
+      if (producers.length === 0) return;
+
+      setTokens((list) => {
+        if (list.length >= 3) return list;
+        const building = producers[Math.floor(Math.random() * producers.length)];
+        if (!building.produces) return list;
+        const stats = computeDerived(snapshot);
+        const amount =
+          snapshot.levels[building.id] *
+          building.produces.perLevel *
+          stats.globalMult *
+          TOKEN_SECONDS;
+        const id = (nextId.current += 1);
+        window.setTimeout(() => {
+          setTokens((current) => current.filter((item) => item.id !== id));
+        }, TOKEN_LIFE);
+        return [
+          ...list,
+          {
+            id,
+            buildingId: building.id,
+            resource: building.produces.resource,
+            amount,
+          },
+        ];
+      });
+    }, 5200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const handleBuild = useCallback(
+    (id: BuildingId, count: number) => {
+      build(id, count);
+      const building = buildingById.get(id);
+      if (building) {
+        const at = iso(building.tile[0], building.tile[1]);
+        addSpark("完成！", at.x, at.y - 40);
+      }
+    },
+    [addSpark],
   );
 
   const handleClaim = useCallback(
@@ -123,7 +195,8 @@ export default function Page() {
       );
       if (!ok) return;
       if (migrateCamp()) {
-        setTab("camp");
+        setOverlay(null);
+        setSelected(null);
         showToast(`残り火を ${reward} 獲得しました`);
       }
     },
@@ -133,11 +206,10 @@ export default function Page() {
   const handleReset = useCallback(() => {
     if (!window.confirm("すべての記録を消して最初からやり直しますか？")) return;
     resetGame();
-    setTab("camp");
+    setOverlay(null);
+    setSelected(null);
     showToast("拠点を作り直しました");
   }, [showToast]);
-
-  const derived = useMemo(() => (game ? computeDerived(game) : null), [game]);
 
   if (!game || !derived) {
     return (
@@ -148,9 +220,20 @@ export default function Page() {
     );
   }
 
+  const unlockedFn = (id: BuildingId) => isUnlocked(id, game.levels);
+  const affordableFn = (id: BuildingId) =>
+    canAfford(game.resources, costFor(id, game.levels[id], 1));
+
+  const claimable = quests.some(
+    (quest) =>
+      !game.claimed.includes(quest.id) &&
+      quest.current(game, derived) >= quest.target,
+  );
+
+  const selectedBuilding = selected ? buildingById.get(selected) : null;
+  const fireCost = costFor("bonfire", game.levels.bonfire, 1);
+  const fireAffordable = canAfford(game.resources, fireCost);
   const blizzardReady = derived.totalLevels >= BLIZZARD_UNLOCK_LEVELS;
-  const fireScale = 1 + Math.min(0.45, game.levels.bonfire * 0.02);
-  const population = Math.floor(game.population);
 
   return (
     <main
@@ -216,226 +299,195 @@ export default function Page() {
               {formatClock(game.blizzardTimer)}
             </span>
           ) : (
-            <span>
-              次の吹雪まで {formatClock(game.blizzardTimer)}
-              {game.levels.watchtower > 0 ? " ・ 見張り台 稼働中" : ""}
-            </span>
+            <span>次の吹雪まで {formatClock(game.blizzardTimer)}</span>
           )}
         </div>
       ) : null}
 
-      <section className="scene">
-        <div className="ring" aria-hidden>
-          {buildings
-            .filter((building) => game.levels[building.id] > 0)
-            .map((building, index) => (
-              <span
-                key={building.id}
-                className="ring-item"
-                style={{
-                  left: index % 2 === 0 ? "9%" : "91%",
-                  top: `${16 + Math.floor(index / 2) * 15}%`,
-                  fontSize: `${
-                    1.1 + Math.min(0.6, game.levels[building.id] * 0.02)
-                  }rem`,
-                  animationDelay: `${index * -0.7}s`,
-                }}
-                title={building.name}
-              >
-                {building.icon}
-              </span>
-            ))}
-        </div>
+      <div className="stage">
+        <CampScene
+          levels={game.levels}
+          campLevel={derived.campLevel}
+          population={game.population}
+          heat={game.heat}
+          fireScale={1 + Math.min(0.45, game.levels.bonfire * 0.02)}
+          blizzard={game.blizzardActive}
+          freezing={game.freezing}
+          unlocked={unlockedFn}
+          affordable={affordableFn}
+          selected={selected}
+          onSelect={setSelected}
+          onStoke={handleStoke}
+          tokens={tokens}
+          onCollect={handleCollect}
+          sparks={sparks}
+        />
 
+        <div className="stage-stats">
+          <span>
+            👥 {Math.floor(game.population)}/{derived.capacity}
+          </span>
+          <span>⚡ ×{derived.globalMult.toFixed(2)}</span>
+        </div>
+      </div>
+
+      {game.taps < 6 && game.migrations === 0 ? (
+        <p className="hint">焚き火をタップして木を集めよう</p>
+      ) : null}
+
+      <div className="firebar">
         <button
           type="button"
-          className="fire"
-          onPointerDown={handleStoke}
-          style={
-            {
-              "--fire-scale": fireScale,
-              "--heat": `${game.heat}%`,
-            } as React.CSSProperties
-          }
+          className="firebar-tap"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            handleStoke();
+          }}
         >
-          <span className="fire-ring" aria-hidden />
-          <svg className="fire-core" viewBox="0 0 100 118" aria-hidden>
-            <defs>
-              <linearGradient id="flameOuter" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#ff5f1f" stopOpacity="0.1" />
-                <stop offset="42%" stopColor="#ff6a12" stopOpacity="0.85" />
-                <stop offset="100%" stopColor="#ffa233" />
-              </linearGradient>
-              <linearGradient id="flameInner" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#ffb43d" stopOpacity="0.2" />
-                <stop offset="55%" stopColor="#ffc45a" />
-                <stop offset="100%" stopColor="#ffe6a3" />
-              </linearGradient>
-              <radialGradient id="flameGlow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#ff8a2b" stopOpacity="0.75" />
-                <stop offset="100%" stopColor="#ff8a2b" stopOpacity="0" />
-              </radialGradient>
-            </defs>
-            <ellipse
-              className="fire-glow"
-              cx="50"
-              cy="82"
-              rx="48"
-              ry="30"
-              fill="url(#flameGlow)"
-            />
-            <path
-              className="flame flame-1"
-              d="M50 4C70 30 78 44 78 62C78 80 65 92 50 92C35 92 22 80 22 62C22 44 30 30 50 4Z"
-              fill="url(#flameOuter)"
-            />
-            <path
-              className="flame flame-2"
-              d="M50 34C62 50 67 57 67 67C67 79 59 87 50 87C41 87 33 79 33 67C33 57 38 50 50 34Z"
-              fill="url(#flameInner)"
-            />
-            <path
-              className="flame flame-3"
-              d="M50 58C56 66 58 69 58 74C58 81 54 85 50 85C46 85 42 81 42 74C42 69 44 66 50 58Z"
-              fill="#fff6dc"
-            />
-            <g className="logs">
-              <rect x="16" y="94" width="68" height="9" rx="4.5" />
-              <rect x="22" y="99" width="56" height="8" rx="4" />
-            </g>
-          </svg>
-          <span className="fire-label">
-            <strong>かき立てる</strong>
+          <span className="firebar-icon">🔥</span>
+          <span className="firebar-body">
+            <strong>焚き火 Lv{game.levels.bonfire}</strong>
+            <span className="heat-bar">
+              <span style={{ width: `${game.heat}%` }} />
+            </span>
             <small>
               暖 {Math.round(game.heat)}％ ・ 生産 +
               {Math.round(derived.heatBonus * 100)}％
             </small>
           </span>
-          {floaters.map((floater) => (
-            <span
-              key={floater.id}
-              className="floater"
-              style={{ left: `${floater.x}%`, top: `${floater.y}%` }}
-            >
-              {floater.text}
-            </span>
-          ))}
         </button>
+        <button
+          type="button"
+          className="firebar-up"
+          disabled={!fireAffordable}
+          onClick={() => handleBuild("bonfire", 1)}
+        >
+          <span>強化</span>
+          <span className="build-cost">
+            {costEntries(fireCost).map(({ id, amount }) => (
+              <span key={id}>
+                {iconOf(id)}
+                {formatNumber(amount)}
+              </span>
+            ))}
+          </span>
+        </button>
+      </div>
 
-        <div className="scene-stats">
-          <div>
-            <strong>{population}</strong>
-            <small>生存者 / {derived.capacity}</small>
-          </div>
-          <div>
-            <strong>×{derived.globalMult.toFixed(2)}</strong>
-            <small>生産倍率</small>
-          </div>
-          <div>
-            <strong>{formatNumber(derived.gross.wood)}</strong>
-            <small>木材/秒</small>
-          </div>
-        </div>
-      </section>
-
-      <nav className="tabs">
-        {(
-          [
-            ["camp", "拠点"],
-            ["quest", "目標"],
-            ["info", "記録"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            className={tab === id ? "is-active" : undefined}
-            onClick={() => setTab(id)}
-          >
-            {label}
-          </button>
-        ))}
+      <nav className="dock">
+        <button
+          type="button"
+          className={claimable ? "has-badge" : undefined}
+          onClick={() => setOverlay("quest")}
+        >
+          🎯 目標
+        </button>
+        <button type="button" onClick={() => setOverlay("info")}>
+          📖 記録
+        </button>
       </nav>
 
-      {tab === "camp" ? (
-        <section className="panel">
-          <div className="buy-modes">
-            {buyModes.map((mode) => (
+      {/* 建設・強化シート */}
+      {selectedBuilding ? (
+        <>
+          <button
+            type="button"
+            className="sheet-scrim"
+            aria-label="閉じる"
+            onClick={() => setSelected(null)}
+          />
+          <section className="sheet">
+            <div className="sheet-head">
+              <span className="sheet-icon">{selectedBuilding.icon}</span>
+              <div>
+                <strong>{selectedBuilding.name}</strong>
+                <span className="level">
+                  Lv{game.levels[selectedBuilding.id]}
+                </span>
+                <p className="summary">{selectedBuilding.summary}</p>
+              </div>
               <button
-                key={String(mode)}
                 type="button"
-                className={buyMode === mode ? "is-active" : undefined}
-                onClick={() => setBuyMode(mode)}
+                className="sheet-close"
+                onClick={() => setSelected(null)}
               >
-                {mode === "max" ? "MAX" : `×${mode}`}
+                ✕
               </button>
-            ))}
-          </div>
+            </div>
 
-          <ul className="buildings">
-            {buildings.map((building) => {
-              const level = game.levels[building.id];
-              if (!isUnlocked(building.id, game.levels)) {
-                return (
-                  <li key={building.id} className="building is-locked">
-                    <span className="building-icon">🔒</span>
-                    <div className="building-body">
-                      <div className="building-head">
-                        <strong>？？？</strong>
-                      </div>
-                      <p className="summary">
-                        建物の合計レベル {building.unlockAt} で解禁
-                      </p>
-                    </div>
-                  </li>
-                );
-              }
-
-              const count =
-                buyMode === "max"
-                  ? Math.max(1, maxAffordable(game.resources, building.id, level))
-                  : buyMode;
-              const cost = costFor(building.id, level, count);
-              const affordable = canAfford(game.resources, cost);
-
-              return (
-                <li key={building.id} className="building">
-                  <span className="building-icon">{building.icon}</span>
-                  <div className="building-body">
-                    <div className="building-head">
-                      <strong>{building.name}</strong>
-                      <span className="level">Lv{level}</span>
-                    </div>
-                    <p className="effect">{building.effect(level)}</p>
-                    <p className="summary">{building.summary}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="build"
-                    disabled={!affordable}
-                    onClick={() => build(building.id as BuildingId, count)}
-                  >
-                    <span className="build-label">
-                      {level === 0 ? "建設" : "強化"} ×{count}
-                    </span>
-                    <span className="build-cost">
-                      {costEntries(cost).map(({ id, amount }) => (
-                        <span key={id}>
-                          {iconOf(id)}
-                          {formatNumber(amount)}
-                        </span>
-                      ))}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+            {unlockedFn(selectedBuilding.id) ? (
+              <>
+                <p className="effect">
+                  {selectedBuilding.effect(game.levels[selectedBuilding.id])}
+                </p>
+                <div className="buy-modes">
+                  {buyModes.map((mode) => (
+                    <button
+                      key={String(mode)}
+                      type="button"
+                      className={buyMode === mode ? "is-active" : undefined}
+                      onClick={() => setBuyMode(mode)}
+                    >
+                      {mode === "max" ? "MAX" : `×${mode}`}
+                    </button>
+                  ))}
+                </div>
+                {(() => {
+                  const level = game.levels[selectedBuilding.id];
+                  const count =
+                    buyMode === "max"
+                      ? Math.max(
+                          1,
+                          maxAffordable(
+                            game.resources,
+                            selectedBuilding.id,
+                            level,
+                          ),
+                        )
+                      : buyMode;
+                  const cost = costFor(selectedBuilding.id, level, count);
+                  const ok = canAfford(game.resources, cost);
+                  return (
+                    <button
+                      type="button"
+                      className="build"
+                      disabled={!ok}
+                      onClick={() => handleBuild(selectedBuilding.id, count)}
+                    >
+                      <span className="build-label">
+                        {level === 0 ? "建設する" : "強化する"} ×{count}
+                      </span>
+                      <span className="build-cost">
+                        {costEntries(cost).map(({ id, amount }) => (
+                          <span key={id}>
+                            {iconOf(id)}
+                            {formatNumber(amount)}
+                          </span>
+                        ))}
+                      </span>
+                    </button>
+                  );
+                })()}
+              </>
+            ) : (
+              <p className="locked-note">
+                建物の合計レベルが {selectedBuilding.unlockAt} になると解禁されます
+                （現在 {derived.totalLevels}）。
+              </p>
+            )}
+          </section>
+        </>
       ) : null}
 
-      {tab === "quest" ? (
-        <section className="panel">
+      {/* 目標 */}
+      {overlay === "quest" ? (
+        <section className="overlay">
+          <header className="overlay-head">
+            <h2>目標</h2>
+            <button type="button" onClick={() => setOverlay(null)}>
+              ✕
+            </button>
+          </header>
           <ul className="quests">
             {quests.map((quest) => {
               const claimed = game.claimed.includes(quest.id);
@@ -482,18 +534,22 @@ export default function Page() {
         </section>
       ) : null}
 
-      {tab === "info" ? (
-        <section className="panel">
+      {/* 記録 */}
+      {overlay === "info" ? (
+        <section className="overlay">
+          <header className="overlay-head">
+            <h2>記録</h2>
+            <button type="button" onClick={() => setOverlay(null)}>
+              ✕
+            </button>
+          </header>
+
           <div className="card">
-            <h2>遊びかた</h2>
+            <h3>遊びかた</h3>
             <ul className="notes">
-              <li>
-                焚き火をタップすると資源が手に入り、「暖」が上がって全生産が最大
-                +80％ になります。
-              </li>
-              <li>
-                集めた資源で建物を強化すると、放置しているあいだも自動で資源が貯まります。
-              </li>
+              <li>焚き火をタップすると資源が手に入り、「暖」が上がって全生産が最大 +80％ になります。</li>
+              <li>空き地をタップすると建物を建てられます。強化するほど拠点の見た目も育ちます。</li>
+              <li>建物の上に湧く資源は、タップで拾うと約{TOKEN_SECONDS}秒ぶんまとめて手に入ります。</li>
               <li>
                 アプリを閉じているあいだも {derived.offlineCapHours}
                 時間ぶんまで生産が進みます（効率60％）。
@@ -502,15 +558,11 @@ export default function Page() {
                 建物の合計レベルが {BLIZZARD_UNLOCK_LEVELS}{" "}
                 を超えると吹雪が来ます。石炭を切らすと生存者が凍えます。
               </li>
-              <li>
-                合計レベル {MIGRATION_UNLOCK_LEVELS}{" "}
-                で「移住」が解禁され、残り火を持って最初からやり直せます。
-              </li>
             </ul>
           </div>
 
           <div className="card">
-            <h2>記録</h2>
+            <h3>拠点の記録</h3>
             <dl className="stats">
               <div>
                 <dt>プレイ時間</dt>
@@ -540,7 +592,7 @@ export default function Page() {
           </div>
 
           <div className="card">
-            <h2>移住</h2>
+            <h3>移住</h3>
             {derived.migrationReward > 0 ? (
               <>
                 <p>
@@ -565,7 +617,7 @@ export default function Page() {
           </div>
 
           <div className="card">
-            <h2>データ</h2>
+            <h3>データ</h3>
             <p>記録はこの端末のブラウザにのみ保存されます。</p>
             <button type="button" className="ghost" onClick={handleReset}>
               最初からやり直す

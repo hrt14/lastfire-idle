@@ -155,6 +155,17 @@ export const claimQuest = (questId: string) => {
   return true;
 };
 
+/** 箱庭で拾った資源などを直接加算する */
+export const grantResources = (gain: Cost) => {
+  const game = snapshot.game;
+  if (!game) return;
+  const resources = { ...game.resources };
+  for (const [resource, amount] of Object.entries(gain)) {
+    resources[resource as keyof typeof resources] += amount;
+  }
+  commit({ ...game, resources }, undefined);
+};
+
 export const migrateCamp = () => {
   const game = snapshot.game;
   if (!game) return false;
