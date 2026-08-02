@@ -16,7 +16,6 @@ import {
   hasAuto,
   openSeats,
   openStoves,
-  ROBOT_CHARGE,
   seatCost,
   seatMode,
   isDirty,
@@ -3735,40 +3734,6 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
-      /* --- 配膳ロボの充電ドック --- */
-      for (const worker of state.staff) {
-        if (worker.kind !== "robot") continue;
-        const { x, y } = worker.home;
-        ctx.fillStyle = "rgba(0,0,0,0.3)";
-        roundRect(ctx, x - 20, y - 8, 40, 18, 8);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(150,220,255,0.5)";
-        ctx.lineWidth = 1.4;
-        roundRect(ctx, x - 20, y - 8, 40, 18, 8);
-        ctx.stroke();
-        ctx.fillStyle = "#5a6270";
-        roundRect(ctx, x - 7, y - 20, 14, 13, 3);
-        ctx.fill();
-        const charging = worker.charge > 0;
-        const blink = 0.4 + Math.abs(Math.sin(time * (charging ? 6 : 1.5))) * 0.6;
-        ctx.fillStyle = charging
-          ? `rgba(126,231,168,${blink})`
-          : `rgba(150,220,255,${blink * 0.5})`;
-        ctx.beginPath();
-        ctx.arc(x, y - 14, 3.4, 0, Math.PI * 2);
-        ctx.fill();
-        if (charging) {
-          // 充電の残り
-          const ratio = 1 - worker.charge / ROBOT_CHARGE;
-          ctx.fillStyle = "rgba(0,0,0,0.5)";
-          roundRect(ctx, x - 16, y + 14, 32, 5, 2.5);
-          ctx.fill();
-          ctx.fillStyle = "#7ee7a8";
-          roundRect(ctx, x - 16, y + 14, 32 * ratio, 5, 2.5);
-          ctx.fill();
-        }
-      }
-
       /* --- 導入した設備の見た目 --- */
       for (const item of equipment) {
         if (!hasEquip(state, item.id)) continue;
@@ -4031,18 +3996,6 @@ export default function Shop({ onSample, paused }: Props) {
             }
             for (let i = 0; i < worker.carry; i += 1) {
               held(ctx, worker.item, worker.pos.x, worker.pos.y - 30 - i * 6, 0.85);
-            }
-            if (worker.kind === "robot" && worker.charge > 0) {
-              ctx.fillStyle = `rgba(126,231,168,${0.6 + Math.abs(Math.sin(time * 6)) * 0.4})`;
-              ctx.beginPath();
-              ctx.moveTo(worker.pos.x + 2, worker.pos.y - 40);
-              ctx.lineTo(worker.pos.x - 5, worker.pos.y - 30);
-              ctx.lineTo(worker.pos.x, worker.pos.y - 30);
-              ctx.lineTo(worker.pos.x - 2, worker.pos.y - 22);
-              ctx.lineTo(worker.pos.x + 5, worker.pos.y - 32);
-              ctx.lineTo(worker.pos.x, worker.pos.y - 32);
-              ctx.closePath();
-              ctx.fill();
             }
           },
         });

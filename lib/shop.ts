@@ -434,11 +434,11 @@ export type Staff = {
   /** いま手に持っているものの種類 */
   item: ItemKind | null;
   stoveId: string | null;
-  /** 充電ドック（雇った場所） */
+  /** 待機場所（雇った場所） */
   home: Vec;
-  /** 充電してからの配達数 */
+  /** 板前の見回りなどに使う小さなカウンタ */
   trips: number;
-  /** 充電の残り時間。0 より大きいあいだは休んでいる */
+  /** 片づけ係が拭いているあいだの残り時間 */
   charge: number;
   /** いま担当している場所（ほかのスタッフと取り合わないように） */
   target: string | null;
@@ -504,10 +504,6 @@ export const STOVE_CAPACITY = 5;
 export const AUTO_TIME = 1.2;
 /** 次の場所が空くのを待つ時間（秒） */
 export const ROAM_TIME = 12;
-/** 配膳ロボが充電に戻るまでの配達数 */
-export const ROBOT_TRIPS = 5;
-/** 充電にかかる時間（秒） */
-export const ROBOT_CHARGE = 4;
 export const COOK_TIME = 2.0;
 export const COOK_BOOST = 2.2;
 export const EAT_TIME = 2.8;
@@ -1599,28 +1595,6 @@ const updateStaff = (state: ShopState, dt: number) => {
     // ホール店員・配膳ロボ: 待っている相手に合うものを運ぶ
     const speed = carrierSpeed(state, worker);
 
-    if (worker.kind === "robot") {
-      // ロボット掃除機のように、何回か配ったらドックへ戻って充電する
-      if (worker.charge > 0) {
-        go(state, worker, worker.home, speed, dt);
-        worker.charge -= dt;
-        if (worker.charge <= 0) {
-          worker.charge = 0;
-          worker.trips = 0;
-          pop(state, { x: worker.home.x, y: worker.home.y - 24 }, "満タン！");
-        }
-        continue;
-      }
-      if (worker.trips >= ROBOT_TRIPS) {
-        // 荷物が残っていてもドックへ帰る（持ったまま充電して、また出ていく）
-        worker.target = null;
-        if (go(state, worker, worker.home, speed, dt)) {
-          worker.charge = ROBOT_CHARGE;
-          pop(state, { x: worker.home.x, y: worker.home.y - 24 }, "充電中…");
-        }
-        continue;
-      }
-    }
 
     const limit = carrierLimit(state, worker);
 
@@ -1666,7 +1640,6 @@ const updateStaff = (state: ShopState, dt: number) => {
         const used = serve(state, worker.pos, worker.item, worker.carry);
         if (used > 0) {
           worker.carry -= used;
-          worker.trips += 1;
           worker.target = null;
           if (worker.carry === 0) worker.item = null;
         }
@@ -2115,13 +2088,6 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
             worker.kind === "robot" ? "・足が速い" : ""
           }`,
           `いま ${worker.carry}${unit} 持っている`,
-        );
-      }
-      if (worker.kind === "robot") {
-        lines.push(
-          worker.charge > 0
-            ? `ドックで充電中（あと ${worker.charge.toFixed(1)}秒）`
-            : `あと ${Math.max(0, ROBOT_TRIPS - worker.trips)}回 配るとドックへ戻る`,
         );
       }
       if (worker.kind !== "cook" && worker.kind !== "master") {
