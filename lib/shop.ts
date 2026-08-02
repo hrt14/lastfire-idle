@@ -226,8 +226,8 @@ export const hasAuto = (state: ShopState, seat: SeatSpec) =>
 
 /** 自動供給機を置く場所（配膳口の横） */
 export const autoPos = (seat: SeatSpec): Vec => ({
-  x: seat.tray.x + 46,
-  y: seat.tray.y - 6,
+  x: seat.tray.x + 30,
+  y: seat.tray.y - 2,
 });
 
 const hireSub: Record<StaffKind, string> = {
