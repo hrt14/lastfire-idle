@@ -742,10 +742,15 @@ button {
 }
 
 .skin-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 1.1rem;
   height: 1.1rem;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 0.7rem;
+  line-height: 1;
   flex: none;
 }
 

@@ -51,7 +51,7 @@ import {
   getState,
   save,
 } from "@/lib/shopStore";
-import type { Hat } from "@/data/skins";
+import type { Face, Hat } from "@/data/skins";
 import { formatYen } from "@/lib/format";
 import { isMuted, loadMuted, playSound, unlockAudio } from "@/lib/sfx";
 
@@ -59,6 +59,8 @@ export type Sample = {
   money: number;
   carry: number;
   maxCarry: number;
+  /** いま持っているものの種類 */
+  item: ItemKind | null;
   served: number;
   staff: number;
   levels: Record<UpgradeId, number>;
@@ -2580,6 +2582,296 @@ const drawShine = (
   }
 };
 
+/**
+ * 動物スキンの顔まわり。頭（半径 7.6・中心 y-20）にかぶせて描く。
+ * しっぽは体の後ろ側に出す
+ */
+const drawFace = (
+  ctx: CanvasRenderingContext2D,
+  face: Face,
+  color: string,
+  head: string,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  const hy = y - 20;
+  const ear = (dx: number, w: number, h: number, tilt = 0) => {
+    ctx.beginPath();
+    ctx.ellipse(x + dx, hy - 7, w, h, tilt, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  const eyes = (dx = 2.6, r = 1.3) => {
+    ctx.fillStyle = "#2b2b33";
+    ctx.beginPath();
+    ctx.arc(x - dx, hy - 1, r, 0, Math.PI * 2);
+    ctx.arc(x + dx, hy - 1, r, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  const snout = (fill: string, w = 4.4, h = 3) => {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.ellipse(x, hy + 3, w, h, 0, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  const tail = (fill: string, len = 12, thick = 3) => {
+    ctx.strokeStyle = fill;
+    ctx.lineWidth = thick;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x + 8, y - 2);
+    ctx.quadraticCurveTo(
+      x + 8 + len,
+      y - 6 + Math.sin(time * 4) * 3,
+      x + 6 + len,
+      y - 14 + Math.sin(time * 4) * 3,
+    );
+    ctx.stroke();
+    ctx.lineCap = "butt";
+    ctx.lineWidth = 1;
+  };
+
+  switch (face) {
+    case "cat":
+      tail(color, 12, 3);
+      ctx.fillStyle = head;
+      ctx.beginPath();
+      ctx.moveTo(x - 8, hy - 4);
+      ctx.lineTo(x - 5.5, hy - 12);
+      ctx.lineTo(x - 2, hy - 5);
+      ctx.closePath();
+      ctx.moveTo(x + 8, hy - 4);
+      ctx.lineTo(x + 5.5, hy - 12);
+      ctx.lineTo(x + 2, hy - 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x - 6.6, hy - 6);
+      ctx.lineTo(x - 5.4, hy - 10);
+      ctx.lineTo(x - 3.6, hy - 6);
+      ctx.closePath();
+      ctx.moveTo(x + 6.6, hy - 6);
+      ctx.lineTo(x + 5.4, hy - 10);
+      ctx.lineTo(x + 3.6, hy - 6);
+      ctx.closePath();
+      ctx.fill();
+      eyes();
+      ctx.fillStyle = "#f0a6c0";
+      ctx.beginPath();
+      ctx.moveTo(x, hy + 4);
+      ctx.lineTo(x - 2, hy + 1.6);
+      ctx.lineTo(x + 2, hy + 1.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(60,50,40,0.5)";
+      ctx.lineWidth = 0.8;
+      for (const dir of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(x + dir * 3, hy + 3);
+        ctx.lineTo(x + dir * 10, hy + 1.6);
+        ctx.moveTo(x + dir * 3, hy + 3.6);
+        ctx.lineTo(x + dir * 10, hy + 4.6);
+        ctx.stroke();
+      }
+      return;
+    case "shiba":
+      tail(color, 10, 4);
+      ctx.fillStyle = color;
+      ear(-6.4, 3.4, 4.4, -0.4);
+      ear(6.4, 3.4, 4.4, 0.4);
+      eyes();
+      snout("#f6efe2", 4.6, 3.2);
+      ctx.fillStyle = "#2b2b33";
+      ctx.beginPath();
+      ctx.ellipse(x, hy + 1.6, 1.8, 1.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    case "chick":
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x, hy - 12);
+      ctx.lineTo(x - 3, hy - 6);
+      ctx.lineTo(x + 3, hy - 6);
+      ctx.closePath();
+      ctx.fill();
+      eyes(2.4, 1.5);
+      ctx.fillStyle = "#f5a623";
+      ctx.beginPath();
+      ctx.moveTo(x - 3, hy + 2);
+      ctx.lineTo(x + 3, hy + 2);
+      ctx.lineTo(x, hy + 6);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    case "bear":
+      ctx.fillStyle = color;
+      ear(-6.6, 3.8, 3.8);
+      ear(6.6, 3.8, 3.8);
+      ctx.fillStyle = head;
+      ctx.beginPath();
+      ctx.arc(x - 6.6, hy - 7, 2.2, 0, Math.PI * 2);
+      ctx.arc(x + 6.6, hy - 7, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      eyes();
+      snout("#e8dcc8", 5, 3.4);
+      ctx.fillStyle = "#2b2b33";
+      ctx.beginPath();
+      ctx.ellipse(x, hy + 1.8, 2, 1.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    case "bunny":
+      ctx.fillStyle = head;
+      ear(-3.6, 2.8, 9, -0.15);
+      ear(3.6, 2.8, 9, 0.15);
+      ctx.fillStyle = color;
+      ear(-3.6, 1.4, 6, -0.15);
+      ear(3.6, 1.4, 6, 0.15);
+      eyes();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x, hy + 4);
+      ctx.lineTo(x - 2, hy + 1.6);
+      ctx.lineTo(x + 2, hy + 1.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = head;
+      ctx.beginPath();
+      ctx.arc(x + 10, y - 4, 4, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    case "penguin":
+      ctx.fillStyle = "#2b3440";
+      ctx.beginPath();
+      ctx.arc(x, hy, 8, Math.PI, Math.PI * 2);
+      ctx.fill();
+      eyes(2.8, 1.4);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x - 3, hy + 2);
+      ctx.lineTo(x + 3, hy + 2);
+      ctx.lineTo(x, hy + 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#2b3440";
+      ctx.beginPath();
+      ctx.ellipse(x - 10, y - 6, 3, 6, 0.3, 0, Math.PI * 2);
+      ctx.ellipse(x + 10, y - 6, 3, 6, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    case "frog":
+      ctx.fillStyle = head;
+      ctx.beginPath();
+      ctx.arc(x - 5.5, hy - 7, 4, 0, Math.PI * 2);
+      ctx.arc(x + 5.5, hy - 7, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#2b2b33";
+      ctx.beginPath();
+      ctx.arc(x - 5.5, hy - 7, 1.8, 0, Math.PI * 2);
+      ctx.arc(x + 5.5, hy - 7, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(x, hy + 1, 4.4, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.beginPath();
+      ctx.arc(x - 6, hy + 2, 1.6, 0, Math.PI * 2);
+      ctx.arc(x + 6, hy + 2, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    case "tiger":
+      tail("#e08a2b", 12, 3.4);
+      ctx.fillStyle = "#e08a2b";
+      ear(-6.6, 3.6, 3.6);
+      ear(6.6, 3.6, 3.6);
+      ctx.fillStyle = color;
+      for (let i = -1; i <= 1; i += 1) {
+        ctx.fillRect(x + i * 4 - 0.8, hy - 8, 1.6, 4);
+      }
+      eyes();
+      snout("#f6efe2", 4.6, 3);
+      ctx.fillStyle = "#2b2b33";
+      ctx.beginPath();
+      ctx.ellipse(x, hy + 1.6, 1.8, 1.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    case "panda":
+      ctx.fillStyle = color;
+      ear(-6.8, 3.8, 3.8);
+      ear(6.8, 3.8, 3.8);
+      ctx.beginPath();
+      ctx.ellipse(x - 3.4, hy - 1, 3, 3.6, -0.3, 0, Math.PI * 2);
+      ctx.ellipse(x + 3.4, hy - 1, 3, 3.6, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f4f1ea";
+      ctx.beginPath();
+      ctx.arc(x - 3.4, hy - 1.4, 1.2, 0, Math.PI * 2);
+      ctx.arc(x + 3.4, hy - 1.4, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.ellipse(x, hy + 3, 2, 1.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    case "unicorn":
+      ctx.fillStyle = head;
+      ear(-6.4, 2.6, 5, -0.3);
+      ear(6.4, 2.6, 5, 0.3);
+      // つの
+      ctx.fillStyle = "#ffd166";
+      ctx.beginPath();
+      ctx.moveTo(x - 2.4, hy - 7);
+      ctx.lineTo(x, hy - 17);
+      ctx.lineTo(x + 2.4, hy - 7);
+      ctx.closePath();
+      ctx.fill();
+      // たてがみ
+      for (let i = 0; i < 4; i += 1) {
+        ctx.fillStyle = `hsl(${(time * 40 + i * 40) % 360}, 80%, 72%)`;
+        ctx.beginPath();
+        ctx.arc(x - 7 + i * 2, hy - 6 - i * 2.4, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      eyes();
+      snout(color, 4.2, 2.8);
+      return;
+    case "dragon":
+      // つばさ
+      ctx.fillStyle = "rgba(120,200,180,0.85)";
+      for (const dir of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(x + dir * 6, y - 12);
+        ctx.quadraticCurveTo(x + dir * 22, y - 24 + Math.sin(time * 6) * 4, x + dir * 20, y - 6);
+        ctx.quadraticCurveTo(x + dir * 12, y - 8, x + dir * 6, y - 12);
+        ctx.closePath();
+        ctx.fill();
+      }
+      tail("#3f8f7a", 12, 3.4);
+      // とげ
+      ctx.fillStyle = color;
+      for (let i = -1; i <= 1; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x + i * 5 - 2.4, hy - 6);
+        ctx.lineTo(x + i * 5, hy - 12);
+        ctx.lineTo(x + i * 5 + 2.4, hy - 6);
+        ctx.closePath();
+        ctx.fill();
+      }
+      eyes(3, 1.4);
+      snout("#5fb39b", 5, 3.2);
+      ctx.fillStyle = `rgba(255,150,80,${0.5 + Math.abs(Math.sin(time * 3)) * 0.5})`;
+      ctx.beginPath();
+      ctx.moveTo(x, hy + 4);
+      ctx.lineTo(x - 2.6, hy + 10);
+      ctx.lineTo(x + 2.6, hy + 10);
+      ctx.closePath();
+      ctx.fill();
+      return;
+  }
+};
+
 /** ガチャの見た目に付く かぶりもの */
 const drawHat = (
   ctx: CanvasRenderingContext2D,
@@ -3539,6 +3831,22 @@ export default function Shop({ onSample, paused }: Props) {
               "#f0cfae",
               customer.state === "walking" ? performance.now() / 90 : 0,
             );
+            // まだまわる予定が残っている人は、頭の上に丸が出る
+            const left = Math.max(0, customer.budget - customer.visits - 1);
+            if (left > 0 && customer.state !== "leaving") {
+              for (let i = 0; i < Math.min(4, left); i += 1) {
+                ctx.fillStyle = "rgba(255,209,102,0.85)";
+                ctx.beginPath();
+                ctx.arc(
+                  customer.pos.x - (Math.min(4, left) - 1) * 3 + i * 6,
+                  customer.pos.y - 32,
+                  2,
+                  0,
+                  Math.PI * 2,
+                );
+                ctx.fill();
+              }
+            }
             if (customer.state === "waiting") {
               const bounce = Math.sin(time * 4.5) * 2;
               const bx = customer.pos.x + 24;
@@ -3584,24 +3892,99 @@ export default function Shop({ onSample, paused }: Props) {
             if (worker.kind === "robot") {
               robot(ctx, worker.pos.x, worker.pos.y, time);
             } else {
+              const gait =
+                worker.kind === "master"
+                  ? 200
+                  : worker.kind === "collector"
+                    ? 70
+                    : worker.kind === "busser"
+                      ? 95
+                      : worker.kind === "stocker"
+                        ? 130
+                        : 110;
               person(
                 ctx,
                 worker.pos.x,
                 worker.pos.y,
                 coats[worker.kind],
                 "#f0cfae",
-                performance.now() / 110,
+                performance.now() / gait + worker.id,
               );
+              const wx = worker.pos.x;
+              const wy = worker.pos.y;
               if (worker.kind === "cook") {
+                // コック帽
                 ctx.fillStyle = "#fbf7ef";
-                roundRect(ctx, worker.pos.x - 7, worker.pos.y - 32, 14, 9, 4);
+                roundRect(ctx, wx - 7, wy - 32, 14, 9, 4);
                 ctx.fill();
               }
               if (worker.kind === "master") {
-                // 鉢巻き
+                // 鉢巻きと腕組み
                 ctx.fillStyle = "#d94f3d";
-                roundRect(ctx, worker.pos.x - 8, worker.pos.y - 25, 16, 4, 2);
+                roundRect(ctx, wx - 8, wy - 25, 16, 4, 2);
                 ctx.fill();
+                ctx.fillStyle = "#1f2833";
+                roundRect(ctx, wx - 9, wy - 8, 18, 4, 2);
+                ctx.fill();
+              }
+              if (worker.kind === "waiter") {
+                // 前掛けとお盆
+                ctx.fillStyle = "rgba(255,255,255,0.75)";
+                roundRect(ctx, wx - 6, wy - 6, 12, 10, 2);
+                ctx.fill();
+                if (worker.carry === 0) {
+                  ctx.fillStyle = "#c9b79a";
+                  ctx.beginPath();
+                  ctx.ellipse(wx + 11, wy - 12, 6, 2.6, 0, 0, Math.PI * 2);
+                  ctx.fill();
+                }
+              }
+              if (worker.kind === "collector") {
+                // 集金かばん
+                ctx.fillStyle = "#2f3b4d";
+                roundRect(ctx, wx + 7, wy - 10, 9, 8, 2);
+                ctx.fill();
+                ctx.fillStyle = "#ffd166";
+                ctx.beginPath();
+                ctx.arc(wx + 11.5, wy - 6, 2, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              if (worker.kind === "busser") {
+                // ふきんとバケツ
+                ctx.fillStyle = "#dff3ea";
+                roundRect(ctx, wx - 14, wy - 10, 8, 6, 2);
+                ctx.fill();
+                ctx.fillStyle = "#6b7a8c";
+                roundRect(ctx, wx + 7, wy - 4, 10, 9, 2);
+                ctx.fill();
+                if (worker.charge > 0) {
+                  // 拭いている最中
+                  const swipe = Math.sin(time * 12) * 5;
+                  ctx.fillStyle = "rgba(220,245,255,0.8)";
+                  roundRect(ctx, wx - 4 + swipe, wy - 18, 10, 4, 2);
+                  ctx.fill();
+                  ctx.fillStyle = "rgba(220,245,255,0.5)";
+                  ctx.font = SMALL;
+                  ctx.fillText("ふきふき", wx, wy - 34);
+                  ctx.font = FONT;
+                }
+              }
+              if (worker.kind === "stocker") {
+                // 台車
+                ctx.fillStyle = "#5a4a38";
+                roundRect(ctx, wx - 16, wy + 2, 20, 6, 2);
+                ctx.fill();
+                ctx.fillStyle = "#2b2b33";
+                ctx.beginPath();
+                ctx.arc(wx - 12, wy + 9, 2.6, 0, Math.PI * 2);
+                ctx.arc(wx - 1, wy + 9, 2.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "#8a7a5a";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(wx + 4, wy + 4);
+                ctx.lineTo(wx + 8, wy - 10);
+                ctx.stroke();
               }
             }
             for (let i = 0; i < worker.carry; i += 1) {
@@ -3642,7 +4025,17 @@ export default function Shop({ onSample, paused }: Props) {
             ctx.shadowBlur = 6 + stars * 4 + Math.sin(time * 4) * 2;
           }
           person(ctx, player.pos.x, player.pos.y, skin.coat, skin.head, player.step);
-          if (skin.hat === "none") {
+          if (skin.face) {
+            drawFace(
+              ctx,
+              skin.face,
+              skin.faceColor ?? skin.coat,
+              skin.head,
+              player.pos.x,
+              player.pos.y,
+              time,
+            );
+          } else if (skin.hat === "none") {
             ctx.fillStyle = "#f6e7cf";
             roundRect(ctx, player.pos.x - 8, player.pos.y - 29, 16, 6, 3);
             ctx.fill();
@@ -3959,6 +4352,7 @@ export default function Shop({ onSample, paused }: Props) {
           money: state.money,
           carry: state.player.carry,
           maxCarry: maxCarry(state),
+          item: state.player.item,
           served: state.served,
           staff: state.staff.length,
           levels: { ...state.levels },

@@ -102,6 +102,12 @@ export default function Page() {
 
   const money = sample?.money ?? 0;
   const mute = sample?.muted ?? false;
+  const carryIcon =
+    sample?.item === "food"
+      ? "🍽️"
+      : sample?.item === "goods"
+        ? "🎁"
+        : stageDefs[stageId].itemIcon;
 
   if (view === "top") {
     return (
@@ -111,7 +117,7 @@ export default function Page() {
             ← ひとびと
           </a>
           <h1>
-            <span className="top-mark">🍜</span>
+            <span className="top-mark">🏪</span>
             はんじょうダッシュ
           </h1>
           <p>スワイプで動かして、お店とパークを大きくしていく放置ゲーム</p>
@@ -129,7 +135,7 @@ export default function Page() {
                 className={`stage-card stage-${def.id}${open ? "" : " is-locked"}`}
               >
                 <div className="stage-art" aria-hidden>
-                  {def.id === "ramen" ? "🍜" : "🎡"}
+                  {def.icon}
                 </div>
                 <div className="stage-body">
                   <strong>{def.name}</strong>
@@ -199,7 +205,7 @@ export default function Page() {
             ☰
           </button>
           <span className="chip">
-            🍜{" "}
+            {stageDefs[stageId].icon}{" "}
             {(sample?.served ?? 0) < 100_000
               ? (sample?.served ?? 0).toLocaleString("ja-JP")
               : formatNumber(sample?.served ?? 0)}
@@ -238,7 +244,7 @@ export default function Page() {
 
       <footer className="dock">
         <div className="carry">
-          <span>🍜</span>
+          <span>{carryIcon}</span>
           <strong>
             {sample?.carry ?? 0}
             <small> / {sample?.maxCarry ?? 3}</small>
@@ -414,7 +420,9 @@ export default function Page() {
                       <span
                         className="skin-chip"
                         style={{ background: have ? skin.coat : "#3a3229" }}
-                      />
+                      >
+                        {have && skin.icon ? skin.icon : null}
+                      </span>
                       <span className="skin-name">{have ? skin.name : "？？？"}</span>
                       {have && (stars[skin.id] ?? 0) > 0 ? (
                         <span className="skin-stars">

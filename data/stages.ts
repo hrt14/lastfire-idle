@@ -44,6 +44,10 @@ export type StageDef = {
   id: StageId;
   name: string;
   subtitle: string;
+  /** 画面に出す絵文字 */
+  icon: string;
+  /** 運ぶものの絵文字 */
+  itemIcon: string;
   /** 作る場所が並ぶ帯（歩いて入れる） */
   frontRoom: { top: number; bottom: number };
   areas: AreaSpec[];
@@ -212,15 +216,19 @@ const ramenSeats: SeatSpec[] = [
 ];
 
 const ramenHires: HireSpec[] = [
-  ...ramenStoves.map((stove, i) => ({
-    id: `cook-${i + 1}`,
-    kind: "cook" as const,
-    pos: { x: stove.pos.x + 40, y: 130 },
-    price: [600, 1800, 4500, 30000, 70000][i],
-    label: "調理人",
-    stoveId: stove.id,
-    area: stove.area,
-  })),
+  ...ramenStoves
+    .filter((stove) => (stove.item ?? "main") === "main")
+    .map((stove, i) => ({
+      id: `cook-${i + 1}`,
+      kind: "cook" as const,
+      pos: { x: stove.pos.x + 40, y: 130 },
+      price: [600, 1800, 4500, 30000, 70000][i],
+      label: "調理人",
+      stoveId: stove.id,
+      area: stove.area,
+    })),
+  // 持ち帰りの倉庫番
+  { id: "keeper-r1", kind: "cook", pos: { x: 340, y: 340 }, price: 2600000, label: "倉庫番", stoveId: "store-r1", area: 2, unlockAfter: "area-3" },
   { id: "waiter-1", kind: "waiter", pos: { x: 50, y: 394 }, price: 280, label: "ホール店員", area: 0 },
   { id: "waiter-2", kind: "waiter", pos: { x: 130, y: 394 }, price: 1500, label: "ホール店員", area: 0 },
   { id: "collector-1", kind: "collector", pos: { x: 230, y: 394 }, price: 900, label: "レジ係", area: 0 },
@@ -454,15 +462,20 @@ const parkSeats: SeatSpec[] = [
 ];
 
 const parkHires: HireSpec[] = [
-  ...parkStoves.map((stove, i) => ({
-    id: `cook-${i + 1}`,
-    kind: "cook" as const,
-    pos: { x: stove.pos.x + 40, y: stove.pos.y - 46 },
-    price: [800, 2400, 6000, 40000, 1200000][i],
-    label: "券売スタッフ",
-    stoveId: stove.id,
-    area: stove.area,
-  })),
+  ...parkStoves
+    .filter((stove) => (stove.item ?? "main") === "main")
+    .map((stove, i) => ({
+      id: `cook-${i + 1}`,
+      kind: "cook" as const,
+      pos: { x: stove.pos.x + 40, y: stove.pos.y - 46 },
+      price: [800, 2400, 6000, 40000, 1200000][i],
+      label: "券売スタッフ",
+      stoveId: stove.id,
+      area: stove.area,
+    })),
+  // 広場のキッチンカーに付く料理人（あとから出る）
+  { id: "cook-10", kind: "cook", pos: { x: 300, y: 300 }, price: 140000000, label: "料理人", stoveId: "kitchen-0", area: 0, unlockAfter: "area-7" },
+  { id: "cook-11", kind: "cook", pos: { x: 620, y: 300 }, price: 480000000, label: "倉庫番", stoveId: "store-0", area: 1, unlockAfter: "area-8" },
   { id: "waiter-1", kind: "waiter", pos: { x: 50, y: 434 }, price: 340, label: "案内係", area: 0 },
   { id: "waiter-2", kind: "waiter", pos: { x: 130, y: 434 }, price: 1800, label: "案内係", area: 0 },
   { id: "collector-1", kind: "collector", pos: { x: 230, y: 434 }, price: 1100, label: "集金係", area: 0 },
@@ -523,6 +536,8 @@ export const stageDefs: Record<StageId, StageDef> = {
     id: "ramen",
     name: "ラーメン一直線",
     subtitle: "屋台からはじめる",
+    icon: "🍜",
+    itemIcon: "🍜",
     frontRoom: { top: 38, bottom: 210 },
     areas: ramenAreas,
     stoves: ramenStoves,
@@ -562,6 +577,8 @@ export const stageDefs: Record<StageId, StageDef> = {
     id: "park",
     name: "ドリームパーク",
     subtitle: "小さな遊園地からはじめる",
+    icon: "🎡",
+    itemIcon: "🎟️",
     frontRoom: { top: 38, bottom: 210 },
     areas: parkAreas,
     stoves: parkStoves,
