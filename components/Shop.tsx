@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
   EAT_TIME,
-  ENTRANCE,
   KITCHEN,
   PAD_RADIUS,
   STOVE_CAPACITY,
@@ -14,10 +13,14 @@ import {
   maxCarry,
   openSeats,
   openStoves,
+  entrancePos,
+  nextArea,
+  openAreas,
   padLevel,
   padPrice,
   trayPos,
   update,
+  worldHeight,
   type Inspect,
   type Input,
   type OfflineReport,
@@ -150,6 +153,7 @@ export default function Shop({ onSample, paused }: Props) {
     moved: boolean;
   } | null>(null);
   const inspect = useRef<{ data: Inspect; until: number } | null>(null);
+  const camera = useRef(0);
   const pausedRef = useRef(paused);
   const sampleRef = useRef(onSample);
 
@@ -171,6 +175,8 @@ export default function Shop({ onSample, paused }: Props) {
       time: number,
     ) => {
       const canvas = ctx.canvas;
+      const worldH = worldHeight(state);
+      const camY = -oy / scale;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(scale, 0, 0, scale, ox, oy);
@@ -179,14 +185,14 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.textBaseline = "middle";
 
       /* --- 床 --- */
-      const floor = ctx.createLinearGradient(0, 0, 0, WORLD.h);
+      const floor = ctx.createLinearGradient(0, 0, 0, worldH);
       floor.addColorStop(0, "#3b322a");
       floor.addColorStop(1, "#282019");
       ctx.fillStyle = floor;
-      ctx.fillRect(0, 0, WORLD.w, WORLD.h);
+      ctx.fillRect(0, 0, WORLD.w, worldH);
       ctx.strokeStyle = "rgba(0,0,0,0.16)";
       ctx.lineWidth = 1;
-      for (let y = KITCHEN.bottom + 20; y < WORLD.h; y += 34) {
+      for (let y = KITCHEN.bottom + 20; y < worldH; y += 34) {
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(WORLD.w, y);
@@ -262,7 +268,7 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.fill();
 
       for (const seat of openSeats(state)) {
-        if (seat.row === 0) {
+        if (seat.area === 0) {
           ctx.fillStyle = "#b0463a";
           ctx.beginPath();
           ctx.ellipse(seat.pos.x, seat.pos.y + 8, 12, 6, 0, 0, Math.PI * 2);
@@ -334,21 +340,47 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
-      /* --- 飾りと入口 --- */
-      for (const px of [26, 334]) {
-        ctx.fillStyle = "#5a3f2a";
-        roundRect(ctx, px - 9, 566, 18, 16, 4);
-        ctx.fill();
-        ctx.fillStyle = "#2f6b4a";
+      /* --- 区画の仕切り --- */
+      for (const area of openAreas(state)) {
+        if (area.top <= 0) continue;
+        ctx.strokeStyle = "rgba(246,231,207,0.14)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 8]);
         ctx.beginPath();
-        ctx.ellipse(px, 560, 13, 11, 0, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(0, area.top);
+        ctx.lineTo(WORLD.w, area.top);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = SMALL;
+        ctx.fillStyle = "rgba(246,231,207,0.4)";
+        ctx.fillText(area.label.replace("をつくる", ""), WORLD.w / 2, area.top + 12);
+        ctx.font = FONT;
       }
+
+      /* --- この先に広げられる壁 --- */
+      const upcoming = nextArea(state);
+      if (upcoming) {
+        ctx.fillStyle = "#191310";
+        ctx.fillRect(0, worldH - 16, WORLD.w, 16);
+        ctx.fillStyle = "rgba(255,209,102,0.16)";
+        for (let x = -20; x < WORLD.w + 20; x += 26) {
+          ctx.beginPath();
+          ctx.moveTo(x, worldH - 16);
+          ctx.lineTo(x + 13, worldH - 16);
+          ctx.lineTo(x + 26, worldH);
+          ctx.lineTo(x + 13, worldH);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+
+      /* --- 飾りと入口 --- */
+      const entrance = entrancePos(state);
       ctx.fillStyle = "rgba(255,255,255,0.06)";
-      roundRect(ctx, ENTRANCE.x - 42, WORLD.h - 24, 84, 20, 8);
+      roundRect(ctx, entrance.x - 42, entrance.y - 10, 84, 20, 8);
       ctx.fill();
       ctx.fillStyle = "rgba(246,231,207,0.55)";
-      ctx.fillText("入口", ENTRANCE.x, WORLD.h - 14);
+      ctx.fillText("入口", entrance.x, entrance.y);
 
       /* --- 枠（買い物する場所） --- */
       for (const pad of availablePads(state)) {
@@ -567,14 +599,15 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.save();
       ctx.fillStyle = "rgba(0,0,0,0.6)";
       const width = ctx.measureText(objective.label).width + 26;
-      roundRect(ctx, WORLD.w / 2 - width / 2, 234, width, 24, 12);
+      const bannerY = camY + 16;
+      roundRect(ctx, WORLD.w / 2 - width / 2, bannerY, width, 24, 12);
       ctx.fill();
       ctx.strokeStyle = "rgba(255,209,102,0.45)";
       ctx.lineWidth = 1;
-      roundRect(ctx, WORLD.w / 2 - width / 2, 234, width, 24, 12);
+      roundRect(ctx, WORLD.w / 2 - width / 2, bannerY, width, 24, 12);
       ctx.stroke();
       ctx.fillStyle = "#ffd166";
-      ctx.fillText(objective.label, WORLD.w / 2, 247);
+      ctx.fillText(objective.label, WORLD.w / 2, bannerY + 13);
       ctx.restore();
 
       /* --- 長押しの説明 --- */
@@ -590,7 +623,7 @@ export default function Shop({ onSample, paused }: Props) {
         const height = 26 + lines.length * 15;
         const cx = Math.min(WORLD.w - width / 2 - 6, Math.max(width / 2 + 6, info.pos.x));
         let top = info.pos.y - height - 30;
-        if (top < 6) top = Math.min(WORLD.h - height - 6, info.pos.y + 30);
+        if (top < 6) top = Math.min(worldH - height - 6, info.pos.y + 30);
 
         ctx.strokeStyle = "rgba(255,209,102,0.6)";
         ctx.lineWidth = 2;
@@ -660,10 +693,11 @@ export default function Shop({ onSample, paused }: Props) {
       canvas.height = Math.max(1, Math.floor(rect.height * dpr));
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
-      const fit = Math.min(rect.width / WORLD.w, rect.height / WORLD.h);
+      // 横幅にぴったり合わせ、縦は店の広さに応じてスクロールする
+      const fit = rect.width / WORLD.w;
       scale = fit * dpr;
-      ox = ((rect.width - WORLD.w * fit) / 2) * dpr;
-      oy = ((rect.height - WORLD.h * fit) / 2) * dpr;
+      ox = 0;
+      oy = 0;
     };
     resize();
     const observer = new ResizeObserver(resize);
@@ -671,10 +705,10 @@ export default function Shop({ onSample, paused }: Props) {
 
     const toWorld = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const fit = Math.min(rect.width / WORLD.w, rect.height / WORLD.h);
+      const fit = rect.width / WORLD.w;
       return {
-        x: (event.clientX - rect.left - (rect.width - WORLD.w * fit) / 2) / fit,
-        y: (event.clientY - rect.top - (rect.height - WORLD.h * fit) / 2) / fit,
+        x: (event.clientX - rect.left) / fit,
+        y: (event.clientY - rect.top) / fit + camera.current,
       };
     };
 
@@ -765,6 +799,22 @@ export default function Shop({ onSample, paused }: Props) {
             : input.current;
 
       if (!pausedRef.current && !document.hidden) update(state, move, dt);
+
+      // カメラ: 店が画面より縦に長いときだけ、店主を追って動く
+      {
+        const worldH = worldHeight(state);
+        const viewH = canvas.height / scale;
+        const target =
+          worldH <= viewH
+            ? -(viewH - worldH) / 2
+            : Math.min(
+                Math.max(state.player.pos.y - viewH / 2, 0),
+                worldH - viewH,
+              );
+        const follow = Math.min(1, dt * 6);
+        camera.current += (target - camera.current) * follow;
+        oy = -camera.current * scale;
+      }
 
       // 効果音を鳴らす（同じ音が同フレームで重ならないようにする）
       if (state.sfx.length > 0) {

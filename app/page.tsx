@@ -135,6 +135,10 @@ export default function Page() {
               <li>
                 運ぶ人が1人でもいれば、閉じているあいだも最大{OFFLINE_CAP_HOURS}時間ぶん稼いでくれます。
               </li>
+              <li>
+                店の一番奥にある大きな枠を買うと、<strong>店そのものが下へ広がります</strong>。
+                テーブル席・座敷と増築でき、広がったぶんは画面が店主を追ってスクロールします。
+              </li>
             </ul>
             <button type="button" className="ghost" onClick={handleReset}>
               最初からやり直す
