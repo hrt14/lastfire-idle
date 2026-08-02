@@ -479,6 +479,8 @@ export type Staff = {
   trips: number;
   /** 片づけ係が拭いているあいだの残り時間 */
   charge: number;
+  /** 配膳ロボが次の相手を選び直すまでの待ち時間 */
+  wait: number;
   /** いま担当している場所（ほかのスタッフと取り合わないように） */
   target: string | null;
   /** 目的地に着いて作業中か（着いた人は押されない） */
@@ -539,6 +541,11 @@ export const SERVE_RADIUS = 46;
 export const COIN_RADIUS = 34;
 export const PAD_RADIUS = 26;
 export const STOVE_CAPACITY = 5;
+/** 配膳ロボがくじを引く範囲（1〜5番目） */
+export const ROBOT_PICKS = 5;
+/** くじが外れたときに待つ時間（秒） */
+export const ROBOT_WAIT = 1.2;
+
 /** 自動供給機が1回動くのにかかる時間（秒） */
 export const AUTO_TIME = 1.2;
 /** 次の場所が空くのを待つ時間（秒） */
@@ -577,6 +584,7 @@ const makeStaff = (hire: HireSpec, id: number): Staff => ({
   area: hire.area,
   trips: 0,
   charge: 0,
+  wait: 0,
   target: null,
 });
 
@@ -1727,7 +1735,29 @@ const updateStaff = (state: ShopState, dt: number) => {
         });
       // いま担当している席を優先して、目移りしないようにする
       const keep = reachable.find((item) => item.seat.id === worker.target);
-      const picked = keep ?? reachable[0] ?? null;
+      let picked = keep ?? null;
+
+      if (!picked) {
+        if (worker.kind === "robot") {
+          // ロボはくじ引き。1〜5番目のどれかを狙い、
+          // その順番に相手がいなければ、少し待ってから引き直す
+          if (worker.wait > 0) {
+            worker.wait -= dt;
+            go(state, worker, idleSpot(state, worker), speed * 0.4, dt);
+            continue;
+          }
+          const rank = Math.floor(Math.random() * ROBOT_PICKS);
+          if (rank < reachable.length) {
+            picked = reachable[rank];
+          } else {
+            worker.wait = ROBOT_WAIT;
+            go(state, worker, idleSpot(state, worker), speed * 0.4, dt);
+            continue;
+          }
+        } else {
+          picked = reachable[0] ?? null;
+        }
+      }
       const seat = picked?.seat ?? null;
 
       if (seat) {
@@ -1738,6 +1768,7 @@ const updateStaff = (state: ShopState, dt: number) => {
         if (used > 0) {
           worker.carry -= used;
           worker.target = null;
+          worker.wait = 0;
           if (worker.carry === 0) worker.item = null;
         }
         continue;
@@ -2228,6 +2259,13 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
             worker.kind === "robot" ? "・足が速い" : ""
           }`,
           `いま ${worker.carry}${unit} 持っている`,
+        );
+      }
+      if (worker.kind === "robot") {
+        lines.push(
+          worker.wait > 0
+            ? `次の相手を選び直すまで あと ${worker.wait.toFixed(1)}秒`
+            : `待っている ${ROBOT_PICKS}人のなかから、くじで選んで運ぶ`,
         );
       }
       if (worker.kind !== "cook" && worker.kind !== "master") {
