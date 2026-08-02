@@ -10,6 +10,7 @@ import {
   maxCarry,
   openSeats,
   openStoves,
+  EAT_TIME,
   seatById,
   trayPos,
   currentObjective,
@@ -244,9 +245,16 @@ export default function Shop({ onSample, paused }: Props) {
       }
 
       /* --- 配膳口（丼を置く場所） --- */
+      const eatingBySeat = new Map(
+        state.customers
+          .filter((customer) => customer.state === "eating")
+          .map((customer) => [customer.seatId, customer]),
+      );
+
       for (const seat of openSeats(state)) {
         const tray = trayPos(seat);
         const hot = waitingSeats.has(seat.id);
+        const eating = eatingBySeat.get(seat.id);
         const pulse = 0.5 + Math.sin(time * 5) * 0.5;
 
         ctx.save();
@@ -276,6 +284,24 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.lineTo(tray.x + 6, tray.y - 25 + dy);
           ctx.closePath();
           ctx.fill();
+        }
+
+        // 出した丼は、食べ終わるまで配膳口の上に載っている
+        if (eating) {
+          const left = Math.max(0, eating.timer) / EAT_TIME;
+          const justServed = left > 0.88;
+          bowl(ctx, tray.x, tray.y, justServed ? 1.35 : 1.15);
+          ctx.strokeStyle = "rgba(255,209,102,0.85)";
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.arc(
+            tray.x,
+            tray.y,
+            13,
+            -Math.PI / 2,
+            -Math.PI / 2 + Math.PI * 2 * left,
+          );
+          ctx.stroke();
         }
       }
 
@@ -393,8 +419,19 @@ export default function Shop({ onSample, paused }: Props) {
               bowl(ctx, bx, by, 1);
             }
             if (customer.state === "eating") {
-              ctx.fillStyle = "#ffd166";
-              ctx.fillText("…", customer.pos.x, customer.pos.y - 34);
+              ctx.fillStyle = "rgba(255,255,255,0.35)";
+              for (let i = 0; i < 2; i += 1) {
+                const t = (time * 0.7 + i * 0.5) % 1;
+                ctx.beginPath();
+                ctx.arc(
+                  customer.pos.x + 10 + Math.sin(t * 6 + i) * 3,
+                  customer.pos.y - 26 - t * 16,
+                  3 - t * 1.6,
+                  0,
+                  Math.PI * 2,
+                );
+                ctx.fill();
+              }
             }
           },
         });
@@ -435,6 +472,21 @@ export default function Shop({ onSample, paused }: Props) {
 
       actors.sort((a, b) => a.y - b.y);
       for (const actor of actors) actor.render();
+
+      /* --- 演出（提供・入金） --- */
+      for (const pop of state.pops) {
+        const t = Math.min(1, pop.age);
+        ctx.save();
+        ctx.globalAlpha = 1 - t * t;
+        ctx.font = `800 13px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = "rgba(10,8,6,0.85)";
+        ctx.strokeText(pop.text, pop.pos.x, pop.pos.y - t * 26);
+        ctx.fillStyle = "#ffd166";
+        ctx.fillText(pop.text, pop.pos.x, pop.pos.y - t * 26);
+        ctx.restore();
+      }
+      ctx.font = FONT;
 
       /* --- 次にやることの案内 --- */
       const objective = currentObjective(state);

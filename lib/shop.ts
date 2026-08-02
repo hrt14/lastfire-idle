@@ -219,6 +219,13 @@ export type Coin = {
   age: number;
 };
 
+export type Pop = {
+  id: number;
+  pos: Vec;
+  text: string;
+  age: number;
+};
+
 export type Staff = {
   id: number;
   kind: "waiter" | "collector";
@@ -252,6 +259,7 @@ export type ShopState = Persisted & {
   staff: Staff[];
   customers: Customer[];
   coins: Coin[];
+  pops: Pop[];
   /** 調理台ごとの完成した丼の数 */
   ready: Record<string, number>;
   cooking: Record<string, number>;
@@ -308,6 +316,7 @@ export const createState = (): ShopState => ({
   staff: [],
   customers: [],
   coins: [],
+  pops: [],
   ready: { "stove-1": 0 },
   cooking: { "stove-1": 0 },
   spawnTimer: 0.6,
@@ -537,6 +546,13 @@ const serve = (state: ShopState, pos: Vec) => {
     if (reach > SERVE_RADIUS) continue;
     customer.state = "eating";
     customer.timer = EAT_TIME;
+    const at = trayPos(seat);
+    state.pops.push({
+      id: state.nextId++,
+      pos: { x: at.x, y: at.y - 12 },
+      text: "どうぞ！",
+      age: 0,
+    });
     return true;
   }
   return false;
@@ -582,6 +598,12 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
     if (dist(player.pos, coin.pos) <= COIN_RADIUS) {
       state.money += coin.value;
       coin.id = -1;
+      state.pops.push({
+        id: state.nextId++,
+        pos: { x: coin.pos.x, y: coin.pos.y - 10 },
+        text: `+${Math.round(coin.value).toLocaleString("ja-JP")}円`,
+        age: 0,
+      });
     }
   }
   state.coins = state.coins.filter((coin) => coin.id !== -1);
@@ -619,6 +641,12 @@ const updateStaff = (state: ShopState, dt: number) => {
       if (moveToward(worker.pos, coin.pos, STAFF_SPEED, dt)) {
         state.money += coin.value;
         coin.id = -1;
+        state.pops.push({
+          id: state.nextId++,
+          pos: { x: coin.pos.x, y: coin.pos.y - 10 },
+          text: `+${Math.round(coin.value).toLocaleString("ja-JP")}円`,
+          age: 0,
+        });
         state.coins = state.coins.filter((item) => item.id !== -1);
       }
       continue;
@@ -666,6 +694,8 @@ export const update = (state: ShopState, input: Input, dt: number) => {
   updateStaff(state, dt);
   updatePads(state, dt);
   for (const coin of state.coins) coin.age += dt;
+  for (const pop of state.pops) pop.age += dt;
+  state.pops = state.pops.filter((pop) => pop.age < 1);
 };
 
 /* ---------- 強化 ---------- */
