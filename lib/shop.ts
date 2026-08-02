@@ -1797,27 +1797,23 @@ const updateStaff = (state: ShopState, dt: number) => {
       }
 
       // 出す相手がいないときは、作る場所に返しに行く（抱えたまま止まらない）
+      // 空きがなくても、いちばん近い作る場所へ返す（あふれても止まらない）
       const back = openStoves(state)
-        .filter(
-          (item) =>
-            stoveItem(item) === worker.item &&
-            (state.ready[item.id] ?? 0) < stoveCapacity(state),
-        )
-        .sort((a, b) => dist(worker.pos, a.pos) - dist(worker.pos, b.pos))[0];
+        .filter((item) => stoveItem(item) === worker.item)
+        .sort((a, b) => {
+          const room =
+            ((state.ready[a.id] ?? 0) < stoveCapacity(state) ? 0 : 1) -
+            ((state.ready[b.id] ?? 0) < stoveCapacity(state) ? 0 : 1);
+          if (room !== 0) return room;
+          return dist(worker.pos, a.pos) - dist(worker.pos, b.pos);
+        })[0];
       worker.target = null;
       if (back) {
         if (go(state, worker, approach(state, worker, back.pos), speed, dt)) {
-          while (
-            worker.carry > 0 &&
-            (state.ready[back.id] ?? 0) < stoveCapacity(state)
-          ) {
-            state.ready[back.id] = (state.ready[back.id] ?? 0) + 1;
-            worker.carry -= 1;
-          }
-          if (worker.carry === 0) {
-            worker.item = null;
-            pop(state, { x: worker.pos.x, y: worker.pos.y - 30 }, "戻した");
-          }
+          state.ready[back.id] = (state.ready[back.id] ?? 0) + worker.carry;
+          worker.carry = 0;
+          worker.item = null;
+          pop(state, { x: worker.pos.x, y: worker.pos.y - 30 }, "戻した");
         }
         continue;
       }
@@ -1831,10 +1827,15 @@ const updateStaff = (state: ShopState, dt: number) => {
       .sort((a, b) => dist(worker.pos, a.serve) - dist(worker.pos, b.serve))[0];
 
     const wanted = new Set<ItemKind>();
+    // 種類ごとに「いま必要な数」を数える（余分に持って止まらないように）
+    const demand = new Map<ItemKind, number>();
     for (const customer of state.customers) {
       if (customer.state !== "waiting") continue;
       const seat = seatById.get(customer.seatId);
-      if (seat && seatMode(seat) !== "shelf") wanted.add(seatNeeds(seat));
+      if (!seat || seatMode(seat) === "shelf" || hasAuto(state, seat)) continue;
+      const kind = seatNeeds(seat);
+      wanted.add(kind);
+      demand.set(kind, (demand.get(kind) ?? 0) + seatCost(seat));
     }
 
     const ready = openStoves(state).filter(
@@ -1842,15 +1843,28 @@ const updateStaff = (state: ShopState, dt: number) => {
         (state.ready[item.id] ?? 0) > 0 &&
         (wanted.size === 0 ? stoveItem(item) === "main" : wanted.has(stoveItem(item))),
     );
+    // すでに持っているものがあれば、それと同じ種類だけ足す
+    const usable = worker.item
+      ? ready.filter((item) => stoveItem(item) === worker.item)
+      : ready;
     // ロボは在庫の多い場所へまとめて取りに行き、店員は近い場所から取る
     // 待っている人がいないときは、少しだけ持って待つ（満載で止まらない）
-    const buffer = wanted.size === 0 ? Math.min(limit, 2) : limit;
+    const buffer =
+      wanted.size === 0
+        ? Math.min(limit, 2)
+        : Math.min(
+            limit,
+            Math.max(
+              2,
+              Math.max(...Array.from(demand.values(), (count) => count)),
+            ),
+          );
     if (worker.carry >= buffer) {
       go(state, worker, idleSpot(state, worker), speed * 0.5, dt);
       continue;
     }
 
-    const stove = ready.sort((a, b) => {
+    const stove = usable.sort((a, b) => {
       if (worker.kind !== "robot") {
         const side =
           (a.area === worker.area ? 0 : 1) - (b.area === worker.area ? 0 : 1);
