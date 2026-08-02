@@ -66,7 +66,10 @@ button {
   display: flex;
   align-items: baseline;
   gap: 0.28rem;
+  flex: 0 1 auto;
   min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   padding: 0.4rem 0.6rem 0.4rem 0.5rem;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.4);
@@ -74,11 +77,15 @@ button {
 }
 
 .wallet-icon {
+  flex: none;
   font-size: 1.05rem;
   align-self: center;
 }
 
 .wallet strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 1.05rem;
   font-weight: 800;
   color: var(--gold);
@@ -87,6 +94,7 @@ button {
 }
 
 .wallet small {
+  flex: none;
   font-size: 0.72rem;
   color: var(--gold);
   opacity: 0.8;
@@ -95,6 +103,7 @@ button {
 .hud-right {
   display: flex;
   align-items: center;
+  flex: none;
   gap: 0.3rem;
 }
 

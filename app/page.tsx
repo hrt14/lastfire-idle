@@ -16,7 +16,7 @@ import {
 } from "@/lib/shopStore";
 import { GACHA_COST, GACHA_REFUND, rarityLabel, skins } from "@/data/skins";
 import { stageDefs, stageList, type StageId } from "@/data/stages";
-import { formatDuration, formatYen } from "@/lib/format";
+import { formatDuration, formatNumber, formatYen } from "@/lib/format";
 import { setMuted, unlockAudio } from "@/lib/sfx";
 
 const noop = () => () => {};
@@ -165,7 +165,9 @@ export default function Page() {
         <div className="wallet">
           <span className="wallet-icon">💴</span>
           <strong>
-            {money.toLocaleString("ja-JP", { maximumFractionDigits: 0 })}
+            {money < 100_000
+              ? Math.floor(money).toLocaleString("ja-JP")
+              : formatNumber(money)}
           </strong>
           <small>円</small>
         </div>
@@ -182,7 +184,10 @@ export default function Page() {
             ☰
           </button>
           <span className="chip">
-            🍜 {(sample?.served ?? 0).toLocaleString("ja-JP")}
+            🍜{" "}
+            {(sample?.served ?? 0) < 100_000
+              ? (sample?.served ?? 0).toLocaleString("ja-JP")
+              : formatNumber(sample?.served ?? 0)}
           </span>
           <button
             type="button"

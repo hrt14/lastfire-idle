@@ -232,14 +232,67 @@ const parkStoves: StoveSpec[] = [
   { id: "stove-5", pos: { x: 540, y: 1136 }, price: 900000, area: 5 },
 ];
 
+/** アトラクションは1つずつ名前も見た目も違う */
+const rideRow = (
+  area: number,
+  baseY: number,
+  rides: {
+    x: number;
+    price: number;
+    label: string;
+    art: string;
+    detail: string;
+  }[],
+): SeatSpec[] =>
+  rides.map((ride, i) => ({
+    id: `seat-${area}-${i + 1}`,
+    pos: { x: ride.x, y: baseY + 64 },
+    serve: { x: ride.x, y: baseY },
+    tray: { x: ride.x, y: baseY + 24 },
+    price: ride.price,
+    area,
+    label: ride.label,
+    art: ride.art,
+    detail: ride.detail,
+  }));
+
 const parkSeats: SeatSpec[] = [
-  ...seatRow(0, [60, 140, 220, 300], 294, [0, 0, 140, 420], "ベンチ"),
-  ...seatRow(1, [432, 540, 648], 294, [1200, 3000, 7000], "メリーゴーラウンド"),
-  ...seatRow(2, [72, 180, 288], 774, [12000, 26000, 52000], "そりコースター"),
-  ...seatRow(3, [432, 540, 648], 774, [70000, 140000, 260000], "ガンマンショー"),
-  ...seatRow(4, [72, 180, 288], 1254, [300000, 560000, 980000], "海賊船"),
-  ...seatRow(5, [432, 540, 648], 1254, [1400000, 2600000, 4800000], "ロケット"),
-  ...seatRow(6, [792, 900, 1008], 294, [6000000, 11000000, 20000000], "恐竜ライド"),
+  ...rideRow(0, 294, [
+    { x: 60, price: 0, label: "コーヒーカップ", art: "teacup", detail: "くるくる回るカップ" },
+    { x: 140, price: 0, label: "パンダライド", art: "panda", detail: "小さな子に人気の乗り物" },
+    { x: 220, price: 140, label: "射的コーナー", art: "shooting", detail: "的を撃ち抜く縁日ゲーム" },
+    { x: 300, price: 420, label: "ミニ観覧車", art: "wheel", detail: "広場を見下ろす小さな観覧車" },
+  ]),
+  ...rideRow(1, 294, [
+    { x: 432, price: 1200, label: "メリーゴーラウンド", art: "carousel", detail: "白馬がゆっくり上下する" },
+    { x: 540, price: 3000, label: "ゆめの気球", art: "balloonride", detail: "気球のゴンドラで空へ" },
+    { x: 648, price: 7000, label: "おとぎの城ツアー", art: "castleride", detail: "城の中をトロッコで巡る" },
+  ]),
+  ...rideRow(2, 774, [
+    { x: 72, price: 12000, label: "そりコースター", art: "sled", detail: "雪山を一気に滑り降りる" },
+    { x: 180, price: 26000, label: "スケートリンク", art: "rink", detail: "氷の上をくるくる滑る" },
+    { x: 288, price: 52000, label: "ペンギンボート", art: "penguin", detail: "氷の水路をボートで進む" },
+  ]),
+  ...rideRow(3, 774, [
+    { x: 432, price: 70000, label: "ガンマンショー", art: "showdown", detail: "早撃ち対決の生ショー" },
+    { x: 540, price: 140000, label: "幌馬車ライド", art: "wagon", detail: "馬車に揺られて町を一周" },
+    { x: 648, price: 260000, label: "鉱山トロッコ", art: "minecart", detail: "坑道を走る暴走トロッコ" },
+  ]),
+  ...rideRow(4, 1254, [
+    { x: 72, price: 300000, label: "バイキング船", art: "viking", detail: "大きく揺れる海賊船" },
+    { x: 180, price: 560000, label: "大砲チャレンジ", art: "cannon", detail: "的をねらって大砲を撃つ" },
+    { x: 288, price: 980000, label: "急流いかだ下り", art: "raft", detail: "水しぶきを浴びて川を下る" },
+  ]),
+  ...rideRow(5, 1254, [
+    { x: 432, price: 1400000, label: "ロケット発射", art: "rocket", detail: "打ち上げの瞬間を体験" },
+    { x: 540, price: 2600000, label: "無重力スピナー", art: "spinner", detail: "回って浮かぶ無重力体験" },
+    { x: 648, price: 4800000, label: "宇宙シアター", art: "theater", detail: "ドーム映像で宇宙を旅する" },
+  ]),
+  ...rideRow(6, 294, [
+    { x: 792, price: 6000000, label: "恐竜ライド", art: "dino", detail: "首長竜の背中に乗る" },
+    { x: 900, price: 11000000, label: "化石発掘場", art: "dig", detail: "砂を掘って化石を探す" },
+    { x: 1008, price: 20000000, label: "翼竜フライト", art: "ptera", detail: "翼竜にぶら下がって旋回" },
+  ]),
 ];
 
 const parkHires: HireSpec[] = [
@@ -252,19 +305,19 @@ const parkHires: HireSpec[] = [
     stoveId: stove.id,
     area: stove.area,
   })),
-  { id: "waiter-1", kind: "waiter", pos: { x: 50, y: 394 }, price: 340, label: "案内係", area: 0 },
-  { id: "waiter-2", kind: "waiter", pos: { x: 130, y: 394 }, price: 1800, label: "案内係", area: 0 },
-  { id: "collector-1", kind: "collector", pos: { x: 230, y: 394 }, price: 1100, label: "集金係", area: 0 },
-  { id: "robot-1", kind: "robot", pos: { x: 310, y: 394 }, price: 5000, label: "案内ロボ", area: 0 },
-  { id: "waiter-3", kind: "waiter", pos: { x: 470, y: 394 }, price: 12000, label: "案内係", area: 1 },
-  { id: "robot-2", kind: "robot", pos: { x: 620, y: 394 }, price: 40000, label: "案内ロボ", area: 1 },
-  { id: "waiter-4", kind: "waiter", pos: { x: 80, y: 874 }, price: 90000, label: "案内係", area: 2 },
-  { id: "collector-2", kind: "collector", pos: { x: 260, y: 874 }, price: 130000, label: "集金係", area: 2 },
-  { id: "robot-3", kind: "robot", pos: { x: 470, y: 874 }, price: 420000, label: "案内ロボ", area: 3 },
-  { id: "waiter-5", kind: "waiter", pos: { x: 630, y: 874 }, price: 260000, label: "案内係", area: 3 },
-  { id: "robot-4", kind: "robot", pos: { x: 180, y: 1354 }, price: 2200000, label: "案内ロボ", area: 4 },
-  { id: "master-1", kind: "master", pos: { x: 540, y: 1354 }, price: 9000000, label: "園長", area: 5 },
-  { id: "robot-5", kind: "robot", pos: { x: 900, y: 394 }, price: 26000000, label: "案内ロボ", area: 6 },
+  { id: "waiter-1", kind: "waiter", pos: { x: 50, y: 434 }, price: 340, label: "案内係", area: 0 },
+  { id: "waiter-2", kind: "waiter", pos: { x: 130, y: 434 }, price: 1800, label: "案内係", area: 0 },
+  { id: "collector-1", kind: "collector", pos: { x: 230, y: 434 }, price: 1100, label: "集金係", area: 0 },
+  { id: "robot-1", kind: "robot", pos: { x: 310, y: 434 }, price: 5000, label: "案内ロボ", area: 0 },
+  { id: "waiter-3", kind: "waiter", pos: { x: 470, y: 434 }, price: 12000, label: "案内係", area: 1 },
+  { id: "robot-2", kind: "robot", pos: { x: 620, y: 434 }, price: 40000, label: "案内ロボ", area: 1 },
+  { id: "waiter-4", kind: "waiter", pos: { x: 80, y: 912 }, price: 90000, label: "案内係", area: 2 },
+  { id: "collector-2", kind: "collector", pos: { x: 260, y: 912 }, price: 130000, label: "集金係", area: 2 },
+  { id: "robot-3", kind: "robot", pos: { x: 470, y: 912 }, price: 420000, label: "案内ロボ", area: 3 },
+  { id: "waiter-5", kind: "waiter", pos: { x: 630, y: 912 }, price: 260000, label: "案内係", area: 3 },
+  { id: "robot-4", kind: "robot", pos: { x: 180, y: 1392 }, price: 2200000, label: "案内ロボ", area: 4 },
+  { id: "master-1", kind: "master", pos: { x: 540, y: 1392 }, price: 9000000, label: "園長", area: 5 },
+  { id: "robot-5", kind: "robot", pos: { x: 900, y: 434 }, price: 26000000, label: "案内ロボ", area: 6 },
 ];
 
 const parkEquipment: EquipSpec[] = [

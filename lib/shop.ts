@@ -43,6 +43,10 @@ export type SeatSpec = {
   /** どの区画にあるか */
   area: number;
   label: string;
+  /** 見た目の種類（パークのアトラクションは1つずつ違う） */
+  art?: string;
+  /** 長押しの説明（アトラクションの紹介文） */
+  detail?: string;
 };
 
 export type StaffKind = "waiter" | "robot" | "collector" | "cook" | "master";
@@ -1159,6 +1163,7 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
     const make = (): Inspect => ({
       title: seat.label,
       lines: [
+        ...(seat.detail ? [seat.detail] : []),
         `${stageLabels().guest}が${stageLabels().item}を待つ`,
         `光っている${stageLabels().tray}に持っていくと渡せる`,
         `終わると ${yen(coinValue(state.levels.price))} 置いていく`,

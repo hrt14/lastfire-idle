@@ -134,34 +134,378 @@ const person = (
   ctx.fill();
 };
 
+const FLAGS = ["#ff6b6b", "#ffd166", "#6bd3ff", "#a78bfa", "#7ee7a8", "#ff9f68"];
+
+/** 万国旗（テーマパークらしさの素） */
+const bunting = (
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  x1: number,
+  y: number,
+  sway = 0,
+) => {
+  const width = x1 - x0;
+  if (width <= 20) return;
+  const sag = (x: number) => Math.sin(((x - x0) / width) * Math.PI) * 11;
+  ctx.strokeStyle = "rgba(255,255,255,0.3)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let x = x0; x <= x1; x += 4) {
+    if (x === x0) ctx.moveTo(x, y + sag(x));
+    else ctx.lineTo(x, y + sag(x));
+  }
+  ctx.stroke();
+  const count = Math.floor((width - 16) / 24);
+  for (let i = 0; i < count; i += 1) {
+    const x = x0 + 14 + i * 24;
+    const top = y + sag(x);
+    const tilt = Math.sin(sway + i * 0.6) * 2;
+    ctx.fillStyle = FLAGS[i % FLAGS.length];
+    ctx.beginPath();
+    ctx.moveTo(x - 6, top);
+    ctx.lineTo(x + 6, top);
+    ctx.lineTo(x + tilt, top + 13);
+    ctx.closePath();
+    ctx.fill();
+  }
+};
+
+/** 風船（ふわふわ） */
+const balloons = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 3; i += 1) {
+    const bx = x + (i - 1) * 11;
+    const by = y - 34 + Math.sin(time * 1.6 + i) * 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo((x + bx) / 2, y - 18, bx, by + 9);
+    ctx.stroke();
+    ctx.fillStyle = FLAGS[i % FLAGS.length];
+    ctx.beginPath();
+    ctx.ellipse(bx, by, 7, 8.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.beginPath();
+    ctx.ellipse(bx - 2.4, by - 3, 2, 2.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
+/** 電飾つきのポール */
+const lampPost = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  ctx.fillStyle = "#e6e2d4";
+  ctx.fillRect(x - 2, y - 40, 4, 40);
+  const glow = 0.55 + Math.sin(time * 2 + x) * 0.25;
+  ctx.fillStyle = `rgba(255,225,150,${glow})`;
+  ctx.beginPath();
+  ctx.arc(x, y - 44, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(255,225,150,${glow * 0.16})`;
+  ctx.beginPath();
+  ctx.arc(x, y - 44, 18, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+/** 区画の左右に置く、テーマごとの小物 */
+const sideDecor = (
+  ctx: CanvasRenderingContext2D,
+  rect: { x0: number; y0: number; x1: number; y1: number },
+  prop: string,
+  time: number,
+) => {
+  const left = rect.x0 + 42;
+  const right = rect.x1 - 42;
+  const y = rect.y0 + (rect.y1 - rect.y0) * 0.42;
+
+  if (prop === "castle") {
+    // きのこの家
+    ctx.fillStyle = "#f6e7cf";
+    roundRect(ctx, left - 12, y - 14, 24, 26, 4);
+    ctx.fill();
+    ctx.fillStyle = "#3a2f45";
+    roundRect(ctx, left - 5, y - 2, 10, 14, 3);
+    ctx.fill();
+    ctx.fillStyle = "#e8574a";
+    ctx.beginPath();
+    ctx.ellipse(left, y - 14, 22, 14, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = "#fff3d9";
+    for (let i = 0; i < 3; i += 1) {
+      ctx.beginPath();
+      ctx.arc(left - 12 + i * 12, y - 20 + (i % 2) * 4, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 大きな花
+    for (let i = 0; i < 3; i += 1) {
+      const fx = right - 16 + i * 16;
+      const fy = y + 6 - (i % 2) * 10;
+      ctx.strokeStyle = "#4c6b45";
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(fx, fy + 14);
+      ctx.lineTo(fx, fy);
+      ctx.stroke();
+      ctx.fillStyle = FLAGS[i % FLAGS.length];
+      for (let k = 0; k < 5; k += 1) {
+        const a = (k / 5) * Math.PI * 2 + time * 0.4;
+        ctx.beginPath();
+        ctx.ellipse(fx + Math.cos(a) * 5, fy + Math.sin(a) * 5, 3.4, 3.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#ffd166";
+      ctx.beginPath();
+      ctx.arc(fx, fy, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return;
+  }
+  if (prop === "snow") {
+    // かまくら
+    ctx.fillStyle = "#eaf3ff";
+    ctx.beginPath();
+    ctx.arc(left, y + 8, 22, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#93b6d6";
+    ctx.beginPath();
+    ctx.arc(left, y + 8, 9, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,209,102,${0.4 + Math.abs(Math.sin(time * 2)) * 0.4})`;
+    ctx.beginPath();
+    ctx.arc(left, y + 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+    // 氷の彫刻
+    ctx.fillStyle = "rgba(200,235,255,0.75)";
+    ctx.beginPath();
+    ctx.moveTo(right - 12, y + 12);
+    ctx.lineTo(right, y - 26);
+    ctx.lineTo(right + 12, y + 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.beginPath();
+    ctx.moveTo(right - 5, y + 12);
+    ctx.lineTo(right, y - 20);
+    ctx.lineTo(right + 3, y + 12);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  if (prop === "cactus") {
+    // 給水塔
+    ctx.fillStyle = "#6b5433";
+    ctx.fillRect(left - 14, y - 4, 4, 24);
+    ctx.fillRect(left + 10, y - 4, 4, 24);
+    ctx.fillStyle = "#8a6a42";
+    roundRect(ctx, left - 18, y - 26, 36, 24, 4);
+    ctx.fill();
+    ctx.fillStyle = "#5d3f26";
+    ctx.beginPath();
+    ctx.moveTo(left - 21, y - 26);
+    ctx.lineTo(left, y - 40);
+    ctx.lineTo(left + 21, y - 26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#c9a94a";
+    ctx.fillRect(left - 18, y - 16, 36, 2);
+    // 樽
+    for (let i = 0; i < 3; i += 1) {
+      const bx = right - 16 + (i % 2) * 18;
+      const by = y + 10 - Math.floor(i / 2) * 16;
+      ctx.fillStyle = "#8a5a2b";
+      roundRect(ctx, bx - 8, by - 12, 16, 16, 4);
+      ctx.fill();
+      ctx.fillStyle = "#5d3f26";
+      ctx.fillRect(bx - 8, by - 8, 16, 2);
+      ctx.fillRect(bx - 8, by - 2, 16, 2);
+    }
+    return;
+  }
+  if (prop === "ship") {
+    // 宝箱
+    ctx.fillStyle = "#7a4a2f";
+    roundRect(ctx, left - 16, y - 6, 32, 18, 3);
+    ctx.fill();
+    ctx.fillStyle = "#9a6438";
+    ctx.beginPath();
+    ctx.arc(left, y - 6, 16, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#ffd166";
+    ctx.fillRect(left - 16, y - 4, 32, 3);
+    ctx.beginPath();
+    ctx.arc(left, y + 2, 3, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < 4; i += 1) {
+      ctx.fillStyle = i % 2 ? "#ffd166" : "#f4f1ea";
+      ctx.beginPath();
+      ctx.arc(left - 20 + i * 4, y + 14, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 灯台
+    ctx.fillStyle = "#f4f1ea";
+    ctx.beginPath();
+    ctx.moveTo(right - 11, y + 14);
+    ctx.lineTo(right - 7, y - 34);
+    ctx.lineTo(right + 7, y - 34);
+    ctx.lineTo(right + 11, y + 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#e8574a";
+    ctx.fillRect(right - 9, y - 16, 18, 7);
+    ctx.fillRect(right - 10.4, y + 2, 21, 7);
+    ctx.fillStyle = `rgba(255,225,150,${0.5 + Math.abs(Math.sin(time * 1.6)) * 0.5})`;
+    ctx.beginPath();
+    ctx.arc(right, y - 38, 6, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  if (prop === "star") {
+    // パラボラアンテナ
+    ctx.fillStyle = "#5a6285";
+    ctx.fillRect(left - 2, y - 6, 4, 20);
+    ctx.save();
+    ctx.translate(left, y - 10);
+    ctx.rotate(-0.5 + Math.sin(time * 0.6) * 0.15);
+    ctx.fillStyle = "#c6cdf5";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 18, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#8f9ad6";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 12, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // コンテナ
+    for (let i = 0; i < 3; i += 1) {
+      ctx.fillStyle = ["#5a6285", "#7a6bb5", "#4f9e83"][i];
+      roundRect(ctx, right - 20 + (i % 2) * 20, y - 2 - Math.floor(i / 2) * 16, 18, 14, 3);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      roundRect(ctx, right - 20 + (i % 2) * 20, y - 2 - Math.floor(i / 2) * 16, 18, 4, 2);
+      ctx.fill();
+    }
+    return;
+  }
+  if (prop === "fossil") {
+    // 恐竜の卵の巣
+    ctx.fillStyle = "#6b5433";
+    ctx.beginPath();
+    ctx.ellipse(left, y + 8, 26, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < 3; i += 1) {
+      ctx.fillStyle = "#e7dcc0";
+      ctx.beginPath();
+      ctx.ellipse(left - 12 + i * 12, y + 2 - (i % 2) * 4, 7, 9, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(140,120,80,0.4)";
+      ctx.beginPath();
+      ctx.arc(left - 12 + i * 12, y + 2 - (i % 2) * 4, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // シダの茂み
+    for (let i = 0; i < 5; i += 1) {
+      const a = -Math.PI / 2 + (i - 2) * 0.42;
+      ctx.fillStyle = i % 2 ? "#4f7a44" : "#3f6437";
+      ctx.beginPath();
+      ctx.ellipse(
+        right + Math.cos(a) * 14,
+        y + 8 + Math.sin(a) * 16,
+        7,
+        14,
+        a + Math.PI / 2 + Math.sin(time + i) * 0.03,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+    return;
+  }
+};
+
 /** 区画ごとの飾り（テーマの見分け） */
 const drawProps = (
   ctx: CanvasRenderingContext2D,
-  area: { rect: { x0: number; y0: number; x1: number; y1: number }; palette: { prop: string } },
+  area: {
+    rect: { x0: number; y0: number; x1: number; y1: number };
+    palette: { prop: string };
+  },
   time: number,
 ) => {
   const { rect, palette } = area;
+  const park = stage().id === "park";
   const cx = (rect.x0 + rect.x1) / 2;
   const spots = [rect.x0 + 34, rect.x1 - 34];
   const baseY = rect.y1 - 40;
 
+  if (park) {
+    // 区画の上にかかる万国旗と、四隅の電飾ポール
+    bunting(ctx, rect.x0 + 6, rect.x1 - 6, rect.y0 + (rect.y0 === 0 ? 232 : 30), time * 2);
+    lampPost(ctx, rect.x0 + 18, rect.y1 - 16, time);
+    lampPost(ctx, rect.x1 - 18, rect.y1 - 16, time);
+    sideDecor(ctx, rect, palette.prop, time);
+  }
+
   if (palette.prop === "castle") {
     // メルヘン: 奥にお城
     ctx.fillStyle = "#cbb6e6";
-    roundRect(ctx, cx - 46, rect.y0 + 54, 92, 60, 6);
+    roundRect(ctx, cx - 52, rect.y0 + 54, 104, 66, 6);
     ctx.fill();
-    ctx.fillStyle = "#e6d9f7";
-    for (const tx of [cx - 46, cx, cx + 46]) {
-      roundRect(ctx, tx - 12, rect.y0 + 30, 24, 84, 5);
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    for (let i = 0; i < 4; i += 1) {
+      roundRect(ctx, cx - 40 + i * 24, rect.y0 + 78, 14, 20, 6);
+      ctx.fill();
+    }
+    for (const tx of [cx - 52, cx, cx + 52]) {
+      ctx.fillStyle = "#e6d9f7";
+      roundRect(ctx, tx - 13, rect.y0 + 26, 26, 94, 5);
       ctx.fill();
       ctx.fillStyle = "#f06a8a";
       ctx.beginPath();
-      ctx.moveTo(tx - 15, rect.y0 + 30);
-      ctx.lineTo(tx, rect.y0 + 6);
-      ctx.lineTo(tx + 15, rect.y0 + 30);
+      ctx.moveTo(tx - 17, rect.y0 + 26);
+      ctx.lineTo(tx, rect.y0 - 2);
+      ctx.lineTo(tx + 17, rect.y0 + 26);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = "#e6d9f7";
+      // 旗
+      ctx.strokeStyle = "#f6e7cf";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(tx, rect.y0 - 2);
+      ctx.lineTo(tx, rect.y0 - 16);
+      ctx.stroke();
+      ctx.fillStyle = "#ffd166";
+      ctx.beginPath();
+      ctx.moveTo(tx, rect.y0 - 16);
+      ctx.lineTo(tx + 11 + Math.sin(time * 3 + tx) * 2, rect.y0 - 12);
+      ctx.lineTo(tx, rect.y0 - 8);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // 花壇
+    for (const x of spots) {
+      ctx.fillStyle = "#4c6b45";
+      ctx.beginPath();
+      ctx.ellipse(x, baseY + 10, 22, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      for (let i = 0; i < 5; i += 1) {
+        ctx.fillStyle = FLAGS[(i + 1) % FLAGS.length];
+        ctx.beginPath();
+        ctx.arc(x - 14 + i * 7, baseY + 8 - (i % 2) * 4, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     return;
   }
@@ -182,8 +526,37 @@ const drawProps = (
       ctx.closePath();
       ctx.fill();
     }
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
-    for (let i = 0; i < 26; i += 1) {
+    // 雪だるま
+    const sx = cx + 96;
+    const sy = rect.y0 + 92;
+    ctx.fillStyle = "#f4f9ff";
+    ctx.beginPath();
+    ctx.arc(sx, sy, 15, 0, Math.PI * 2);
+    ctx.arc(sx, sy - 20, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#28323f";
+    ctx.beginPath();
+    ctx.arc(sx - 3.4, sy - 22, 1.6, 0, Math.PI * 2);
+    ctx.arc(sx + 3.4, sy - 22, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e8763a";
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 19);
+    ctx.lineTo(sx + 9, sy - 17.5);
+    ctx.lineTo(sx, sy - 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#c2402f";
+    roundRect(ctx, sx - 11, sy - 33, 22, 5, 2);
+    ctx.fill();
+    // 氷のアーチ
+    ctx.strokeStyle = "rgba(200,235,255,0.5)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(cx - 70, rect.y0 + 110, 40, Math.PI, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    for (let i = 0; i < 34; i += 1) {
       const px = rect.x0 + ((i * 97) % (rect.x1 - rect.x0));
       const py = rect.y0 + (((i * 53 + time * 22) % (rect.y1 - rect.y0)) | 0);
       ctx.fillRect(px, py, 2, 2);
@@ -191,6 +564,32 @@ const drawProps = (
     return;
   }
   if (palette.prop === "cactus") {
+    // サルーン
+    const sx = cx;
+    const sy = rect.y0 + 96;
+    ctx.fillStyle = "#7a5433";
+    roundRect(ctx, sx - 60, sy - 44, 120, 56, 3);
+    ctx.fill();
+    ctx.fillStyle = "#5d3f26";
+    ctx.beginPath();
+    ctx.moveTo(sx - 68, sy - 44);
+    ctx.lineTo(sx - 46, sy - 62);
+    ctx.lineTo(sx + 46, sy - 62);
+    ctx.lineTo(sx + 68, sy - 44);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#f2dcae";
+    ctx.font = `800 11px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+    ctx.fillText("SALOON", sx, sy - 52);
+    ctx.font = FONT;
+    ctx.fillStyle = "#3b2a1b";
+    roundRect(ctx, sx - 16, sy - 22, 32, 34, 2);
+    ctx.fill();
+    ctx.fillStyle = "#8a6a42";
+    roundRect(ctx, sx - 15, sy - 12, 14, 18, 1);
+    ctx.fill();
+    roundRect(ctx, sx + 1, sy - 12, 14, 18, 1);
+    ctx.fill();
     for (const x of spots) {
       ctx.fillStyle = "#4f7a44";
       roundRect(ctx, x - 6, baseY - 44, 12, 46, 6);
@@ -200,38 +599,62 @@ const drawProps = (
       roundRect(ctx, x + 6, baseY - 38, 14, 8, 4);
       ctx.fill();
     }
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    // 転がる草
+    const tw = rect.x0 + ((time * 40) % (rect.x1 - rect.x0));
+    ctx.strokeStyle = "rgba(210,180,120,0.7)";
     ctx.lineWidth = 2;
-    for (let y = rect.y0 + 40; y < rect.y1; y += 46) {
-      ctx.beginPath();
-      ctx.moveTo(rect.x0, y);
-      ctx.lineTo(rect.x1, y);
-      ctx.stroke();
-    }
+    ctx.beginPath();
+    ctx.arc(tw, baseY + 14, 8, 0, Math.PI * 2);
+    ctx.stroke();
     return;
   }
   if (palette.prop === "ship") {
     ctx.fillStyle = "#2b5560";
-    ctx.fillRect(rect.x0, rect.y0 + 30, rect.x1 - rect.x0, 44);
-    ctx.fillStyle = "rgba(255,255,255,0.12)";
-    for (let i = 0; i < 5; i += 1) {
-      ctx.fillRect(rect.x0 + 10 + i * 70, rect.y0 + 44 + Math.sin(time + i) * 3, 40, 3);
+    ctx.fillRect(rect.x0, rect.y0 + 24, rect.x1 - rect.x0, 74);
+    ctx.strokeStyle = "rgba(255,255,255,0.16)";
+    ctx.lineWidth = 2.4;
+    for (let i = 0; i < 6; i += 1) {
+      const wy = rect.y0 + 38 + i * 11;
+      ctx.beginPath();
+      for (let x = rect.x0; x <= rect.x1; x += 8) {
+        const y = wy + Math.sin(x * 0.06 + time * 1.4 + i) * 2.6;
+        if (x === rect.x0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
     }
+    // 停泊する帆船
+    const bob = Math.sin(time * 1.1) * 3;
     ctx.fillStyle = "#6b4a2f";
-    roundRect(ctx, cx - 40, rect.y0 + 58, 80, 22, 6);
+    ctx.beginPath();
+    ctx.moveTo(cx - 52, rect.y0 + 62 + bob);
+    ctx.lineTo(cx + 52, rect.y0 + 62 + bob);
+    ctx.lineTo(cx + 36, rect.y0 + 84 + bob);
+    ctx.lineTo(cx - 36, rect.y0 + 84 + bob);
+    ctx.closePath();
     ctx.fill();
+    ctx.fillStyle = "#8a6440";
+    ctx.fillRect(cx - 2, rect.y0 - 4 + bob, 4, 66);
     ctx.fillStyle = "#f2e3c6";
     ctx.beginPath();
-    ctx.moveTo(cx, rect.y0 + 14);
-    ctx.lineTo(cx + 26, rect.y0 + 56);
-    ctx.lineTo(cx - 26, rect.y0 + 56);
+    ctx.moveTo(cx + 2, rect.y0 + 2 + bob);
+    ctx.quadraticCurveTo(cx + 34, rect.y0 + 26 + bob, cx + 2, rect.y0 + 52 + bob);
     ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#1c1c22";
+    ctx.beginPath();
+    ctx.arc(cx - 16, rect.y0 - 6 + bob, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f4f1ea";
+    ctx.beginPath();
+    ctx.arc(cx - 17.6, rect.y0 - 7.6 + bob, 1.4, 0, Math.PI * 2);
+    ctx.arc(cx - 14.4, rect.y0 - 7.6 + bob, 1.4, 0, Math.PI * 2);
     ctx.fill();
     return;
   }
   if (palette.prop === "star") {
     ctx.fillStyle = "rgba(255,255,255,0.75)";
-    for (let i = 0; i < 40; i += 1) {
+    for (let i = 0; i < 46; i += 1) {
       const px = rect.x0 + ((i * 131) % (rect.x1 - rect.x0));
       const py = rect.y0 + ((i * 79) % (rect.y1 - rect.y0));
       const tw = 0.4 + 0.6 * Math.abs(Math.sin(time * 1.6 + i));
@@ -239,13 +662,33 @@ const drawProps = (
       ctx.fillRect(px, py, 2, 2);
     }
     ctx.globalAlpha = 1;
+    // 惑星と輪
     ctx.fillStyle = "#9aa6ff";
     ctx.beginPath();
-    ctx.arc(rect.x1 - 60, rect.y0 + 56, 26, 0, Math.PI * 2);
+    ctx.arc(rect.x1 - 64, rect.y0 + 58, 30, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
     ctx.beginPath();
-    ctx.ellipse(rect.x1 - 60, rect.y0 + 56, 44, 10, -0.4, 0, Math.PI * 2);
+    ctx.arc(rect.x1 - 74, rect.y0 + 48, 9, 0, Math.PI * 2);
+    ctx.arc(rect.x1 - 54, rect.y0 + 68, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(200,210,255,0.5)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(rect.x1 - 64, rect.y0 + 58, 48, 11, -0.4, 0, Math.PI * 2);
+    ctx.stroke();
+    // 管制塔
+    const tx = rect.x0 + 56;
+    const ty = rect.y0 + 106;
+    ctx.fillStyle = "#5a6285";
+    roundRect(ctx, tx - 8, ty - 60, 16, 60, 4);
+    ctx.fill();
+    ctx.fillStyle = "#8f9ad6";
+    roundRect(ctx, tx - 22, ty - 76, 44, 20, 8);
+    ctx.fill();
+    ctx.fillStyle = `rgba(126,231,168,${0.4 + Math.abs(Math.sin(time * 2)) * 0.5})`;
+    ctx.beginPath();
+    ctx.arc(tx, ty - 82, 4, 0, Math.PI * 2);
     ctx.fill();
     return;
   }
@@ -256,19 +699,1007 @@ const drawProps = (
       ctx.ellipse(x, baseY, 26, 12, 0, 0, Math.PI * 2);
       ctx.fill();
     }
+    // 発掘現場の骨組み
     ctx.strokeStyle = "#d9d3b8";
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(cx - 50, rect.y0 + 80);
-    ctx.quadraticCurveTo(cx, rect.y0 + 30, cx + 50, rect.y0 + 80);
+    ctx.moveTo(cx - 56, rect.y0 + 96);
+    ctx.quadraticCurveTo(cx, rect.y0 + 34, cx + 56, rect.y0 + 96);
     ctx.stroke();
     for (let i = -3; i <= 3; i += 1) {
       ctx.beginPath();
-      ctx.moveTo(cx + i * 14, rect.y0 + 52 + Math.abs(i) * 6);
-      ctx.lineTo(cx + i * 14, rect.y0 + 74 + Math.abs(i) * 4);
+      ctx.moveTo(cx + i * 15, rect.y0 + 58 + Math.abs(i) * 7);
+      ctx.lineTo(cx + i * 15, rect.y0 + 82 + Math.abs(i) * 5);
       ctx.stroke();
     }
+    // ヤシの木
+    for (const x of [rect.x0 + 40, rect.x1 - 46]) {
+      const ty = rect.y0 + 120;
+      ctx.fillStyle = "#6b5433";
+      ctx.fillRect(x - 3, ty - 52, 6, 52);
+      ctx.fillStyle = "#4f7a44";
+      for (let i = 0; i < 5; i += 1) {
+        const a = -Math.PI / 2 + (i - 2) * 0.55 + Math.sin(time + i) * 0.05;
+        ctx.beginPath();
+        ctx.ellipse(
+          x + Math.cos(a) * 17,
+          ty - 52 + Math.sin(a) * 11,
+          17,
+          6,
+          a,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
+    }
     return;
+  }
+  if (park && palette.prop === "none") {
+    // 入口広場: 噴水と花壇と風船
+    const fx = cx;
+    const fy = rect.y0 + 264;
+    ctx.fillStyle = "#3f5f86";
+    ctx.beginPath();
+    ctx.ellipse(fx, fy, 32, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#6fa8d6";
+    ctx.beginPath();
+    ctx.ellipse(fx, fy - 2, 26, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(220,245,255,0.7)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i / 6) * Math.PI * 2;
+      const h = 14 + Math.sin(time * 3 + i) * 3;
+      ctx.beginPath();
+      ctx.moveTo(fx, fy - 10);
+      ctx.quadraticCurveTo(
+        fx + Math.cos(a) * 8,
+        fy - 10 - h,
+        fx + Math.cos(a) * 16,
+        fy - 3,
+      );
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#e6eef7";
+    roundRect(ctx, fx - 4, fy - 26, 8, 18, 4);
+    ctx.fill();
+    balloons(ctx, rect.x0 + 26, rect.y0 + 252, time);
+    return;
+  }
+};
+
+/** 小さな乗客（アトラクションに乗っている人） */
+const rider = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  coat: string,
+  s = 1,
+) => {
+  ctx.fillStyle = coat;
+  roundRect(ctx, x - 4 * s, y - 6 * s, 8 * s, 9 * s, 3.5 * s);
+  ctx.fill();
+  ctx.fillStyle = "#f0cfae";
+  ctx.beginPath();
+  ctx.arc(x, y - 8 * s, 3.4 * s, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+/** 天幕（縞のテント屋根） */
+const tentRoof = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  a: string,
+  b: string,
+) => {
+  const half = w / 2;
+  for (let i = 0; i < 6; i += 1) {
+    ctx.fillStyle = i % 2 ? a : b;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 18);
+    ctx.lineTo(x - half + (i * w) / 6, y);
+    ctx.lineTo(x - half + ((i + 1) * w) / 6, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+};
+
+/**
+ * アトラクション。名前ごとに1つずつ違う見た目を持つ。
+ * 描く範囲は x±34 / y-52〜y+16 におさめる（改札と名札にかぶらないように）
+ */
+const drawRide = (
+  ctx: CanvasRenderingContext2D,
+  art: string,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 14, 32, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  switch (art) {
+    /* ---------- 入口広場 ---------- */
+    case "teacup": {
+      // コーヒーカップ: 台が回り、カップも回る
+      ctx.fillStyle = "#4a5d7a";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 6, 30, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 4, 24, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      for (const [i, cup] of [-1, 1].entries()) {
+        const a = time * 1.3 + i * Math.PI;
+        const cxp = x + Math.cos(a) * 15;
+        const cyp = y - 2 + Math.sin(a) * 5;
+        ctx.fillStyle = i ? "#f0a6c0" : "#6bd3ff";
+        ctx.beginPath();
+        ctx.moveTo(cxp - 11, cyp - 12);
+        ctx.lineTo(cxp + 11, cyp - 12);
+        ctx.lineTo(cxp + 8, cyp + 2);
+        ctx.lineTo(cxp - 8, cyp + 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = i ? "#f0a6c0" : "#6bd3ff";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(cxp + 12 * cup, cyp - 6, 4, -1.2, 1.2);
+        ctx.stroke();
+        ctx.fillStyle = "#fff6e2";
+        ctx.beginPath();
+        ctx.ellipse(cxp, cyp - 12, 11, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        rider(ctx, cxp, cyp - 12, "#e8574a", 0.8);
+      }
+      return;
+    }
+    case "panda": {
+      // パンダライド: ばねの上で揺れる
+      const tilt = Math.sin(time * 3) * 0.14;
+      ctx.strokeStyle = "#8f9aa8";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let i = 0; i < 4; i += 1) {
+        ctx.arc(x, y + 4 - i * 4, 4, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(x, y - 12);
+      ctx.rotate(tilt);
+      ctx.fillStyle = "#f4f1ea";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 20, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-14, -12, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#2b2b33";
+      ctx.beginPath();
+      ctx.arc(-20, -20, 4.4, 0, Math.PI * 2);
+      ctx.arc(-8, -20, 4.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(-17, -12, 3.2, 4, 0.3, 0, Math.PI * 2);
+      ctx.ellipse(-9, -12, 3.2, 4, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(6, 6, 9, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      rider(ctx, 6, -8, "#6bd3ff", 0.85);
+      ctx.restore();
+      return;
+    }
+    case "shooting": {
+      // 射的コーナー: 的が横に流れる
+      ctx.fillStyle = "#3a2f45";
+      roundRect(ctx, x - 30, y - 26, 60, 34, 4);
+      ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x - 28, y - 24, 56, 20);
+      ctx.clip();
+      for (let i = 0; i < 4; i += 1) {
+        const px = x - 28 + (((time * 26 + i * 22) % 68) | 0);
+        ctx.fillStyle = FLAGS[i % FLAGS.length];
+        ctx.beginPath();
+        ctx.ellipse(px, y - 14, 6, 7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#2b2b33";
+        ctx.beginPath();
+        ctx.arc(px, y - 14, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.fillStyle = "#8a6440";
+      roundRect(ctx, x - 32, y - 2, 64, 10, 3);
+      ctx.fill();
+      ctx.fillStyle = "#4a3a2a";
+      ctx.fillRect(x - 12, y - 6, 22, 3);
+      tentRoof(ctx, x, y - 26, 68, "#e8574a", "#fff3d9");
+      return;
+    }
+    case "wheel": {
+      // ミニ観覧車
+      ctx.fillStyle = "#6b7a8c";
+      ctx.beginPath();
+      ctx.moveTo(x - 16, y + 12);
+      ctx.lineTo(x - 2, y - 20);
+      ctx.lineTo(x + 2, y - 20);
+      ctx.lineTo(x + 16, y + 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#dfe6f2";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y - 22, 26, 0, Math.PI * 2);
+      ctx.stroke();
+      for (let i = 0; i < 6; i += 1) {
+        const a = time * 0.8 + (i / 6) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 22);
+        ctx.lineTo(x + Math.cos(a) * 26, y - 22 + Math.sin(a) * 26);
+        ctx.stroke();
+        ctx.fillStyle = FLAGS[i % FLAGS.length];
+        roundRect(
+          ctx,
+          x + Math.cos(a) * 26 - 5,
+          y - 22 + Math.sin(a) * 26 - 2,
+          10,
+          9,
+          3,
+        );
+        ctx.fill();
+      }
+      ctx.fillStyle = "#dfe6f2";
+      ctx.beginPath();
+      ctx.arc(x, y - 22, 4, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
+    /* ---------- メルヘンの丘 ---------- */
+    case "carousel": {
+      ctx.fillStyle = "#6a5a86";
+      roundRect(ctx, x - 30, y - 2, 60, 16, 8);
+      ctx.fill();
+      ctx.fillStyle = "#e8dcf6";
+      ctx.fillRect(x - 2, y - 40, 4, 40);
+      const horse = (a: number, i: number) => {
+        const px = x + Math.cos(a) * 22;
+        const py = y + 2 + Math.sin(a) * 6;
+        ctx.fillStyle = "#f6e7cf";
+        ctx.fillRect(px - 1.4, py - 24, 2.8, 24);
+        const lift = Math.sin(time * 4 + i) * 3;
+        ctx.fillStyle = "#fdf1f6";
+        ctx.beginPath();
+        ctx.ellipse(px, py - 16 + lift, 9, 5.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(px + 7, py - 22 + lift, 5, 3.4, -0.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#f0a6c0";
+        ctx.beginPath();
+        ctx.moveTo(px - 8, py - 20 + lift);
+        ctx.lineTo(px - 1, py - 22 + lift);
+        ctx.lineTo(px - 4, py - 13 + lift);
+        ctx.closePath();
+        ctx.fill();
+        rider(ctx, px, py - 20 + lift, "#6bd3ff", 0.75);
+      };
+      for (let i = 0; i < 3; i += 1) {
+        const a = time * 1.6 + (i / 3) * Math.PI * 2;
+        if (Math.sin(a) <= 0) horse(a, i);
+      }
+      for (let i = 0; i < 8; i += 1) {
+        ctx.fillStyle = i % 2 ? "#f06a8a" : "#fdf1f6";
+        ctx.beginPath();
+        ctx.moveTo(x, y - 52);
+        ctx.arc(
+          x,
+          y - 30,
+          30,
+          Math.PI + (i / 8) * Math.PI,
+          Math.PI + ((i + 1) / 8) * Math.PI,
+        );
+        ctx.closePath();
+        ctx.fill();
+      }
+      for (let i = 0; i < 3; i += 1) {
+        const a = time * 1.6 + (i / 3) * Math.PI * 2;
+        if (Math.sin(a) > 0) horse(a, i);
+      }
+      return;
+    }
+    case "balloonride": {
+      // ゆめの気球
+      const lift = Math.sin(time * 1.1) * 5;
+      ctx.fillStyle = "#4c6b45";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 8, 22, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(0, -lift);
+      const grad = ctx.createLinearGradient(x - 20, y - 50, x + 20, y - 20);
+      grad.addColorStop(0, "#ff9f68");
+      grad.addColorStop(0.5, "#ffd166");
+      grad.addColorStop(1, "#f06a8a");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 8);
+      ctx.bezierCurveTo(x - 26, y - 26, x - 22, y - 52, x, y - 52);
+      ctx.bezierCurveTo(x + 22, y - 52, x + 26, y - 26, x, y - 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.5)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 52);
+      ctx.lineTo(x, y - 8);
+      ctx.stroke();
+      ctx.strokeStyle = "#c8b48f";
+      ctx.beginPath();
+      ctx.moveTo(x - 7, y - 10);
+      ctx.lineTo(x - 7, y - 2);
+      ctx.moveTo(x + 7, y - 10);
+      ctx.lineTo(x + 7, y - 2);
+      ctx.stroke();
+      ctx.fillStyle = "#a9743f";
+      roundRect(ctx, x - 9, y - 2, 18, 11, 3);
+      ctx.fill();
+      rider(ctx, x, y - 4, "#7ee7a8", 0.7);
+      ctx.restore();
+      return;
+    }
+    case "castleride": {
+      // おとぎの城ツアー: 城の入口をトロッコが出入りする
+      ctx.fillStyle = "#cbb6e6";
+      roundRect(ctx, x - 28, y - 40, 56, 46, 4);
+      ctx.fill();
+      for (const tx of [x - 28, x + 28]) {
+        ctx.fillStyle = "#e6d9f7";
+        roundRect(ctx, tx - 7, y - 50, 14, 56, 3);
+        ctx.fill();
+        ctx.fillStyle = "#f06a8a";
+        ctx.beginPath();
+        ctx.moveTo(tx - 9, y - 50);
+        ctx.lineTo(tx, y - 62);
+        ctx.lineTo(tx + 9, y - 50);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = "#3a2f45";
+      ctx.beginPath();
+      ctx.moveTo(x - 12, y + 6);
+      ctx.lineTo(x - 12, y - 12);
+      ctx.arc(x, y - 12, 12, Math.PI, 0);
+      ctx.lineTo(x + 12, y + 6);
+      ctx.closePath();
+      ctx.fill();
+      const t = (time * 0.5) % 1;
+      const cxp = x - 26 + t * 52;
+      ctx.globalAlpha = Math.abs(cxp - x) < 12 ? 0.25 : 1;
+      ctx.fillStyle = "#f0a6c0";
+      roundRect(ctx, cxp - 9, y - 2, 18, 10, 3);
+      ctx.fill();
+      rider(ctx, cxp, y - 2, "#ffd166", 0.7);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "rgba(255,255,255,0.3)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 30, y + 9);
+      ctx.lineTo(x + 30, y + 9);
+      ctx.stroke();
+      return;
+    }
+
+    /* ---------- 雪の国 ---------- */
+    case "sled": {
+      ctx.strokeStyle = "#cfe4f5";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x - 34, y + 6);
+      ctx.quadraticCurveTo(x, y - 44, x + 34, y + 6);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.lineWidth = 2;
+      const curveY = (t: number) =>
+        (1 - t) * (1 - t) * (y + 6) + 2 * (1 - t) * t * (y - 44) + t * t * (y + 6);
+      for (let i = 0; i <= 6; i += 1) {
+        const t = i / 6;
+        const px = x - 34 + t * 68;
+        ctx.beginPath();
+        ctx.moveTo(px, curveY(t));
+        ctx.lineTo(px, y + 12);
+        ctx.stroke();
+      }
+      const t = (time * 0.5) % 1;
+      const cxp = x - 34 + t * 68;
+      const cyp = curveY(t);
+      ctx.fillStyle = "#e8574a";
+      roundRect(ctx, cxp - 10, cyp - 12, 20, 11, 4);
+      ctx.fill();
+      rider(ctx, cxp, cyp - 12, "#f4f1ea", 0.75);
+      return;
+    }
+    case "rink": {
+      // スケートリンク: 氷の楕円をすべる
+      ctx.fillStyle = "#cfe8f7";
+      ctx.beginPath();
+      ctx.ellipse(x, y - 4, 32, 18, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.75)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(x, y - 4, 22, 11, 0.3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(x - 6, y - 6, 13, 7, -0.4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "#8fb8d6";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(x, y - 4, 32, 18, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      const a = time * 1.6;
+      const sx = x + Math.cos(a) * 20;
+      const sy = y - 6 + Math.sin(a) * 9;
+      rider(ctx, sx, sy, "#a78bfa", 1.1);
+      const b = a + 2.4;
+      rider(ctx, x + Math.cos(b) * 14, y - 4 + Math.sin(b) * 7, "#6bd3ff", 0.95);
+      return;
+    }
+    case "penguin": {
+      // ペンギンボート: 水路をボートが進む
+      ctx.fillStyle = "#3f6b90";
+      roundRect(ctx, x - 32, y - 12, 64, 26, 10);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 3; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x - 26, y - 6 + i * 8);
+        ctx.lineTo(x + 26, y - 6 + i * 8 + Math.sin(time * 2 + i) * 2);
+        ctx.stroke();
+      }
+      const t = (time * 0.4) % 1;
+      const bx = x - 24 + t * 48;
+      const by = y + 2 + Math.sin(time * 3) * 1.5;
+      ctx.fillStyle = "#1f2a36";
+      ctx.beginPath();
+      ctx.ellipse(bx, by - 6, 15, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f4f9ff";
+      ctx.beginPath();
+      ctx.ellipse(bx + 2, by - 5, 9, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#1f2a36";
+      ctx.beginPath();
+      ctx.arc(bx - 12, by - 13, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ffd166";
+      ctx.beginPath();
+      ctx.moveTo(bx - 19, by - 12);
+      ctx.lineTo(bx - 26, by - 10);
+      ctx.lineTo(bx - 19, by - 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#f4f9ff";
+      ctx.beginPath();
+      ctx.arc(bx - 13, by - 15, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      rider(ctx, bx + 6, by - 10, "#e8574a", 0.7);
+      return;
+    }
+
+    /* ---------- ウェスタンの町 ---------- */
+    case "showdown": {
+      // ガンマンショー: 舞台の上で早撃ち
+      ctx.fillStyle = "#7a5433";
+      roundRect(ctx, x - 32, y - 6, 64, 20, 3);
+      ctx.fill();
+      ctx.fillStyle = "#5d3f26";
+      ctx.fillRect(x - 32, y - 6, 64, 4);
+      ctx.fillStyle = "#8a6a42";
+      ctx.fillRect(x - 28, y - 40, 5, 34);
+      ctx.fillRect(x + 23, y - 40, 5, 34);
+      ctx.fillStyle = "#c2402f";
+      roundRect(ctx, x - 32, y - 50, 64, 12, 3);
+      ctx.fill();
+      ctx.fillStyle = "#f2dcae";
+      ctx.font = SMALL;
+      ctx.fillText("SHOW", x, y - 44);
+      ctx.font = FONT;
+      const step = Math.sin(time * 2.4) * 3;
+      rider(ctx, x - 12 + step, y - 12, "#3b4a6b", 1.15);
+      rider(ctx, x + 12 - step, y - 12, "#8a4a2f", 1.15);
+      const flash = Math.max(0, Math.sin(time * 2.4 * 2));
+      ctx.fillStyle = `rgba(255,220,120,${flash * 0.9})`;
+      ctx.beginPath();
+      ctx.arc(x, y - 16, 4 * flash + 1, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    case "wagon": {
+      // 幌馬車ライド
+      const roll = time * 2;
+      ctx.fillStyle = "#8a6440";
+      roundRect(ctx, x - 20, y - 12, 40, 16, 3);
+      ctx.fill();
+      ctx.fillStyle = "#f2e3c6";
+      ctx.beginPath();
+      ctx.moveTo(x - 20, y - 12);
+      ctx.quadraticCurveTo(x, y - 44, x + 20, y - 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(120,90,60,0.5)";
+      ctx.lineWidth = 1.4;
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x + i * 7, y - 12);
+        ctx.lineTo(x + i * 7, y - 34 + Math.abs(i) * 5);
+        ctx.stroke();
+      }
+      for (const wx of [x - 13, x + 13]) {
+        ctx.strokeStyle = "#5d3f26";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(wx, y + 6, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        for (let i = 0; i < 4; i += 1) {
+          const a = roll + (i / 4) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(wx, y + 6);
+          ctx.lineTo(wx + Math.cos(a) * 8, y + 6 + Math.sin(a) * 8);
+          ctx.stroke();
+        }
+      }
+      // 馬
+      ctx.fillStyle = "#a9743f";
+      ctx.beginPath();
+      ctx.ellipse(x + 30, y - 8, 12, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(x + 39, y - 17, 6, 4, -0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#7a5433";
+      ctx.fillRect(x + 26, y - 3, 3, 9 + Math.sin(roll) * 2);
+      ctx.fillRect(x + 34, y - 3, 3, 9 - Math.sin(roll) * 2);
+      return;
+    }
+    case "minecart": {
+      // 鉱山トロッコ
+      ctx.fillStyle = "#4a3a2a";
+      ctx.beginPath();
+      ctx.moveTo(x - 34, y + 12);
+      ctx.lineTo(x - 34, y - 12);
+      ctx.arc(x - 16, y - 12, 18, Math.PI, 0);
+      ctx.lineTo(x + 2, y + 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#8a7a5a";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 34, y + 8);
+      ctx.lineTo(x + 34, y + 8);
+      ctx.moveTo(x - 34, y + 13);
+      ctx.lineTo(x + 34, y + 13);
+      ctx.stroke();
+      for (let i = 0; i < 6; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x - 30 + i * 12, y + 6);
+        ctx.lineTo(x - 30 + i * 12, y + 15);
+        ctx.stroke();
+      }
+      const t = (time * 0.6) % 1;
+      const cxp = x - 30 + t * 58;
+      ctx.globalAlpha = cxp < x - 6 ? 0.4 : 1;
+      ctx.fillStyle = "#6b7a8c";
+      roundRect(ctx, cxp - 11, y - 6, 22, 14, 3);
+      ctx.fill();
+      ctx.fillStyle = "#2b2b33";
+      ctx.beginPath();
+      ctx.arc(cxp - 6, y + 9, 3.4, 0, Math.PI * 2);
+      ctx.arc(cxp + 6, y + 9, 3.4, 0, Math.PI * 2);
+      ctx.fill();
+      rider(ctx, cxp, y - 6, "#ffd166", 0.75);
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    /* ---------- 海賊の入江 ---------- */
+    case "viking": {
+      const swing = Math.sin(time * 1.4) * 0.5;
+      ctx.strokeStyle = "#7d8794";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x - 24, y + 14);
+      ctx.lineTo(x, y - 44);
+      ctx.lineTo(x + 24, y + 14);
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(x, y - 44);
+      ctx.rotate(swing);
+      ctx.strokeStyle = "#a8b0bb";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, 40);
+      ctx.stroke();
+      ctx.fillStyle = "#6b4a2f";
+      ctx.beginPath();
+      ctx.moveTo(-22, 40);
+      ctx.lineTo(22, 40);
+      ctx.lineTo(15, 54);
+      ctx.lineTo(-15, 54);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#ffd166";
+      ctx.fillRect(-22, 40, 44, 3);
+      rider(ctx, -8, 40, "#e8574a", 0.8);
+      rider(ctx, 8, 40, "#6bd3ff", 0.8);
+      ctx.restore();
+      return;
+    }
+    case "cannon": {
+      // 大砲チャレンジ
+      ctx.fillStyle = "#4a3a2a";
+      roundRect(ctx, x - 22, y - 2, 40, 12, 4);
+      ctx.fill();
+      ctx.fillStyle = "#2b2b33";
+      ctx.beginPath();
+      ctx.arc(x - 12, y + 10, 6, 0, Math.PI * 2);
+      ctx.arc(x + 8, y + 10, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(x - 4, y - 6);
+      ctx.rotate(-0.5 + Math.sin(time * 1.2) * 0.06);
+      ctx.fillStyle = "#5a6270";
+      roundRect(ctx, -4, -8, 38, 16, 7);
+      ctx.fill();
+      ctx.fillStyle = "#2f353c";
+      ctx.beginPath();
+      ctx.ellipse(33, 0, 4, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      const puff = (time * 0.8) % 1;
+      if (puff < 0.35) {
+        ctx.fillStyle = `rgba(255,255,255,${0.5 - puff})`;
+        ctx.beginPath();
+        ctx.arc(x + 24 + puff * 20, y - 22 - puff * 12, 5 + puff * 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // 的
+      ctx.fillStyle = "#f4f1ea";
+      ctx.beginPath();
+      ctx.arc(x - 26, y - 26, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#e8574a";
+      ctx.beginPath();
+      ctx.arc(x - 26, y - 26, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f4f1ea";
+      ctx.beginPath();
+      ctx.arc(x - 26, y - 26, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    case "raft": {
+      // 急流いかだ下り
+      ctx.fillStyle = "#2f6b7a";
+      roundRect(ctx, x - 32, y - 16, 64, 30, 12);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.4)";
+      ctx.lineWidth = 1.8;
+      for (let i = 0; i < 3; i += 1) {
+        ctx.beginPath();
+        for (let px = x - 28; px <= x + 28; px += 6) {
+          const py = y - 8 + i * 9 + Math.sin(px * 0.25 + time * 4 + i) * 2.2;
+          if (px === x - 28) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      const spin = time * 1.2;
+      const rx = x + Math.cos(spin) * 8;
+      const ry = y - 2 + Math.sin(spin) * 4;
+      ctx.fillStyle = "#c8a165";
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, 15, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#8a6440";
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, 10, 5.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      rider(ctx, rx - 5, ry - 2, "#7ee7a8", 0.7);
+      rider(ctx, rx + 5, ry - 2, "#ffd166", 0.7);
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      for (let i = 0; i < 5; i += 1) {
+        const a = spin * 2 + i;
+        ctx.beginPath();
+        ctx.arc(rx + Math.cos(a) * 18, ry + Math.sin(a) * 9, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return;
+    }
+
+    /* ---------- 宇宙ステーション ---------- */
+    case "rocket": {
+      const lift = Math.abs(Math.sin(time * 1.2)) * 6;
+      ctx.fillStyle = "#4a5170";
+      roundRect(ctx, x - 26, y + 2, 52, 12, 5);
+      ctx.fill();
+      ctx.strokeStyle = "#8f9ad6";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 20, y + 2);
+      ctx.lineTo(x - 20, y - 34);
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(0, -lift);
+      ctx.fillStyle = "#e9edff";
+      ctx.beginPath();
+      ctx.moveTo(x, y - 48);
+      ctx.quadraticCurveTo(x + 13, y - 22, x + 11, y + 2);
+      ctx.lineTo(x - 11, y + 2);
+      ctx.quadraticCurveTo(x - 13, y - 22, x, y - 48);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#e8574a";
+      ctx.beginPath();
+      ctx.moveTo(x - 11, y - 6);
+      ctx.lineTo(x - 22, y + 6);
+      ctx.lineTo(x - 11, y + 2);
+      ctx.closePath();
+      ctx.moveTo(x + 11, y - 6);
+      ctx.lineTo(x + 22, y + 6);
+      ctx.lineTo(x + 11, y + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#6bd3ff";
+      ctx.beginPath();
+      ctx.arc(x, y - 26, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,180,80,${0.55 + (lift / 6) * 0.35})`;
+      ctx.beginPath();
+      ctx.moveTo(x - 7, y + 2);
+      ctx.lineTo(x, y + 14 + lift);
+      ctx.lineTo(x + 7, y + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+    case "spinner": {
+      // 無重力スピナー: 中心の柱に腕がぶら下がって回る
+      ctx.fillStyle = "#3b4260";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 8, 28, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#8f9ad6";
+      roundRect(ctx, x - 4, y - 48, 8, 56, 3);
+      ctx.fill();
+      ctx.fillStyle = "#c6cdf5";
+      ctx.beginPath();
+      ctx.moveTo(x - 18, y - 44);
+      ctx.lineTo(x + 18, y - 44);
+      ctx.lineTo(x + 10, y - 52);
+      ctx.lineTo(x - 10, y - 52);
+      ctx.closePath();
+      ctx.fill();
+      for (let i = 0; i < 4; i += 1) {
+        const a = time * 2.2 + (i / 4) * Math.PI * 2;
+        const px = x + Math.cos(a) * 24;
+        const py = y - 18 + Math.sin(a) * 8;
+        ctx.strokeStyle = "rgba(200,210,255,0.7)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 42);
+        ctx.lineTo(px, py - 8);
+        ctx.stroke();
+        ctx.fillStyle = i % 2 ? "#6bd3ff" : "#a78bfa";
+        roundRect(ctx, px - 7, py - 8, 14, 12, 5);
+        ctx.fill();
+        rider(ctx, px, py - 2, "#f4f1ea", 0.6);
+      }
+      return;
+    }
+    case "theater": {
+      // 宇宙シアター: ドームに星が流れる
+      ctx.fillStyle = "#2a2f4d";
+      ctx.beginPath();
+      ctx.arc(x, y + 2, 30, Math.PI, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y + 2, 26, Math.PI, 0);
+      ctx.closePath();
+      ctx.clip();
+      ctx.fillStyle = "#141a33";
+      ctx.fillRect(x - 26, y - 26, 52, 28);
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      for (let i = 0; i < 14; i += 1) {
+        const px = x - 26 + ((i * 37 + time * 30) % 52);
+        const py = y - 24 + ((i * 13) % 24);
+        ctx.fillRect(px, py, 1.6, 1.6);
+      }
+      ctx.fillStyle = "#ffd166";
+      ctx.beginPath();
+      ctx.arc(x + 12, y - 16, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = "#8f9ad6";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y + 2, 30, Math.PI, 0);
+      ctx.stroke();
+      ctx.fillStyle = "#4a5170";
+      roundRect(ctx, x - 32, y + 2, 64, 12, 4);
+      ctx.fill();
+      ctx.fillStyle = "#141a33";
+      roundRect(ctx, x - 8, y + 2, 16, 12, 3);
+      ctx.fill();
+      return;
+    }
+
+    /* ---------- 恐竜の谷 ---------- */
+    case "dino": {
+      const bob = Math.sin(time * 1.6) * 3;
+      ctx.fillStyle = "#5f7a4a";
+      ctx.beginPath();
+      ctx.ellipse(x, y - 4 + bob, 26, 15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#4f6a3c";
+      ctx.beginPath();
+      ctx.moveTo(x + 20, y - 6 + bob);
+      ctx.quadraticCurveTo(x + 44, y - 10 + bob, x + 40, y + 8 + bob);
+      ctx.quadraticCurveTo(x + 30, y + 2 + bob, x + 18, y + 4 + bob);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#5f7a4a";
+      ctx.beginPath();
+      ctx.moveTo(x - 14, y - 10 + bob);
+      ctx.quadraticCurveTo(x - 30, y - 34 + bob, x - 18, y - 42 + bob);
+      ctx.quadraticCurveTo(x - 8, y - 30 + bob, x - 6, y - 12 + bob);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(x - 20, y - 44 + bob, 11, 8, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f4f1ea";
+      ctx.beginPath();
+      ctx.arc(x - 24, y - 46 + bob, 2, 0, Math.PI * 2);
+      ctx.fill();
+      for (let i = 0; i < 4; i += 1) {
+        ctx.fillStyle = "#c9a94a";
+        ctx.beginPath();
+        ctx.moveTo(x - 10 + i * 9, y - 17 + bob);
+        ctx.lineTo(x - 6 + i * 9, y - 26 + bob);
+        ctx.lineTo(x - 2 + i * 9, y - 17 + bob);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = "#7a4a2f";
+      roundRect(ctx, x - 4, y - 20 + bob, 20, 8, 3);
+      ctx.fill();
+      rider(ctx, x + 6, y - 20 + bob, "#e8574a", 0.8);
+      return;
+    }
+    case "dig": {
+      // 化石発掘場: 砂場と骨とスコップ
+      ctx.fillStyle = "#c8a165";
+      ctx.beginPath();
+      ctx.ellipse(x, y - 2, 32, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#b08b4f";
+      ctx.beginPath();
+      ctx.ellipse(x - 6, y, 18, 8, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#efe8cf";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x - 16, y - 4);
+      ctx.lineTo(x + 4, y - 10);
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x - 14 + i * 6, y - 4 - i * 1.4);
+        ctx.lineTo(x - 12 + i * 6, y - 12 - i * 1.4);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#efe8cf";
+      ctx.beginPath();
+      ctx.arc(x + 10, y - 12, 5, 0, Math.PI * 2);
+      ctx.fill();
+      // スコップ
+      const swing = Math.sin(time * 2.4) * 0.3;
+      ctx.save();
+      ctx.translate(x + 22, y - 16);
+      ctx.rotate(-0.6 + swing);
+      ctx.fillStyle = "#8a6440";
+      ctx.fillRect(-1.5, -18, 3, 20);
+      ctx.fillStyle = "#9aa4b0";
+      roundRect(ctx, -5, 2, 10, 10, 3);
+      ctx.fill();
+      ctx.restore();
+      // 砂ぼこり
+      const puff = (time * 1.2) % 1;
+      ctx.fillStyle = `rgba(226,200,150,${0.5 - puff * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(x + 18, y - 6 - puff * 10, 3 + puff * 5, 0, Math.PI * 2);
+      ctx.fill();
+      rider(ctx, x - 20, y - 10, "#6bd3ff", 0.9);
+      return;
+    }
+    case "ptera": {
+      // 翼竜フライト: ぶら下がって旋回
+      ctx.fillStyle = "#4a5a3a";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 8, 26, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#8a7a5a";
+      roundRect(ctx, x - 3, y - 50, 6, 58, 3);
+      ctx.fill();
+      ctx.fillStyle = "#6f7a5a";
+      ctx.beginPath();
+      ctx.moveTo(x - 16, y - 48);
+      ctx.lineTo(x + 16, y - 48);
+      ctx.lineTo(x + 8, y - 54);
+      ctx.lineTo(x - 8, y - 54);
+      ctx.closePath();
+      ctx.fill();
+      for (let i = 0; i < 2; i += 1) {
+        const a = time * 1.8 + i * Math.PI;
+        const px = x + Math.cos(a) * 26;
+        const py = y - 24 + Math.sin(a) * 9;
+        const flap = Math.sin(time * 6 + i) * 5;
+        ctx.strokeStyle = "rgba(255,255,255,0.35)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 46);
+        ctx.lineTo(px, py - 6);
+        ctx.stroke();
+        ctx.fillStyle = i ? "#7a6bb5" : "#4f9e83";
+        ctx.beginPath();
+        ctx.moveTo(px - 20, py - 4 - flap);
+        ctx.quadraticCurveTo(px, py - 12, px + 20, py - 4 + flap);
+        ctx.quadraticCurveTo(px, py + 4, px - 20, py - 4 - flap);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(px, py - 2, 8, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(px + 6, py - 4);
+        ctx.lineTo(px + 18, py - 8);
+        ctx.lineTo(px + 6, py);
+        ctx.closePath();
+        ctx.fill();
+        rider(ctx, px, py + 4, "#ffd166", 0.65);
+      }
+      return;
+    }
+    default: {
+      // 予備のベンチ
+      ctx.fillStyle = "#6b7a8c";
+      ctx.fillRect(x - 24, y + 2, 5, 12);
+      ctx.fillRect(x + 19, y + 2, 5, 12);
+      ctx.fillStyle = "#b8834e";
+      roundRect(ctx, x - 28, y - 6, 56, 9, 4);
+      ctx.fill();
+      roundRect(ctx, x - 28, y - 22, 56, 8, 4);
+      ctx.fill();
+      return;
+    }
   }
 };
 
@@ -280,6 +1711,88 @@ const drawEquip = (
   y: number,
   time: number,
 ) => {
+  const park = stage().id === "park";
+  if (id === "ticket" && park) {
+    // 自動改札: 二枚の羽根が開く
+    ctx.fillStyle = "#3d4c68";
+    roundRect(ctx, x - 24, y - 22, 18, 38, 5);
+    ctx.fill();
+    roundRect(ctx, x + 6, y - 22, 18, 38, 5);
+    ctx.fill();
+    ctx.fillStyle = "#6bd3ff";
+    roundRect(ctx, x - 22, y - 18, 14, 5, 2);
+    ctx.fill();
+    roundRect(ctx, x + 8, y - 18, 14, 5, 2);
+    ctx.fill();
+    const open = (Math.sin(time * 2) + 1) / 2;
+    ctx.fillStyle = "rgba(180,230,255,0.7)";
+    roundRect(ctx, x - 6, y - 10, 6 * (1 - open) + 0.5, 20, 2);
+    ctx.fill();
+    roundRect(ctx, x + 6 - (6 * (1 - open) + 0.5), y - 10, 6 * (1 - open) + 0.5, 20, 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(126,231,168,${0.5 + open * 0.4})`;
+    ctx.beginPath();
+    ctx.arc(x - 15, y - 26, 3, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  if (id === "sign" && park) {
+    // 園内アナウンス: スピーカー塔
+    ctx.fillStyle = "#4a5568";
+    ctx.fillRect(x - 3, y - 20, 6, 34);
+    ctx.fillStyle = "#8f9fc7";
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(x, y - 24);
+      ctx.lineTo(x + dir * 18, y - 32);
+      ctx.lineTo(x + dir * 18, y - 12);
+      ctx.lineTo(x, y - 20);
+      ctx.closePath();
+      ctx.fill();
+    }
+    const wave = 0.3 + Math.abs(Math.sin(time * 3)) * 0.5;
+    ctx.strokeStyle = `rgba(255,209,102,${wave})`;
+    ctx.lineWidth = 1.6;
+    for (let i = 1; i <= 2; i += 1) {
+      for (const dir of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(x + dir * 18, y - 22, 6 * i, dir > 0 ? -0.8 : Math.PI - 0.8, dir > 0 ? 0.8 : Math.PI + 0.8);
+        ctx.stroke();
+      }
+    }
+    return;
+  }
+  if (id === "noodle" && park) {
+    // 高速印刷機: チケットが吐き出される
+    ctx.fillStyle = "#3f4a5a";
+    roundRect(ctx, x - 26, y - 22, 52, 36, 6);
+    ctx.fill();
+    ctx.fillStyle = "#6bd3ff";
+    roundRect(ctx, x - 18, y - 16, 36, 10, 3);
+    ctx.fill();
+    ctx.fillStyle = "#151c25";
+    roundRect(ctx, x - 14, y + 2, 28, 4, 2);
+    ctx.fill();
+    for (let i = 0; i < 3; i += 1) {
+      const t = (time * 0.8 + i * 0.33) % 1;
+      ticket(ctx, x, y + 8 + t * 14, 0.8);
+    }
+    return;
+  }
+  if (id === "fridge" && park) {
+    // チケット倉庫: 棚に束が並ぶ
+    ctx.fillStyle = "#6b5a45";
+    roundRect(ctx, x - 24, y - 34, 48, 50, 5);
+    ctx.fill();
+    ctx.fillStyle = "#4a3d2e";
+    for (let r = 0; r < 3; r += 1) ctx.fillRect(x - 24, y - 20 + r * 12, 48, 3);
+    for (let r = 0; r < 3; r += 1) {
+      for (let c = 0; c < 3; c += 1) {
+        ticket(ctx, x - 14 + c * 14, y - 26 + r * 12, 0.7);
+      }
+    }
+    return;
+  }
   if (id === "noodle") {
     // 製麺機: 銀色の台に2本のローラー、麺が垂れている
     ctx.fillStyle = "#4d5661";
@@ -543,8 +2056,10 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
+      const isPark = stage().id === "park";
+
       /* --- 床 --- */
-      ctx.fillStyle = "#191512";
+      ctx.fillStyle = isPark ? "#101826" : "#191512";
       ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
       for (const area of openAreas(state)) {
         const { rect, palette } = area;
@@ -555,24 +2070,36 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.fillRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
         drawProps(ctx, area, time);
       }
-      ctx.strokeStyle = "rgba(0,0,0,0.16)";
-      ctx.lineWidth = 1;
-      for (let y = KITCHEN.bottom + 20; y < worldH; y += 34) {
-        ctx.beginPath();
-        ctx.moveTo(box.x0, y);
-        ctx.lineTo(box.x1, y);
-        ctx.stroke();
+      if (isPark) {
+        // 園内の遊歩道（区画をつなぐ石畳）
+        for (const area of openAreas(state)) {
+          const { rect } = area;
+          ctx.fillStyle = "rgba(236,226,206,0.13)";
+          ctx.fillRect(rect.x0, rect.y1 - 34, rect.x1 - rect.x0, 26);
+          ctx.fillStyle = "rgba(255,255,255,0.07)";
+          for (let x = rect.x0 + 4; x < rect.x1 - 8; x += 26) {
+            ctx.fillRect(x, rect.y1 - 30, 18, 18);
+          }
+        }
+      } else {
+        ctx.strokeStyle = "rgba(0,0,0,0.16)";
+        ctx.lineWidth = 1;
+        for (let y = KITCHEN.bottom + 20; y < worldH; y += 34) {
+          ctx.beginPath();
+          ctx.moveTo(box.x0, y);
+          ctx.lineTo(box.x1, y);
+          ctx.stroke();
+        }
       }
-
-      const isPark = stage().id === "park";
 
       /* --- 作業場（歩いて入れる） --- */
       for (const area of openAreas(state)) {
         if (area.rect.y0 !== 0) continue;
         const { x0, x1 } = area.rect;
-        ctx.fillStyle = "#2b241d";
+        const mid = (x0 + x1) / 2;
+        ctx.fillStyle = isPark ? "#414f6b" : "#2b241d";
         ctx.fillRect(x0, 0, x1 - x0, KITCHEN.bottom);
-        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        ctx.fillStyle = isPark ? "rgba(255,255,255,0.055)" : "rgba(255,255,255,0.03)";
         for (let y = KITCHEN.top; y < KITCHEN.bottom; y += 22) {
           for (let x = x0; x < x1; x += 22) {
             if (((x + y) / 22) % 2 === 0) ctx.fillRect(x, y, 22, 22);
@@ -585,29 +2112,71 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.lineTo(x1, KITCHEN.bottom);
         ctx.stroke();
 
-        // 看板（ラーメン屋はのれん、パークはゲート）
-        ctx.fillStyle = isPark
-          ? "#2f3a52"
-          : area.price === 0
-            ? "#c2402f"
-            : "#8a5a3c";
-        roundRect(ctx, x0 + 10, 4, x1 - x0 - 20, 30, isPark ? 14 : 6);
-        ctx.fill();
-        ctx.fillStyle = isPark ? "#ffd166" : "#f6e7cf";
-        ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
-        ctx.fillText(
-          isPark
-            ? area.price === 0
+        if (isPark) {
+          // 入園ゲート: 二本の塔と電飾つきのアーチ
+          for (const tx of [x0 + 24, x1 - 24]) {
+            ctx.fillStyle = "#5b6a8f";
+            roundRect(ctx, tx - 13, 18, 26, 44, 5);
+            ctx.fill();
+            ctx.fillStyle = "#8f9fc7";
+            roundRect(ctx, tx - 15, 16, 30, 8, 4);
+            ctx.fill();
+            ctx.fillStyle = "#e8574a";
+            ctx.beginPath();
+            ctx.moveTo(tx - 15, 16);
+            ctx.lineTo(tx, 1);
+            ctx.lineTo(tx + 15, 16);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.fillStyle = "#2f3a52";
+          roundRect(ctx, x0 + 24, 18, x1 - x0 - 48, 30, 14);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,209,102,0.6)";
+          ctx.lineWidth = 1.5;
+          roundRect(ctx, x0 + 24, 18, x1 - x0 - 48, 30, 14);
+          ctx.stroke();
+          ctx.fillStyle = "#ffd166";
+          ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+          ctx.fillText(
+            area.price === 0
               ? "D R E A M   P A R K"
-              : area.label.replace("をつくる", "")
-            : area.price === 0
-              ? "ら ー め ん"
-              : "製 麺 所",
-          (x0 + x1) / 2,
-          20,
-        );
-        ctx.font = FONT;
-        if (!isPark) {
+              : area.label.replace("をつくる", ""),
+            mid,
+            33,
+          );
+          ctx.font = FONT;
+          // 電球
+          const bulbs = Math.floor((x1 - x0 - 60) / 18);
+          for (let i = 0; i <= bulbs; i += 1) {
+            const bx = x0 + 30 + i * 18;
+            const on = 0.35 + 0.55 * Math.abs(Math.sin(time * 3 + i * 0.7));
+            ctx.fillStyle = `rgba(255,225,150,${on})`;
+            ctx.beginPath();
+            ctx.arc(bx, 44, 2.4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          // 広場の万国旗と花壇
+          bunting(ctx, x0 + 8, x1 - 8, 108, time * 2);
+          for (const fx of [x0 + 26, x1 - 26]) {
+            ctx.fillStyle = "#4c6b45";
+            roundRect(ctx, fx - 16, KITCHEN.bottom - 22, 32, 16, 5);
+            ctx.fill();
+            for (let i = 0; i < 4; i += 1) {
+              ctx.fillStyle = FLAGS[i % FLAGS.length];
+              ctx.beginPath();
+              ctx.arc(fx - 10 + i * 7, KITCHEN.bottom - 16, 2.6, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        } else {
+          ctx.fillStyle = area.price === 0 ? "#c2402f" : "#8a5a3c";
+          roundRect(ctx, x0 + 10, 4, x1 - x0 - 20, 30, 6);
+          ctx.fill();
+          ctx.fillStyle = "#f6e7cf";
+          ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+          ctx.fillText(area.price === 0 ? "ら ー め ん" : "製 麺 所", mid, 20);
+          ctx.font = FONT;
           ctx.fillStyle = "rgba(0,0,0,0.25)";
           for (let i = 1; i < 5; i += 1) {
             ctx.fillRect(x0 + 10 + ((x1 - x0 - 20) / 5) * i - 1, 4, 2, 30);
@@ -677,33 +2246,57 @@ export default function Shop({ onSample, paused }: Props) {
 
       for (const seat of openSeats(state)) {
         if (isPark) {
-          // アトラクション（区画の色に合わせた乗り物）
-          const area = openAreas(state).find((item) => item.id === `area-${seat.area}`);
+          // アトラクションと、その周り（乗り場・柵・看板）
+          const area = openAreas(state).find(
+            (item) => item.id === `area-${seat.area}`,
+          );
           const tint = area?.palette.floor ?? "#5b6b8c";
-          ctx.fillStyle = "rgba(0,0,0,0.25)";
-          ctx.beginPath();
-          ctx.ellipse(seat.pos.x, seat.pos.y + 16, 34, 12, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = "#2a2f3c";
-          roundRect(ctx, seat.pos.x - 32, seat.pos.y - 6, 64, 20, 8);
+          const { x, y } = seat.pos;
+
+          // 乗り場の床（テーマ色のタイル）
+          ctx.fillStyle = "rgba(0,0,0,0.18)";
+          roundRect(ctx, x - 44, y - 54, 88, 76, 12);
           ctx.fill();
           ctx.fillStyle = tint;
-          roundRect(ctx, seat.pos.x - 26, seat.pos.y - 34, 52, 30, 8);
+          ctx.globalAlpha = 0.35;
+          roundRect(ctx, x - 42, y - 52, 84, 72, 11);
           ctx.fill();
-          ctx.fillStyle = "rgba(255,255,255,0.35)";
-          roundRect(ctx, seat.pos.x - 26, seat.pos.y - 34, 52, 8, 4);
-          ctx.fill();
-          ctx.strokeStyle = "#ffd166";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(
-            seat.pos.x,
-            seat.pos.y - 20,
-            13,
-            time * 1.5,
-            time * 1.5 + Math.PI * 1.4,
-          );
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = "rgba(255,255,255,0.14)";
+          ctx.lineWidth = 1;
+          roundRect(ctx, x - 42, y - 52, 84, 72, 11);
           ctx.stroke();
+
+          // 待機列の柵
+          ctx.strokeStyle = "rgba(255,255,255,0.22)";
+          ctx.lineWidth = 2;
+          for (const side of [-1, 1]) {
+            ctx.beginPath();
+            ctx.moveTo(x + side * 42, y + 20);
+            ctx.lineTo(x + side * 42, y - 2);
+            ctx.stroke();
+            for (let i = 0; i < 3; i += 1) {
+              ctx.fillStyle = "rgba(255,255,255,0.3)";
+              ctx.beginPath();
+              ctx.arc(x + side * 42, y + 20 - i * 11, 2, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+
+          drawRide(ctx, seat.art ?? "bench", x, y, time);
+
+          // 乗り物の名前を出す小さな看板
+          ctx.fillStyle = "rgba(0,0,0,0.45)";
+          roundRect(ctx, x - 34, y + 18, 68, 14, 7);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,209,102,0.5)";
+          ctx.lineWidth = 1;
+          roundRect(ctx, x - 34, y + 18, 68, 14, 7);
+          ctx.stroke();
+          ctx.font = SMALL;
+          ctx.fillStyle = "#ffe6a8";
+          ctx.fillText(seat.label, x, y + 25);
+          ctx.font = FONT;
         } else if (seat.area === 0) {
           ctx.fillStyle = "#b0463a";
           ctx.beginPath();
@@ -867,11 +2460,11 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
-      /* --- 店の外（歩道と道路） --- */
+      /* --- 店の外（歩道と道路 / パークは並木道） --- */
       const top = outsideTop(state);
-      ctx.fillStyle = "#332e28";
+      ctx.fillStyle = isPark ? "#4a5568" : "#332e28";
       ctx.fillRect(box.x0, top, box.x1 - box.x0, 44);
-      ctx.fillStyle = "#1c1b1d";
+      ctx.fillStyle = isPark ? "#2c4433" : "#1c1b1d";
       ctx.fillRect(box.x0, top + 44, box.x1 - box.x0, OUTSIDE_DEPTH - 44);
       ctx.strokeStyle = "rgba(246,231,207,0.22)";
       ctx.lineWidth = 2;
@@ -879,17 +2472,40 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.moveTo(box.x0, top + 44);
       ctx.lineTo(box.x1, top + 44);
       ctx.stroke();
-      ctx.strokeStyle = "rgba(246,231,207,0.25)";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([16, 14]);
-      ctx.beginPath();
-      ctx.moveTo(box.x0, top + 92);
-      ctx.lineTo(box.x1, top + 92);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      if (isPark) {
+        // 芝生の並木道
+        for (let x = box.x0 + 30; x < box.x1; x += 96) {
+          const ty = top + 96;
+          ctx.fillStyle = "rgba(0,0,0,0.25)";
+          ctx.beginPath();
+          ctx.ellipse(x, ty + 2, 14, 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#6b5433";
+          ctx.fillRect(x - 3, ty - 22, 6, 22);
+          ctx.fillStyle = "#4f7a44";
+          ctx.beginPath();
+          ctx.arc(x, ty - 30, 15, 0, Math.PI * 2);
+          ctx.arc(x - 11, ty - 22, 10, 0, Math.PI * 2);
+          ctx.arc(x + 11, ty - 22, 10, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = "rgba(255,255,255,0.06)";
+        for (let x = box.x0; x < box.x1; x += 24) {
+          ctx.fillRect(x + 3, top + 8, 18, 28);
+        }
+      } else {
+        ctx.strokeStyle = "rgba(246,231,207,0.25)";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([16, 14]);
+        ctx.beginPath();
+        ctx.moveTo(box.x0, top + 92);
+        ctx.lineTo(box.x1, top + 92);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       // 店の壁と入口
-      ctx.fillStyle = "#241d18";
+      ctx.fillStyle = isPark ? "#2f3a52" : "#241d18";
       ctx.fillRect(box.x0, top - 10, box.x1 - box.x0, 10);
       const entrance = entrancePos(state);
       ctx.fillStyle = "#0f0c0a";
@@ -897,7 +2513,7 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.fill();
       ctx.fillStyle = "rgba(246,231,207,0.5)";
       ctx.font = SMALL;
-      ctx.fillText("入口", entrance.x, top - 5);
+      ctx.fillText(isPark ? "入園口" : "入口", entrance.x, top - 5);
       ctx.font = FONT;
 
       // 街灯
