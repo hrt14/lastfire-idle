@@ -668,12 +668,14 @@ export const fromPersisted = (input: unknown): ShopState => {
       const value = finite(stored[pad.id], 0);
       if (value <= 0) continue;
       if (pad.kind === "unlock" && pad.price !== undefined) {
-        if (value >= pad.price) {
-          // 値下げ後の価格をすでに払い終えているぶんは開放しておく
+        // いまの（ならしたあとの）値段で見る
+        const price = softPrice(pad.price);
+        if (value >= price) {
+          // 値下げでもう払い終えているぶんは、開放しておく
           if (!state.unlocked.includes(pad.id)) state.unlocked.push(pad.id);
-        } else {
-          state.padProgress[pad.id] = clamp(value, 0, pad.price);
+          continue;
         }
+        state.padProgress[pad.id] = clamp(value, 0, price);
       } else {
         state.padProgress[pad.id] = Math.max(0, value);
       }
@@ -1361,7 +1363,19 @@ const updatePads = (state: ShopState, dt: number) => {
     const price = padPrice(state, pad);
     const paid = state.padProgress[pad.id] ?? 0;
     const remain = price - paid;
-    if (remain <= 0) break;
+    // すでに払い終わっているのに残っている枠は、その場で解放する
+    // （値段が下がったときに、払い込み分が上回ることがある）
+    if (remain <= 0) {
+      if (pad.kind === "upgrade" && pad.upgradeId) {
+        state.levels[pad.upgradeId] += 1;
+        state.padProgress[pad.id] = 0;
+        pop(state, { x: at.x, y: at.y - 16 }, "強化！");
+        state.sfx.push("upgrade");
+      } else {
+        unlock(state, pad.id);
+      }
+      break;
+    }
 
     const rate = Math.max(60, price / 2.5);
     const got = takeMoney(state, Math.min(remain, rate * dt));
