@@ -179,20 +179,12 @@ button {
   color: var(--muted);
 }
 
-.upgrade-open {
+.dock-note {
   flex: 1;
-  padding: 0.7rem;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 209, 102, 0.45);
-  background: linear-gradient(180deg, #f0a63a, #d97a1e);
-  color: #2a1806;
-  font-size: 0.92rem;
-  font-weight: 800;
-  box-shadow: 0 6px 16px rgba(217, 122, 30, 0.28);
-}
-
-.upgrade-open:active {
-  transform: translateY(1px);
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 /* ---------- ヒント・トースト ---------- */

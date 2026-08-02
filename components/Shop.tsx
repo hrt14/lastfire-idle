@@ -2,34 +2,40 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import {
+  EAT_TIME,
   ENTRANCE,
+  KITCHEN,
   PAD_RADIUS,
   STOVE_CAPACITY,
   WORLD,
   availablePads,
+  currentObjective,
   maxCarry,
   openSeats,
   openStoves,
-  EAT_TIME,
-  seatById,
+  padLevel,
+  padPrice,
   trayPos,
-  currentObjective,
   update,
   type Input,
+  type OfflineReport,
   type ShopState,
+  type StaffKind,
+  type UpgradeId,
 } from "@/lib/shop";
 import { catchUp, getState, save } from "@/lib/shopStore";
-import type { OfflineReport, UpgradeId } from "@/lib/shop";
 import { formatYen } from "@/lib/format";
+import { isMuted, loadMuted, playSound, unlockAudio } from "@/lib/sfx";
 
 export type Sample = {
   money: number;
   carry: number;
   maxCarry: number;
   served: number;
-  unlocked: number;
+  staff: number;
   levels: Record<UpgradeId, number>;
   toast: string | null;
+  muted: boolean;
   offline: OfflineReport | null;
 };
 
@@ -39,6 +45,7 @@ type Props = {
 };
 
 const FONT = `700 11px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+const SMALL = `700 9px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
 
 const roundRect = (
   ctx: CanvasRenderingContext2D,
@@ -58,7 +65,7 @@ const roundRect = (
 };
 
 const shadow = (ctx: CanvasRenderingContext2D, x: number, y: number, r: number) => {
-  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.fillStyle = "rgba(0,0,0,0.32)";
   ctx.beginPath();
   ctx.ellipse(x, y, r, r * 0.42, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -95,6 +102,36 @@ const person = (
   ctx.fillStyle = head;
   ctx.beginPath();
   ctx.arc(x, y - 20 + oy, 7.6, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+/** 配膳ロボ */
+const robot = (ctx: CanvasRenderingContext2D, x: number, y: number, t: number) => {
+  shadow(ctx, x, y + 7, 11);
+  const hover = Math.sin(t * 3) * 1.2;
+  ctx.fillStyle = "#8fa4bb";
+  roundRect(ctx, x - 10, y - 18 + hover, 20, 22, 6);
+  ctx.fill();
+  ctx.fillStyle = "#c9d8e8";
+  roundRect(ctx, x - 10, y - 18 + hover, 20, 7, 4);
+  ctx.fill();
+  ctx.fillStyle = "#1d2734";
+  roundRect(ctx, x - 6, y - 12 + hover, 12, 6, 3);
+  ctx.fill();
+  ctx.fillStyle = "#7ee7a8";
+  ctx.beginPath();
+  ctx.arc(x - 3, y - 9 + hover, 1.6, 0, Math.PI * 2);
+  ctx.arc(x + 3, y - 9 + hover, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#c9d8e8";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 18 + hover);
+  ctx.lineTo(x, y - 24 + hover);
+  ctx.stroke();
+  ctx.fillStyle = "#ffd166";
+  ctx.beginPath();
+  ctx.arc(x, y - 25 + hover, 2, 0, Math.PI * 2);
   ctx.fill();
 };
 
@@ -139,94 +176,85 @@ export default function Shop({ onSample, paused }: Props) {
       /* --- 床 --- */
       const floor = ctx.createLinearGradient(0, 0, 0, WORLD.h);
       floor.addColorStop(0, "#3b322a");
-      floor.addColorStop(1, "#2a231d");
+      floor.addColorStop(1, "#282019");
       ctx.fillStyle = floor;
       ctx.fillRect(0, 0, WORLD.w, WORLD.h);
-
       ctx.strokeStyle = "rgba(0,0,0,0.16)";
       ctx.lineWidth = 1;
-      for (let y = 40; y < WORLD.h; y += 34) {
+      for (let y = KITCHEN.bottom + 20; y < WORLD.h; y += 34) {
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(WORLD.w, y);
         ctx.stroke();
       }
 
-      /* --- 厨房 --- */
-      ctx.fillStyle = "#241d18";
-      ctx.fillRect(0, 0, WORLD.w, 92);
-      ctx.fillStyle = "#7a5636";
-      roundRect(ctx, 14, 86, WORLD.w - 28, 46, 10);
-      ctx.fill();
-      ctx.fillStyle = "#9a7148";
-      roundRect(ctx, 14, 86, WORLD.w - 28, 12, 6);
-      ctx.fill();
+      /* --- 厨房（歩いて入れる） --- */
+      ctx.fillStyle = "#2b241d";
+      ctx.fillRect(0, 0, WORLD.w, KITCHEN.bottom);
+      ctx.fillStyle = "rgba(255,255,255,0.03)";
+      for (let y = KITCHEN.top; y < KITCHEN.bottom; y += 22) {
+        for (let x = 0; x < WORLD.w; x += 22) {
+          if (((x + y) / 22) % 2 === 0) ctx.fillRect(x, y, 22, 22);
+        }
+      }
+      ctx.strokeStyle = "rgba(246,231,207,0.16)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, KITCHEN.bottom);
+      ctx.lineTo(WORLD.w, KITCHEN.bottom);
+      ctx.stroke();
 
       // のれん
       ctx.fillStyle = "#c2402f";
-      roundRect(ctx, 10, 8, WORLD.w - 20, 34, 6);
+      roundRect(ctx, 10, 4, WORLD.w - 20, 30, 6);
       ctx.fill();
       ctx.fillStyle = "#f6e7cf";
-      ctx.font = `800 17px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
-      ctx.fillText("ら ー め ん", WORLD.w / 2, 26);
+      ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+      ctx.fillText("ら ー め ん", WORLD.w / 2, 20);
       ctx.font = FONT;
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       for (let i = 1; i < 5; i += 1) {
-        ctx.fillRect(10 + ((WORLD.w - 20) / 5) * i - 1, 8, 2, 34);
+        ctx.fillRect(10 + ((WORLD.w - 20) / 5) * i - 1, 4, 2, 30);
       }
 
+      /* --- 寸胴 --- */
       for (const stove of openStoves(state)) {
         const { x, y } = stove.pos;
         ctx.fillStyle = "#2f353c";
-        roundRect(ctx, x - 24, y - 20, 48, 34, 8);
+        roundRect(ctx, x - 26, y - 18, 52, 32, 8);
         ctx.fill();
         ctx.fillStyle = "#454d57";
         ctx.beginPath();
-        ctx.ellipse(x, y - 6, 16, 9, 0, 0, Math.PI * 2);
+        ctx.ellipse(x, y - 4, 17, 9, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = "#8d5a2b";
         ctx.beginPath();
-        ctx.ellipse(x, y - 7, 12, 6.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(x, y - 5, 13, 6.5, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // 湯気
         ctx.fillStyle = "rgba(255,255,255,0.16)";
         for (let i = 0; i < 3; i += 1) {
-          const t = ((time * 0.5 + i * 0.33) % 1);
+          const t = (time * 0.5 + i * 0.33) % 1;
           ctx.beginPath();
           ctx.arc(x + Math.sin(t * 6 + i) * 5, y - 14 - t * 26, 4 - t * 2.2, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        // 受け取り口
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        roundRect(ctx, stove.stand.x - 26, stove.stand.y - 14, 52, 28, 9);
-        ctx.fill();
-
-        // できあがった丼（カウンターの上に積まれる）
         const ready = state.ready[stove.id] ?? 0;
-        for (let i = 0; i < ready; i += 1) {
-          bowl(ctx, x, 126 - i * 5.5);
-        }
+        for (let i = 0; i < ready; i += 1) bowl(ctx, x, y + 22 - i * 5.5);
         if (ready >= STOVE_CAPACITY) {
           ctx.fillStyle = "#ffd166";
-          ctx.fillText("満杯", x, 142);
+          ctx.fillText("満杯", x, y + 36);
         }
       }
 
       /* --- カウンター --- */
       ctx.fillStyle = "#6b4a2f";
-      roundRect(ctx, 16, 300, WORLD.w - 32, 34, 10);
+      roundRect(ctx, 16, 306, WORLD.w - 32, 34, 10);
       ctx.fill();
       ctx.fillStyle = "#8a6440";
-      roundRect(ctx, 16, 300, WORLD.w - 32, 11, 6);
+      roundRect(ctx, 16, 306, WORLD.w - 32, 11, 6);
       ctx.fill();
-
-      const waitingSeats = new Set(
-        state.customers
-          .filter((customer) => customer.state === "waiting")
-          .map((customer) => customer.seatId),
-      );
 
       for (const seat of openSeats(state)) {
         if (seat.row === 0) {
@@ -236,15 +264,20 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fill();
         } else {
           ctx.fillStyle = "#6b4a2f";
-          roundRect(ctx, seat.pos.x - 30, seat.pos.y - 40, 60, 26, 8);
+          roundRect(ctx, seat.pos.x - 32, seat.pos.y - 42, 64, 28, 8);
           ctx.fill();
           ctx.fillStyle = "#8a6440";
-          roundRect(ctx, seat.pos.x - 30, seat.pos.y - 40, 60, 9, 5);
+          roundRect(ctx, seat.pos.x - 32, seat.pos.y - 42, 64, 9, 5);
           ctx.fill();
         }
       }
 
-      /* --- 配膳口（丼を置く場所） --- */
+      /* --- 配膳口 --- */
+      const waitingSeats = new Set(
+        state.customers
+          .filter((customer) => customer.state === "waiting")
+          .map((customer) => customer.seatId),
+      );
       const eatingBySeat = new Map(
         state.customers
           .filter((customer) => customer.state === "eating")
@@ -275,7 +308,6 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.stroke();
 
         if (hot) {
-          // 下向きの矢印で「ここに置く」を示す
           const dy = Math.sin(time * 5) * 3;
           ctx.fillStyle = "#ffd166";
           ctx.beginPath();
@@ -286,88 +318,87 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fill();
         }
 
-        // 出した丼は、食べ終わるまで配膳口の上に載っている
         if (eating) {
           const left = Math.max(0, eating.timer) / EAT_TIME;
-          const justServed = left > 0.88;
-          bowl(ctx, tray.x, tray.y, justServed ? 1.35 : 1.15);
+          bowl(ctx, tray.x, tray.y, left > 0.88 ? 1.35 : 1.15);
           ctx.strokeStyle = "rgba(255,209,102,0.85)";
           ctx.lineWidth = 2.4;
           ctx.beginPath();
-          ctx.arc(
-            tray.x,
-            tray.y,
-            13,
-            -Math.PI / 2,
-            -Math.PI / 2 + Math.PI * 2 * left,
-          );
+          ctx.arc(tray.x, tray.y, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left);
           ctx.stroke();
         }
       }
 
-      /* --- 店内の飾り --- */
+      /* --- 飾りと入口 --- */
       for (const px of [26, 334]) {
         ctx.fillStyle = "#5a3f2a";
-        roundRect(ctx, px - 9, 518, 18, 16, 4);
+        roundRect(ctx, px - 9, 566, 18, 16, 4);
         ctx.fill();
         ctx.fillStyle = "#2f6b4a";
         ctx.beginPath();
-        ctx.ellipse(px, 512, 13, 11, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#3d8a5f";
-        ctx.beginPath();
-        ctx.ellipse(px - 4, 508, 8, 7, 0, 0, Math.PI * 2);
+        ctx.ellipse(px, 560, 13, 11, 0, 0, Math.PI * 2);
         ctx.fill();
       }
-      /* --- 入口 --- */
       ctx.fillStyle = "rgba(255,255,255,0.06)";
-      roundRect(ctx, ENTRANCE.x - 42, WORLD.h - 26, 84, 20, 8);
+      roundRect(ctx, ENTRANCE.x - 42, WORLD.h - 24, 84, 20, 8);
       ctx.fill();
       ctx.fillStyle = "rgba(246,231,207,0.55)";
-      ctx.fillText("入口", ENTRANCE.x, WORLD.h - 16);
+      ctx.fillText("入口", ENTRANCE.x, WORLD.h - 14);
 
-      /* --- 解放パッド --- */
+      /* --- 枠（買い物する場所） --- */
       for (const pad of availablePads(state)) {
+        const price = padPrice(state, pad);
         const paid = state.padProgress[pad.id] ?? 0;
-        const ratio = Math.min(1, paid / pad.price);
+        const ratio = Math.min(1, paid / price);
         const near = state.activePad === pad.id;
-        const canPay = state.money > 0;
+        const affordable = state.money > 0;
+        const level = padLevel(state, pad);
 
         ctx.save();
         ctx.setLineDash([6, 5]);
         ctx.lineWidth = 2;
         ctx.strokeStyle = near
           ? "#7ee7a8"
-          : canPay
+          : affordable
             ? "rgba(126,231,168,0.75)"
-            : "rgba(255,255,255,0.3)";
+            : "rgba(255,255,255,0.28)";
         ctx.fillStyle = near ? "rgba(126,231,168,0.2)" : "rgba(126,231,168,0.08)";
-        roundRect(ctx, pad.pos.x - PAD_RADIUS, pad.pos.y - PAD_RADIUS + 6, PAD_RADIUS * 2, PAD_RADIUS * 2 - 12, 10);
+        roundRect(
+          ctx,
+          pad.pos.x - PAD_RADIUS,
+          pad.pos.y - PAD_RADIUS + 4,
+          PAD_RADIUS * 2,
+          PAD_RADIUS * 2 - 8,
+          10,
+        );
         ctx.fill();
         ctx.stroke();
         ctx.restore();
 
         if (ratio > 0) {
           ctx.fillStyle = "rgba(126,231,168,0.35)";
+          const h = (PAD_RADIUS * 2 - 8) * ratio;
           roundRect(
             ctx,
             pad.pos.x - PAD_RADIUS,
-            pad.pos.y + PAD_RADIUS - 6 - (PAD_RADIUS * 2 - 12) * ratio,
+            pad.pos.y + PAD_RADIUS - 4 - h,
             PAD_RADIUS * 2,
-            (PAD_RADIUS * 2 - 12) * ratio,
+            h,
             10,
           );
           ctx.fill();
         }
 
+        if (pad.kind === "upgrade") {
+          ctx.font = SMALL;
+          ctx.fillStyle = "#9fe6bd";
+          ctx.fillText(`Lv${level}`, pad.pos.x, pad.pos.y - 16);
+          ctx.font = FONT;
+        }
         ctx.fillStyle = "#eafff2";
-        ctx.fillText(pad.label, pad.pos.x, pad.pos.y - 8);
+        ctx.fillText(pad.label, pad.pos.x, pad.pos.y - 3);
         ctx.fillStyle = "#ffd166";
-        ctx.fillText(
-          formatYen(Math.max(0, pad.price - paid)),
-          pad.pos.x,
-          pad.pos.y + 8,
-        );
+        ctx.fillText(formatYen(Math.max(0, price - paid)), pad.pos.x, pad.pos.y + 12);
       }
 
       /* --- お金 --- */
@@ -384,22 +415,27 @@ export default function Shop({ onSample, paused }: Props) {
 
       /* --- 人 --- */
       const actors: { y: number; render: () => void }[] = [];
+      const coats: Record<StaffKind, string> = {
+        waiter: "#d98c2b",
+        robot: "#8fa4bb",
+        collector: "#4aa3c7",
+        cook: "#eee8dc",
+      };
 
       for (const customer of state.customers) {
-        const seat = seatById.get(customer.seatId);
         actors.push({
           y: customer.pos.y,
           render: () => {
-            const coats = ["#5b7fbc", "#7a6bb5", "#4f9e83", "#c07a4a", "#a35b7a"];
+            const palette = ["#5b7fbc", "#7a6bb5", "#4f9e83", "#c07a4a", "#a35b7a"];
             person(
               ctx,
               customer.pos.x,
               customer.pos.y,
-              coats[customer.id % coats.length],
+              palette[customer.id % palette.length],
               "#f0cfae",
               customer.state === "walking" ? performance.now() / 90 : 0,
             );
-            if (customer.state === "waiting" && seat) {
+            if (customer.state === "waiting") {
               const bounce = Math.sin(time * 4.5) * 2;
               const bx = customer.pos.x + 24;
               const by = customer.pos.y - 6 + bounce;
@@ -441,14 +477,23 @@ export default function Shop({ onSample, paused }: Props) {
         actors.push({
           y: worker.pos.y,
           render: () => {
-            person(
-              ctx,
-              worker.pos.x,
-              worker.pos.y,
-              worker.kind === "waiter" ? "#d98c2b" : "#4aa3c7",
-              "#f0cfae",
-              performance.now() / 110,
-            );
+            if (worker.kind === "robot") {
+              robot(ctx, worker.pos.x, worker.pos.y, time);
+            } else {
+              person(
+                ctx,
+                worker.pos.x,
+                worker.pos.y,
+                coats[worker.kind],
+                "#f0cfae",
+                performance.now() / 110,
+              );
+              if (worker.kind === "cook") {
+                ctx.fillStyle = "#fbf7ef";
+                roundRect(ctx, worker.pos.x - 7, worker.pos.y - 32, 14, 9, 4);
+                ctx.fill();
+              }
+            }
             for (let i = 0; i < worker.carry; i += 1) {
               bowl(ctx, worker.pos.x, worker.pos.y - 30 - i * 6, 0.85);
             }
@@ -473,28 +518,27 @@ export default function Shop({ onSample, paused }: Props) {
       actors.sort((a, b) => a.y - b.y);
       for (const actor of actors) actor.render();
 
-      /* --- 演出（提供・入金） --- */
-      for (const pop of state.pops) {
-        const t = Math.min(1, pop.age);
+      /* --- 演出 --- */
+      for (const item of state.pops) {
+        const t = Math.min(1, item.age);
         ctx.save();
         ctx.globalAlpha = 1 - t * t;
         ctx.font = `800 13px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
         ctx.lineWidth = 3.5;
         ctx.strokeStyle = "rgba(10,8,6,0.85)";
-        ctx.strokeText(pop.text, pop.pos.x, pop.pos.y - t * 26);
+        ctx.strokeText(item.text, item.pos.x, item.pos.y - t * 26);
         ctx.fillStyle = "#ffd166";
-        ctx.fillText(pop.text, pop.pos.x, pop.pos.y - t * 26);
+        ctx.fillText(item.text, item.pos.x, item.pos.y - t * 26);
         ctx.restore();
       }
       ctx.font = FONT;
 
-      /* --- 次にやることの案内 --- */
+      /* --- 案内 --- */
       const objective = currentObjective(state);
       if (objective.pos) {
-        const from = state.player.pos;
+        const from = player.pos;
         const to = objective.pos;
-        const len = Math.hypot(to.x - from.x, to.y - from.y);
-        if (len > 46) {
+        if (Math.hypot(to.x - from.x, to.y - from.y) > 46) {
           ctx.save();
           ctx.setLineDash([5, 7]);
           ctx.lineDashOffset = -((time * 40) % 12);
@@ -516,17 +560,16 @@ export default function Shop({ onSample, paused }: Props) {
       }
 
       ctx.save();
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      const label = objective.label;
-      const labelWidth = ctx.measureText(label).width + 26;
-      roundRect(ctx, WORLD.w / 2 - labelWidth / 2, 52, labelWidth, 24, 12);
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      const width = ctx.measureText(objective.label).width + 26;
+      roundRect(ctx, WORLD.w / 2 - width / 2, 234, width, 24, 12);
       ctx.fill();
       ctx.strokeStyle = "rgba(255,209,102,0.45)";
       ctx.lineWidth = 1;
-      roundRect(ctx, WORLD.w / 2 - labelWidth / 2, 52, labelWidth, 24, 12);
+      roundRect(ctx, WORLD.w / 2 - width / 2, 234, width, 24, 12);
       ctx.stroke();
       ctx.fillStyle = "#ffd166";
-      ctx.fillText(label, WORLD.w / 2, 65);
+      ctx.fillText(objective.label, WORLD.w / 2, 247);
       ctx.restore();
 
       /* --- ジョイスティック --- */
@@ -558,6 +601,7 @@ export default function Shop({ onSample, paused }: Props) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    loadMuted();
     const state = getState();
     let pendingOffline: OfflineReport | null = catchUp();
     let scale = 1;
@@ -592,6 +636,7 @@ export default function Shop({ onSample, paused }: Props) {
 
     const onDown = (event: PointerEvent) => {
       event.preventDefault();
+      unlockAudio();
       canvas.setPointerCapture(event.pointerId);
       const point = toWorld(event);
       stick.current = { id: event.pointerId, origin: point, at: point };
@@ -622,11 +667,10 @@ export default function Shop({ onSample, paused }: Props) {
     canvas.addEventListener("pointercancel", onUp);
 
     const keyDown = (event: KeyboardEvent) => {
+      unlockAudio();
       keys.current.add(event.key.toLowerCase());
     };
-    const keyUp = (event: KeyboardEvent) => {
-      keys.current.delete(event.key.toLowerCase());
-    };
+    const keyUp = (event: KeyboardEvent) => keys.current.delete(event.key.toLowerCase());
     window.addEventListener("keydown", keyDown);
     window.addEventListener("keyup", keyUp);
 
@@ -649,8 +693,17 @@ export default function Shop({ onSample, paused }: Props) {
         (held.has("arrowup") || held.has("w") ? 1 : 0);
       const move: Input = kx || ky ? { x: kx, y: ky } : input.current;
 
-      if (!pausedRef.current && !document.hidden) {
-        update(state, move, dt);
+      if (!pausedRef.current && !document.hidden) update(state, move, dt);
+
+      // 効果音を鳴らす（同じ音が同フレームで重ならないようにする）
+      if (state.sfx.length > 0) {
+        const played = new Set<string>();
+        for (const id of state.sfx) {
+          if (played.has(id)) continue;
+          played.add(id);
+          playSound(id);
+        }
+        state.sfx.length = 0;
       }
       draw(ctx, state, scale, ox, oy, now / 1000);
 
@@ -661,12 +714,13 @@ export default function Shop({ onSample, paused }: Props) {
           carry: state.player.carry,
           maxCarry: maxCarry(state),
           served: state.served,
-          unlocked: state.unlocked.length,
+          staff: state.staff.length,
           levels: { ...state.levels },
           toast:
             state.toast && Date.now() - state.toast.at < 2200
               ? state.toast.text
               : null,
+          muted: isMuted(),
           offline: pendingOffline,
         });
         pendingOffline = null;

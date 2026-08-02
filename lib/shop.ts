@@ -3,28 +3,30 @@
  *
  * 中核のループ:
  *   1. プレイヤーを直接動かす
- *   2. 調理台のどんぶりを拾う（頭の上に積み上がる）
+ *   2. 寸胴のどんぶりを拾う（頭の上に積み上がる）
  *   3. 席で待っている客に運ぶ
  *   4. 食べ終わった客がカウンターにお金を置く → 歩いて拾う
- *   5. 解放パッドの上に立つとお金が吸い出され、席や調理台が増える
- *   6. 店員を雇うと 2〜4 を自動でやってくれる（＝放置で増える）
+ *   5. 緑の枠に立つとお金が吸い出され、席・寸胴・店員・強化が手に入る
+ *   6. 店員（ホール店員・配膳ロボ・調理人・レジ係）を雇うと 2〜4 が自動になる
+ *
+ * 買い物はすべて店内の「枠」に立って行う。メニュー画面は無い。
+ * 序盤は数往復で必ず何か買えるように価格を低く置いている。
  */
+
+import type { SoundId } from "@/lib/sfx";
 
 export type Vec = { x: number; y: number };
 
-export const WORLD = { w: 360, h: 560 };
+export const WORLD = { w: 360, h: 620 };
 
 export const SAVE_KEY = "ramen-arcade-idle-v1";
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 /* ---------- 設備の配置 ---------- */
 
 export type StoveSpec = {
   id: string;
-  /** 見た目（寸胴）の位置 */
   pos: Vec;
-  /** 店主が立って受け取る位置（カウンターの手前） */
-  stand: Vec;
   price: number;
 };
 
@@ -32,24 +34,31 @@ export type SeatSpec = {
   id: string;
   /** 客が座る位置 */
   pos: Vec;
-  /** 店側（プレイヤーが立って渡す）位置 */
+  /** 店側（立って渡す）位置 */
   serve: Vec;
   price: number;
   row: 0 | 1;
 };
 
+export type StaffKind = "waiter" | "robot" | "collector" | "cook";
+
 export type HireSpec = {
   id: string;
-  kind: "waiter" | "collector";
+  kind: StaffKind;
   pos: Vec;
   price: number;
   label: string;
+  /** 調理人が担当する寸胴 */
+  stoveId?: string;
 };
 
+/** 厨房エリア（歩いて入れる） */
+export const KITCHEN = { top: 38, bottom: 210 };
+
 export const stoves: StoveSpec[] = [
-  { id: "stove-1", pos: { x: 72, y: 116 }, stand: { x: 72, y: 172 }, price: 0 },
-  { id: "stove-2", pos: { x: 180, y: 116 }, stand: { x: 180, y: 172 }, price: 260 },
-  { id: "stove-3", pos: { x: 288, y: 116 }, stand: { x: 288, y: 172 }, price: 1400 },
+  { id: "stove-1", pos: { x: 72, y: 176 }, price: 0 },
+  { id: "stove-2", pos: { x: 180, y: 176 }, price: 150 },
+  { id: "stove-3", pos: { x: 288, y: 176 }, price: 700 },
 ];
 
 const rowA = [60, 140, 220, 300];
@@ -58,92 +67,61 @@ const rowB = [96, 180, 264];
 export const seats: SeatSpec[] = [
   ...rowA.map((x, i) => ({
     id: `seat-a${i + 1}`,
-    pos: { x, y: 350 },
-    serve: { x, y: 288 },
-    price: [0, 45, 170, 520][i],
+    pos: { x, y: 358 },
+    serve: { x, y: 294 },
+    price: [0, 0, 100, 300][i],
     row: 0 as const,
   })),
   ...rowB.map((x, i) => ({
     id: `seat-b${i + 1}`,
-    pos: { x, y: 470 },
-    serve: { x, y: 424 },
-    price: [1100, 2600, 5400][i],
+    pos: { x, y: 520 },
+    serve: { x, y: 466 },
+    price: [800, 1800, 3600][i],
     row: 1 as const,
   })),
 ];
 
+/** 調理人は寸胴の奥（厨房の中）で雇う */
 export const hires: HireSpec[] = [
+  ...stoves.map((stove, i) => ({
+    id: `cook-${i + 1}`,
+    kind: "cook" as const,
+    pos: { x: stove.pos.x + 40, y: 130 },
+    price: [600, 1800, 4500][i],
+    label: "調理人",
+    stoveId: stove.id,
+  })),
   {
     id: "waiter-1",
     kind: "waiter",
-    pos: { x: 60, y: 380 },
-    price: 700,
+    pos: { x: 50, y: 414 },
+    price: 280,
     label: "ホール店員",
   },
   {
     id: "waiter-2",
     kind: "waiter",
-    pos: { x: 140, y: 380 },
-    price: 3400,
+    pos: { x: 130, y: 414 },
+    price: 1500,
     label: "ホール店員",
   },
   {
     id: "collector-1",
     kind: "collector",
-    pos: { x: 220, y: 380 },
-    price: 1800,
+    pos: { x: 230, y: 414 },
+    price: 900,
     label: "レジ係",
   },
   {
-    id: "collector-2",
-    kind: "collector",
-    pos: { x: 300, y: 380 },
-    price: 7200,
-    label: "レジ係",
+    id: "robot-1",
+    kind: "robot",
+    pos: { x: 310, y: 414 },
+    price: 4000,
+    label: "配膳ロボ",
   },
 ];
 
-export type Pad = {
-  id: string;
-  pos: Vec;
-  price: number;
-  label: string;
-  sub: string;
-};
-
-export const pads: Pad[] = [
-  ...stoves
-    .filter((stove) => stove.price > 0)
-    .map((stove) => ({
-      id: stove.id,
-      pos: stove.stand,
-      price: stove.price,
-      label: "調理台",
-      sub: "同時に作れる数が増える",
-    })),
-  ...seats
-    .filter((seat) => seat.price > 0)
-    .map((seat) => ({
-      id: seat.id,
-      pos: seat.serve,
-      price: seat.price,
-      label: seat.row === 0 ? "カウンター席" : "テーブル席",
-      sub: "お客さんが増える",
-    })),
-  ...hires.map((hire) => ({
-    id: hire.id,
-    pos: hire.pos,
-    price: hire.price,
-    label: hire.label,
-    sub: hire.kind === "waiter" ? "自動で運んでくれる" : "自動でお金を拾う",
-  })),
-];
-
-export const padById = new Map(pads.map((pad) => [pad.id, pad]));
-
-export const ENTRANCE: Vec = { x: 180, y: 548 };
-
-/* ---------- 強化 ---------- */
+/* ---------- 強化（厨房の中の設置物） ---------- */
 
 export type UpgradeId = "carry" | "speed" | "cook" | "price";
 
@@ -151,56 +129,125 @@ export type Upgrade = {
   id: UpgradeId;
   name: string;
   detail: (level: number) => string;
+  pos: Vec;
   basePrice: number;
   growth: number;
   max: number;
 };
 
+export const cookFactor = (level: number) => Math.pow(0.92, level);
+export const coinValue = (level: number) => Math.round(55 * Math.pow(1.4, level));
+
 export const upgrades: Upgrade[] = [
   {
     id: "carry",
     name: "両手鍋",
-    detail: (level) => `一度に運べる数 ${3 + level}杯`,
-    basePrice: 120,
-    growth: 2.1,
+    detail: (level) => `${3 + level}杯まで持てる`,
+    pos: { x: 46, y: 66 },
+    basePrice: 60,
+    growth: 1.7,
     max: 9,
   },
   {
     id: "speed",
     name: "厨房シューズ",
-    detail: (level) => `移動速度 +${level * 10}%`,
-    basePrice: 90,
-    growth: 1.85,
+    detail: (level) => `足の速さ +${level * 10}%`,
+    pos: { x: 138, y: 66 },
+    basePrice: 50,
+    growth: 1.65,
     max: 12,
   },
   {
     id: "cook",
     name: "業務用寸胴",
-    detail: (level) => `調理速度 +${Math.round((1 / cookFactor(level) - 1) * 100)}%`,
-    basePrice: 150,
-    growth: 1.95,
+    detail: (level) =>
+      `煮える速さ +${Math.round((1 / cookFactor(level) - 1) * 100)}%`,
+    pos: { x: 230, y: 66 },
+    basePrice: 80,
+    growth: 1.7,
     max: 14,
   },
   {
     id: "price",
     name: "看板メニュー",
-    detail: (level) => `一杯の値段 ${coinValue(level)}円`,
-    basePrice: 200,
-    growth: 2.0,
+    detail: (level) => `一杯 ${coinValue(level)}円`,
+    pos: { x: 314, y: 66 },
+    basePrice: 120,
+    growth: 1.75,
     max: 20,
   },
 ];
 
 export const upgradeById = new Map(upgrades.map((item) => [item.id, item]));
 
-export const cookFactor = (level: number) => Math.pow(0.92, level);
-export const coinValue = (level: number) => Math.round(8 * Math.pow(1.35, level));
-
 export const upgradePrice = (id: UpgradeId, level: number) => {
   const upgrade = upgradeById.get(id);
   if (!upgrade) return Infinity;
   return Math.ceil(upgrade.basePrice * Math.pow(upgrade.growth, level));
 };
+
+/* ---------- 枠（買い物する場所） ---------- */
+
+export type Pad = {
+  id: string;
+  kind: "unlock" | "upgrade";
+  pos: Vec;
+  label: string;
+  sub: string;
+  upgradeId?: UpgradeId;
+  /** 解放系のみ。強化系はレベルごとに計算する */
+  price?: number;
+};
+
+const hireSub: Record<StaffKind, string> = {
+  waiter: "自分の代わりに運ぶ",
+  robot: "とても速く運ぶ",
+  collector: "自動でお金を拾う",
+  cook: "この寸胴が速くなる",
+};
+
+export const pads: Pad[] = [
+  ...stoves
+    .filter((stove) => stove.price > 0)
+    .map((stove): Pad => ({
+      id: stove.id,
+      kind: "unlock",
+      pos: stove.pos,
+      price: stove.price,
+      label: "寸胴",
+      sub: "同時に作れる数が増える",
+    })),
+  ...seats
+    .filter((seat) => seat.price > 0)
+    .map((seat): Pad => ({
+      id: seat.id,
+      kind: "unlock",
+      pos: seat.serve,
+      price: seat.price,
+      label: seat.row === 0 ? "カウンター席" : "テーブル席",
+      sub: "お客さんが増える",
+    })),
+  ...hires.map((hire): Pad => ({
+    id: hire.id,
+    kind: "unlock",
+    pos: hire.pos,
+    price: hire.price,
+    label: hire.label,
+    sub: hireSub[hire.kind],
+  })),
+  ...upgrades.map((upgrade): Pad => ({
+    id: `up-${upgrade.id}`,
+    kind: "upgrade",
+    pos: upgrade.pos,
+    label: upgrade.name,
+    sub: "何度でも強化できる",
+    upgradeId: upgrade.id,
+  })),
+];
+
+export const padById = new Map(pads.map((pad) => [pad.id, pad]));
+
+export const ENTRANCE: Vec = { x: 180, y: 598 };
 
 /* ---------- 状態 ---------- */
 
@@ -212,33 +259,21 @@ export type Customer = {
   timer: number;
 };
 
-export type Coin = {
-  id: number;
-  pos: Vec;
-  value: number;
-  age: number;
-};
+export type Coin = { id: number; pos: Vec; value: number; age: number };
 
-export type Pop = {
-  id: number;
-  pos: Vec;
-  text: string;
-  age: number;
-};
+export type Pop = { id: number; pos: Vec; text: string; age: number };
 
 export type Staff = {
   id: number;
-  kind: "waiter" | "collector";
+  kind: StaffKind;
   pos: Vec;
   carry: number;
-  cooldown: number;
-  targetId: string | null;
+  stoveId: string | null;
 };
 
 export type Player = {
   pos: Vec;
   carry: number;
-  facing: number;
   moving: boolean;
   step: number;
 };
@@ -260,26 +295,29 @@ export type ShopState = Persisted & {
   customers: Customer[];
   coins: Coin[];
   pops: Pop[];
-  /** 調理台ごとの完成した丼の数 */
   ready: Record<string, number>;
   cooking: Record<string, number>;
   spawnTimer: number;
   nextId: number;
-  /** いま乗っているパッド */
   activePad: string | null;
   toast: { text: string; at: number } | null;
+  /** 描画側が毎フレーム取り出して鳴らす */
+  sfx: SoundId[];
 };
 
-export const PLAYER_BASE_SPEED = 122;
-export const STAFF_SPEED = 88;
-export const PICK_RADIUS = 40;
+export const PLAYER_BASE_SPEED = 128;
+export const STAFF_SPEED = 92;
+export const ROBOT_SPEED = 150;
+export const PICK_RADIUS = 44;
 export const SERVE_RADIUS = 46;
 export const COIN_RADIUS = 34;
 export const PAD_RADIUS = 26;
 export const STOVE_CAPACITY = 5;
-export const COOK_TIME = 2.4;
-export const EAT_TIME = 3.4;
-export const SPAWN_TIME = 1.5;
+export const COOK_TIME = 2.0;
+export const COOK_BOOST = 2.2;
+export const EAT_TIME = 2.8;
+export const SPAWN_TIME = 1.1;
+export const OFFLINE_CAP_HOURS = 8;
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -297,32 +335,39 @@ const moveToward = (pos: Vec, target: Vec, speed: number, dt: number) => {
   return false;
 };
 
+export const seatById = new Map(seats.map((seat) => [seat.id, seat]));
+export const stoveById = new Map(stoves.map((stove) => [stove.id, stove]));
+export const hireById = new Map(hires.map((hire) => [hire.id, hire]));
+
+const makeStaff = (hire: HireSpec, id: number): Staff => ({
+  id,
+  kind: hire.kind,
+  pos: { ...hire.pos },
+  carry: 0,
+  stoveId: hire.stoveId ?? null,
+});
+
 export const createState = (): ShopState => ({
   version: SAVE_VERSION,
   money: 0,
-  unlocked: ["stove-1", "seat-a1"],
+  unlocked: ["stove-1", "seat-a1", "seat-a2"],
   padProgress: {},
   levels: { carry: 0, speed: 0, cook: 0, price: 0 },
   served: 0,
   playTime: 0,
   lastSeen: Date.now(),
-  player: {
-    pos: { x: 180, y: 232 },
-    carry: 0,
-    facing: -Math.PI / 2,
-    moving: false,
-    step: 0,
-  },
+  player: { pos: { x: 180, y: 250 }, carry: 0, moving: false, step: 0 },
   staff: [],
   customers: [],
   coins: [],
   pops: [],
   ready: { "stove-1": 0 },
   cooking: { "stove-1": 0 },
-  spawnTimer: 0.6,
+  spawnTimer: 0.4,
   nextId: 1,
   activePad: null,
   toast: null,
+  sfx: [],
 });
 
 const finite = (value: unknown, fallback: number) =>
@@ -349,12 +394,12 @@ export const fromPersisted = (input: unknown): ShopState => {
   state.playTime = Math.max(0, finite(raw.playTime, 0));
   state.lastSeen = finite(raw.lastSeen, Date.now());
 
+  const valid = new Set<string>([
+    ...stoves.map((item) => item.id),
+    ...seats.map((item) => item.id),
+    ...hires.map((item) => item.id),
+  ]);
   if (Array.isArray(raw.unlocked)) {
-    const valid = new Set<string>([
-      ...stoves.map((item) => item.id),
-      ...seats.map((item) => item.id),
-      ...hires.map((item) => item.id),
-    ]);
     const list = raw.unlocked.filter(
       (id): id is string => typeof id === "string" && valid.has(id),
     );
@@ -362,12 +407,20 @@ export const fromPersisted = (input: unknown): ShopState => {
   }
 
   if (raw.padProgress && typeof raw.padProgress === "object") {
+    const stored = raw.padProgress as Record<string, number>;
     for (const pad of pads) {
-      const value = finite(
-        (raw.padProgress as Record<string, number>)[pad.id],
-        0,
-      );
-      if (value > 0) state.padProgress[pad.id] = clamp(value, 0, pad.price);
+      const value = finite(stored[pad.id], 0);
+      if (value <= 0) continue;
+      if (pad.kind === "unlock" && pad.price !== undefined) {
+        if (value >= pad.price) {
+          // 値下げ後の価格をすでに払い終えているぶんは開放しておく
+          if (!state.unlocked.includes(pad.id)) state.unlocked.push(pad.id);
+        } else {
+          state.padProgress[pad.id] = clamp(value, 0, pad.price);
+        }
+      } else {
+        state.padProgress[pad.id] = Math.max(0, value);
+      }
     }
   }
 
@@ -387,20 +440,13 @@ export const fromPersisted = (input: unknown): ShopState => {
   }
   state.staff = hires
     .filter((hire) => state.unlocked.includes(hire.id))
-    .map((hire, index) => ({
-      id: index + 1,
-      kind: hire.kind,
-      pos: { ...hire.pos },
-      carry: 0,
-      cooldown: 0,
-      targetId: null,
-    }));
+    .map((hire, index) => makeStaff(hire, index + 1));
   state.nextId = state.staff.length + 1;
 
   return state;
 };
 
-/* ---------- 参照ヘルパー ---------- */
+/* ---------- 参照 ---------- */
 
 export const openStoves = (state: ShopState) =>
   stoves.filter((stove) => state.unlocked.includes(stove.id));
@@ -413,23 +459,49 @@ export const maxCarry = (state: ShopState) => 3 + state.levels.carry;
 export const playerSpeed = (state: ShopState) =>
   PLAYER_BASE_SPEED * (1 + state.levels.speed * 0.1);
 
-export const seatById = new Map(seats.map((seat) => [seat.id, seat]));
-export const stoveById = new Map(stoves.map((stove) => [stove.id, stove]));
-export const hireById = new Map(hires.map((hire) => [hire.id, hire]));
+export const stoveHasCook = (state: ShopState, stoveId: string) =>
+  state.staff.some(
+    (worker) => worker.kind === "cook" && worker.stoveId === stoveId,
+  );
 
-/** いま解放できる（＝前提を満たした）パッド */
+export const padPrice = (state: ShopState, pad: Pad) => {
+  if (pad.kind === "upgrade" && pad.upgradeId) {
+    return upgradePrice(pad.upgradeId, state.levels[pad.upgradeId]);
+  }
+  return pad.price ?? Infinity;
+};
+
+export const padLevel = (state: ShopState, pad: Pad) =>
+  pad.kind === "upgrade" && pad.upgradeId ? state.levels[pad.upgradeId] : 0;
+
+/** いま店内に出ている枠 */
 export const availablePads = (state: ShopState) =>
   pads.filter((pad) => {
+    if (pad.kind === "upgrade" && pad.upgradeId) {
+      const upgrade = upgradeById.get(pad.upgradeId);
+      return !!upgrade && state.levels[pad.upgradeId] < upgrade.max;
+    }
     if (state.unlocked.includes(pad.id)) return false;
+
+    // 調理人はその寸胴を買ってから
+    const hire = hireById.get(pad.id);
+    if (hire?.stoveId) return state.unlocked.includes(hire.stoveId);
+
+    // テーブル席はカウンターを全部開けてから
     const seat = seatById.get(pad.id);
     if (seat && seat.row === 1) {
-      // テーブル席はカウンターを全部開けてから
       return seats
         .filter((item) => item.row === 0)
         .every((item) => state.unlocked.includes(item.id));
     }
     return true;
   });
+
+/** 配膳口（丼を置く場所）の見た目上の位置 */
+export const trayPos = (seat: SeatSpec): Vec => ({
+  x: seat.serve.x,
+  y: seat.row === 0 ? 318 : 488,
+});
 
 /* ---------- 更新 ---------- */
 
@@ -439,6 +511,10 @@ const takeMoney = (state: ShopState, amount: number) => {
   const paid = Math.min(state.money, amount);
   state.money -= paid;
   return paid;
+};
+
+const pop = (state: ShopState, pos: Vec, text: string) => {
+  state.pops.push({ id: state.nextId++, pos: { ...pos }, text, age: 0 });
 };
 
 const unlock = (state: ShopState, padId: string) => {
@@ -451,18 +527,11 @@ const unlock = (state: ShopState, padId: string) => {
     state.cooking[padId] = 0;
   }
   const hire = hireById.get(padId);
-  if (hire) {
-    state.staff.push({
-      id: state.nextId++,
-      kind: hire.kind,
-      pos: { ...hire.pos },
-      carry: 0,
-      cooldown: 0,
-      targetId: null,
-    });
-  }
+  if (hire) state.staff.push(makeStaff(hire, state.nextId++));
+
   const pad = padById.get(padId);
-  state.toast = { text: `${pad?.label ?? ""}を開放した！`, at: Date.now() };
+  state.toast = { text: `${pad?.label ?? ""}を手に入れた！`, at: Date.now() };
+  state.sfx.push("buy");
 };
 
 const spawnCustomers = (state: ShopState, dt: number) => {
@@ -470,7 +539,11 @@ const spawnCustomers = (state: ShopState, dt: number) => {
   if (state.spawnTimer > 0) return;
   state.spawnTimer = SPAWN_TIME;
 
-  const taken = new Set(state.customers.map((customer) => customer.seatId));
+  const taken = new Set(
+    state.customers
+      .filter((customer) => customer.state !== "leaving")
+      .map((customer) => customer.seatId),
+  );
   const free = openSeats(state).find((seat) => !taken.has(seat.id));
   if (!free) return;
 
@@ -488,7 +561,9 @@ const updateStoves = (state: ShopState, dt: number) => {
   for (const stove of openStoves(state)) {
     const ready = state.ready[stove.id] ?? 0;
     if (ready >= STOVE_CAPACITY) continue;
-    const progress = (state.cooking[stove.id] ?? 0) + dt / (COOK_TIME * factor);
+    const boost = stoveHasCook(state, stove.id) ? COOK_BOOST : 1;
+    const progress =
+      (state.cooking[stove.id] ?? 0) + (dt * boost) / (COOK_TIME * factor);
     if (progress >= 1) {
       state.ready[stove.id] = ready + 1;
       state.cooking[stove.id] = progress - 1;
@@ -504,7 +579,7 @@ const updateCustomers = (state: ShopState, dt: number) => {
     if (!seat) continue;
 
     if (customer.state === "walking") {
-      if (moveToward(customer.pos, seat.pos, 74, dt)) customer.state = "waiting";
+      if (moveToward(customer.pos, seat.pos, 96, dt)) customer.state = "waiting";
     } else if (customer.state === "eating") {
       customer.timer -= dt;
       if (customer.timer <= 0) {
@@ -518,25 +593,23 @@ const updateCustomers = (state: ShopState, dt: number) => {
         state.served += 1;
       }
     } else if (customer.state === "leaving") {
-      if (moveToward(customer.pos, ENTRANCE, 84, dt)) customer.id = -1;
+      if (moveToward(customer.pos, ENTRANCE, 112, dt)) customer.id = -1;
     }
   }
   state.customers = state.customers.filter((customer) => customer.id !== -1);
 };
 
-/** 丼を1杯拾う。拾えたら true */
 const pickUp = (state: ShopState, pos: Vec, carry: number, limit: number) => {
   if (carry >= limit) return null;
   for (const stove of openStoves(state)) {
     if ((state.ready[stove.id] ?? 0) <= 0) continue;
-    if (dist(pos, stove.stand) > PICK_RADIUS) continue;
+    if (dist(pos, stove.pos) > PICK_RADIUS) continue;
     state.ready[stove.id] -= 1;
     return stove.id;
   }
   return null;
 };
 
-/** 待っている客に1杯出す。出せたら true */
 const serve = (state: ShopState, pos: Vec) => {
   for (const customer of state.customers) {
     if (customer.state !== "waiting") continue;
@@ -547,28 +620,22 @@ const serve = (state: ShopState, pos: Vec) => {
     customer.state = "eating";
     customer.timer = EAT_TIME;
     const at = trayPos(seat);
-    state.pops.push({
-      id: state.nextId++,
-      pos: { x: at.x, y: at.y - 12 },
-      text: "どうぞ！",
-      age: 0,
-    });
+    pop(state, { x: at.x, y: at.y - 12 }, "どうぞ！");
+    state.sfx.push("serve");
     return true;
   }
   return false;
 };
 
-const nearestCoin = (state: ShopState, pos: Vec) => {
-  let best: Coin | null = null;
-  let bestDist = Infinity;
-  for (const coin of state.coins) {
-    const d = dist(pos, coin.pos);
-    if (d < bestDist) {
-      best = coin;
-      bestDist = d;
-    }
-  }
-  return best;
+const collectCoin = (state: ShopState, coin: Coin) => {
+  state.money += coin.value;
+  coin.id = -1;
+  state.sfx.push("coin");
+  pop(
+    state,
+    { x: coin.pos.x, y: coin.pos.y - 10 },
+    `+${Math.round(coin.value).toLocaleString("ja-JP")}円`,
+  );
 };
 
 const updatePlayer = (state: ShopState, input: Input, dt: number) => {
@@ -582,29 +649,15 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
     const ny = input.y / len;
     const scale = Math.min(1, len);
     player.pos.x = clamp(player.pos.x + nx * speed * scale * dt, 18, WORLD.w - 18);
-    player.pos.y = clamp(player.pos.y + ny * speed * scale * dt, 152, 516);
-    player.facing = Math.atan2(ny, nx);
+    player.pos.y = clamp(player.pos.y + ny * speed * scale * dt, 54, 566);
     player.step += dt * speed * 0.06 * scale;
   }
 
-  // 拾う・出す・お金を集める
-  if (pickUp(state, player.pos, player.carry, maxCarry(state))) {
-    player.carry += 1;
-  }
-  if (player.carry > 0 && serve(state, player.pos)) {
-    player.carry -= 1;
-  }
+  if (pickUp(state, player.pos, player.carry, maxCarry(state))) player.carry += 1;
+  if (player.carry > 0 && serve(state, player.pos)) player.carry -= 1;
+
   for (const coin of state.coins) {
-    if (dist(player.pos, coin.pos) <= COIN_RADIUS) {
-      state.money += coin.value;
-      coin.id = -1;
-      state.pops.push({
-        id: state.nextId++,
-        pos: { x: coin.pos.x, y: coin.pos.y - 10 },
-        text: `+${Math.round(coin.value).toLocaleString("ja-JP")}円`,
-        age: 0,
-      });
-    }
+    if (dist(player.pos, coin.pos) <= COIN_RADIUS) collectCoin(state, coin);
   }
   state.coins = state.coins.filter((coin) => coin.id !== -1);
 };
@@ -616,53 +669,88 @@ const updatePads = (state: ShopState, dt: number) => {
   for (const pad of availablePads(state)) {
     if (dist(player.pos, pad.pos) > PAD_RADIUS) continue;
     active = pad.id;
+
+    const price = padPrice(state, pad);
     const paid = state.padProgress[pad.id] ?? 0;
-    const remain = pad.price - paid;
-    if (remain <= 0) continue;
-    const rate = Math.max(45, pad.price / 3);
-    const want = Math.min(remain, rate * dt);
-    const got = takeMoney(state, want);
+    const remain = price - paid;
+    if (remain <= 0) break;
+
+    const rate = Math.max(60, price / 2.5);
+    const got = takeMoney(state, Math.min(remain, rate * dt));
     const next = paid + got;
-    state.padProgress[pad.id] = next;
-    if (next >= pad.price - 0.001) unlock(state, pad.id);
+
+    if (next >= price - 0.001) {
+      if (pad.kind === "upgrade" && pad.upgradeId) {
+        state.levels[pad.upgradeId] += 1;
+        state.padProgress[pad.id] = 0;
+        pop(state, { x: pad.pos.x, y: pad.pos.y - 16 }, "強化！");
+        state.toast = { text: `${pad.label}を強化した！`, at: Date.now() };
+        state.sfx.push("upgrade");
+      } else {
+        unlock(state, pad.id);
+      }
+    } else {
+      state.padProgress[pad.id] = next;
+    }
     break;
   }
   state.activePad = active;
 };
 
+const carrierLimit = (state: ShopState, worker: Staff) =>
+  worker.kind === "robot" ? Math.max(5, maxCarry(state)) : 3;
+
+const carrierSpeed = (worker: Staff) =>
+  worker.kind === "robot" ? ROBOT_SPEED : STAFF_SPEED;
+
+/** 調理人の立ち位置（寸胴の奥） */
+export const cookPost = (worker: Staff): Vec => {
+  const stove = worker.stoveId ? stoveById.get(worker.stoveId) : null;
+  if (!stove) return { x: 30, y: 120 };
+  return { x: stove.pos.x, y: stove.pos.y - 40 };
+};
+
 const updateStaff = (state: ShopState, dt: number) => {
   for (const worker of state.staff) {
+    if (worker.kind === "cook") {
+      moveToward(worker.pos, cookPost(worker), STAFF_SPEED, dt);
+      continue;
+    }
+
     if (worker.kind === "collector") {
-      const coin = nearestCoin(state, worker.pos);
-      if (!coin) {
-        moveToward(worker.pos, hires[2].pos, STAFF_SPEED * 0.6, dt);
+      let best: Coin | null = null;
+      let bestDist = Infinity;
+      for (const coin of state.coins) {
+        const d = dist(worker.pos, coin.pos);
+        if (d < bestDist) {
+          best = coin;
+          bestDist = d;
+        }
+      }
+      if (!best) {
+        moveToward(worker.pos, { x: 230, y: 380 }, STAFF_SPEED * 0.6, dt);
         continue;
       }
-      if (moveToward(worker.pos, coin.pos, STAFF_SPEED, dt)) {
-        state.money += coin.value;
-        coin.id = -1;
-        state.pops.push({
-          id: state.nextId++,
-          pos: { x: coin.pos.x, y: coin.pos.y - 10 },
-          text: `+${Math.round(coin.value).toLocaleString("ja-JP")}円`,
-          age: 0,
-        });
+      if (moveToward(worker.pos, best.pos, STAFF_SPEED, dt)) {
+        collectCoin(state, best);
         state.coins = state.coins.filter((item) => item.id !== -1);
       }
       continue;
     }
 
-    // ホール店員: 丼を集めて、待っている客に配る
+    // ホール店員・配膳ロボ: 丼を集めて、待っている客に配る
+    const speed = carrierSpeed(worker);
     if (worker.carry > 0) {
       const target = state.customers.find(
         (customer) => customer.state === "waiting",
       );
       const seat = target ? seatById.get(target.seatId) : null;
       if (!seat) {
-        worker.carry = 0;
+        // 出す相手がいないあいだは持ったまま待つ（捨てない）
+        moveToward(worker.pos, { x: 180, y: 250 }, speed * 0.5, dt);
         continue;
       }
-      if (moveToward(worker.pos, seat.serve, STAFF_SPEED, dt)) {
+      if (moveToward(worker.pos, seat.serve, speed, dt)) {
         if (serve(state, worker.pos)) worker.carry -= 1;
       }
       continue;
@@ -670,13 +758,13 @@ const updateStaff = (state: ShopState, dt: number) => {
 
     const stove = openStoves(state)
       .filter((item) => (state.ready[item.id] ?? 0) > 0)
-      .sort((a, b) => dist(worker.pos, a.stand) - dist(worker.pos, b.stand))[0];
+      .sort((a, b) => dist(worker.pos, a.pos) - dist(worker.pos, b.pos))[0];
     if (!stove) {
-      moveToward(worker.pos, hires[0].pos, STAFF_SPEED * 0.6, dt);
+      moveToward(worker.pos, { x: 90, y: 250 }, speed * 0.6, dt);
       continue;
     }
-    if (moveToward(worker.pos, stove.stand, STAFF_SPEED, dt)) {
-      const limit = Math.min(3, maxCarry(state));
+    if (moveToward(worker.pos, stove.pos, speed, dt)) {
+      const limit = carrierLimit(state, worker);
       while (worker.carry < limit) {
         if (!pickUp(state, worker.pos, worker.carry, limit)) break;
         worker.carry += 1;
@@ -694,77 +782,18 @@ export const update = (state: ShopState, input: Input, dt: number) => {
   updateStaff(state, dt);
   updatePads(state, dt);
   for (const coin of state.coins) coin.age += dt;
-  for (const pop of state.pops) pop.age += dt;
-  state.pops = state.pops.filter((pop) => pop.age < 1);
-};
-
-/* ---------- 強化 ---------- */
-
-export const buyUpgrade = (state: ShopState, id: UpgradeId) => {
-  const upgrade = upgradeById.get(id);
-  if (!upgrade) return false;
-  const level = state.levels[id];
-  if (level >= upgrade.max) return false;
-  const price = upgradePrice(id, level);
-  if (state.money < price) return false;
-  state.money -= price;
-  state.levels[id] = level + 1;
-  return true;
-};
-
-/* ---------- 放置収入 ---------- */
-
-export type OfflineReport = { seconds: number; earned: number };
-
-export const OFFLINE_CAP_HOURS = 8;
-
-/** 店員が居るあいだだけ、閉じているあいだも稼ぐ */
-export const applyOffline = (
-  state: ShopState,
-  now: number,
-): OfflineReport | null => {
-  const elapsed = (now - state.lastSeen) / 1000;
-  state.lastSeen = now;
-  if (!Number.isFinite(elapsed) || elapsed < 60) return null;
-
-  const waiters = state.staff.filter((item) => item.kind === "waiter").length;
-  if (waiters === 0) return null;
-
-  const capped = Math.min(elapsed, OFFLINE_CAP_HOURS * 3600);
-  const seatCount = openSeats(state).length;
-  const stoveCount = openStoves(state).length;
-  const factor = cookFactor(state.levels.cook);
-
-  // 1秒あたりに出せる杯数は「調理の速さ」と「席数」の小さい方で決まる
-  const cookRate = stoveCount / (COOK_TIME * factor);
-  const seatRate = seatCount / (EAT_TIME + 2.5);
-  const carryRate = waiters * 0.42;
-  const perSecond = Math.min(cookRate, seatRate, carryRate);
-  const earned = Math.floor(
-    perSecond * capped * coinValue(state.levels.price) * 0.6,
-  );
-  if (earned <= 0) return null;
-
-  state.money += earned;
-  state.playTime += capped;
-  return { seconds: capped, earned };
+  for (const item of state.pops) item.age += dt;
+  state.pops = state.pops.filter((item) => item.age < 1);
 };
 
 /* ---------- 案内 ---------- */
 
-export type Objective =
-  | { kind: "pickup"; pos: Vec; label: string }
-  | { kind: "serve"; pos: Vec; label: string }
-  | { kind: "coin"; pos: Vec; label: string }
-  | { kind: "wait"; pos: null; label: string };
+export type Objective = {
+  kind: "pickup" | "serve" | "coin" | "wait";
+  pos: Vec | null;
+  label: string;
+};
 
-/** 配膳口（丼を置く場所）の見た目上の位置 */
-export const trayPos = (seat: SeatSpec): Vec => ({
-  x: seat.serve.x,
-  y: seat.row === 0 ? 310 : 442,
-});
-
-/** いま何をすればいいか。画面の案内表示に使う */
 export const currentObjective = (state: ShopState): Objective => {
   const waiting = state.customers.filter((c) => c.state === "waiting");
 
@@ -783,22 +812,65 @@ export const currentObjective = (state: ShopState): Objective => {
     const stove = openStoves(state)
       .filter((item) => (state.ready[item.id] ?? 0) > 0)
       .sort(
-        (a, b) =>
-          Math.hypot(state.player.pos.x - a.stand.x, state.player.pos.y - a.stand.y) -
-          Math.hypot(state.player.pos.x - b.stand.x, state.player.pos.y - b.stand.y),
+        (a, b) => dist(state.player.pos, a.pos) - dist(state.player.pos, b.pos),
       )[0];
     if (stove) {
-      return { kind: "pickup", pos: stove.stand, label: "厨房で丼を受け取ろう" };
+      return { kind: "pickup", pos: stove.pos, label: "厨房で丼を受け取ろう" };
     }
   }
 
   if (state.coins.length > 0) {
-    const coin = state.coins[0];
-    return { kind: "coin", pos: coin.pos, label: "お金を踏んで回収しよう" };
+    return {
+      kind: "coin",
+      pos: state.coins[0].pos,
+      label: "お金を踏んで回収しよう",
+    };
   }
 
   if (waiting.length > 0) {
     return { kind: "wait", pos: null, label: "丼ができるまで待とう" };
   }
   return { kind: "wait", pos: null, label: "お客さんを待っています" };
+};
+
+/* ---------- 放置収入 ---------- */
+
+export type OfflineReport = { seconds: number; earned: number };
+
+export const applyOffline = (
+  state: ShopState,
+  now: number,
+): OfflineReport | null => {
+  const elapsed = (now - state.lastSeen) / 1000;
+  state.lastSeen = now;
+  if (!Number.isFinite(elapsed) || elapsed < 60) return null;
+
+  const carriers = state.staff.filter(
+    (item) => item.kind === "waiter" || item.kind === "robot",
+  );
+  if (carriers.length === 0) return null;
+
+  const capped = Math.min(elapsed, OFFLINE_CAP_HOURS * 3600);
+  const factor = cookFactor(state.levels.cook);
+
+  const cookRate = openStoves(state).reduce(
+    (sum, stove) =>
+      sum +
+      (stoveHasCook(state, stove.id) ? COOK_BOOST : 1) / (COOK_TIME * factor),
+    0,
+  );
+  const seatRate = openSeats(state).length / (EAT_TIME + 2.2);
+  const carryRate = carriers.reduce(
+    (sum, worker) => sum + (worker.kind === "robot" ? 0.95 : 0.55),
+    0,
+  );
+  const perSecond = Math.min(cookRate, seatRate, carryRate);
+  const earned = Math.floor(
+    perSecond * capped * coinValue(state.levels.price) * 0.75,
+  );
+  if (earned <= 0) return null;
+
+  state.money += earned;
+  state.playTime += capped;
+  return { seconds: capped, earned };
 };
