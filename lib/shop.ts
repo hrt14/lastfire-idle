@@ -719,3 +719,56 @@ export const applyOffline = (
   state.playTime += capped;
   return { seconds: capped, earned };
 };
+
+/* ---------- 案内 ---------- */
+
+export type Objective =
+  | { kind: "pickup"; pos: Vec; label: string }
+  | { kind: "serve"; pos: Vec; label: string }
+  | { kind: "coin"; pos: Vec; label: string }
+  | { kind: "wait"; pos: null; label: string };
+
+/** 配膳口（丼を置く場所）の見た目上の位置 */
+export const trayPos = (seat: SeatSpec): Vec => ({
+  x: seat.serve.x,
+  y: seat.row === 0 ? 310 : 442,
+});
+
+/** いま何をすればいいか。画面の案内表示に使う */
+export const currentObjective = (state: ShopState): Objective => {
+  const waiting = state.customers.filter((c) => c.state === "waiting");
+
+  if (state.player.carry > 0 && waiting.length > 0) {
+    const seat = seatById.get(waiting[0].seatId);
+    if (seat) {
+      return {
+        kind: "serve",
+        pos: trayPos(seat),
+        label: "光っている配膳口まで運ぼう",
+      };
+    }
+  }
+
+  if (state.player.carry < maxCarry(state)) {
+    const stove = openStoves(state)
+      .filter((item) => (state.ready[item.id] ?? 0) > 0)
+      .sort(
+        (a, b) =>
+          Math.hypot(state.player.pos.x - a.stand.x, state.player.pos.y - a.stand.y) -
+          Math.hypot(state.player.pos.x - b.stand.x, state.player.pos.y - b.stand.y),
+      )[0];
+    if (stove) {
+      return { kind: "pickup", pos: stove.stand, label: "厨房で丼を受け取ろう" };
+    }
+  }
+
+  if (state.coins.length > 0) {
+    const coin = state.coins[0];
+    return { kind: "coin", pos: coin.pos, label: "お金を踏んで回収しよう" };
+  }
+
+  if (waiting.length > 0) {
+    return { kind: "wait", pos: null, label: "丼ができるまで待とう" };
+  }
+  return { kind: "wait", pos: null, label: "お客さんを待っています" };
+};

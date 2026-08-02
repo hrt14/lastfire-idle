@@ -11,6 +11,8 @@ import {
   openSeats,
   openStoves,
   seatById,
+  trayPos,
+  currentObjective,
   update,
   type Input,
   type ShopState,
@@ -219,6 +221,12 @@ export default function Shop({ onSample, paused }: Props) {
       roundRect(ctx, 16, 300, WORLD.w - 32, 11, 6);
       ctx.fill();
 
+      const waitingSeats = new Set(
+        state.customers
+          .filter((customer) => customer.state === "waiting")
+          .map((customer) => customer.seatId),
+      );
+
       for (const seat of openSeats(state)) {
         if (seat.row === 0) {
           ctx.fillStyle = "#b0463a";
@@ -231,6 +239,42 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fill();
           ctx.fillStyle = "#8a6440";
           roundRect(ctx, seat.pos.x - 30, seat.pos.y - 40, 60, 9, 5);
+          ctx.fill();
+        }
+      }
+
+      /* --- 配膳口（丼を置く場所） --- */
+      for (const seat of openSeats(state)) {
+        const tray = trayPos(seat);
+        const hot = waitingSeats.has(seat.id);
+        const pulse = 0.5 + Math.sin(time * 5) * 0.5;
+
+        ctx.save();
+        if (hot) {
+          ctx.shadowColor = "rgba(255,209,102,0.9)";
+          ctx.shadowBlur = 10 + pulse * 12;
+        }
+        ctx.fillStyle = hot
+          ? `rgba(255,209,102,${0.5 + pulse * 0.35})`
+          : "rgba(255,255,255,0.09)";
+        roundRect(ctx, tray.x - 15, tray.y - 9, 30, 18, 8);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.strokeStyle = hot ? "#fff0c2" : "rgba(255,255,255,0.22)";
+        ctx.lineWidth = hot ? 2 : 1;
+        roundRect(ctx, tray.x - 15, tray.y - 9, 30, 18, 8);
+        ctx.stroke();
+
+        if (hot) {
+          // 下向きの矢印で「ここに置く」を示す
+          const dy = Math.sin(time * 5) * 3;
+          ctx.fillStyle = "#ffd166";
+          ctx.beginPath();
+          ctx.moveTo(tray.x, tray.y - 16 + dy);
+          ctx.lineTo(tray.x - 6, tray.y - 25 + dy);
+          ctx.lineTo(tray.x + 6, tray.y - 25 + dy);
+          ctx.closePath();
           ctx.fill();
         }
       }
@@ -249,16 +293,6 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.ellipse(px - 4, 508, 8, 7, 0, 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.fillStyle = "#3a2c22";
-      roundRect(ctx, 12, 196, 26, 74, 5);
-      ctx.fill();
-      ctx.save();
-      ctx.translate(25, 233);
-      ctx.rotate(-Math.PI / 2);
-      ctx.fillStyle = "#d9c7a8";
-      ctx.fillText("本日のおすすめ", 0, 0);
-      ctx.restore();
-
       /* --- 入口 --- */
       ctx.fillStyle = "rgba(255,255,255,0.06)";
       roundRect(ctx, ENTRANCE.x - 42, WORLD.h - 26, 84, 20, 8);
@@ -340,11 +374,23 @@ export default function Shop({ onSample, paused }: Props) {
               customer.state === "walking" ? performance.now() / 90 : 0,
             );
             if (customer.state === "waiting" && seat) {
-              const bounce = Math.sin(time * 4) * 1.6;
-              ctx.fillStyle = "rgba(12,10,8,0.8)";
-              roundRect(ctx, customer.pos.x - 13, customer.pos.y - 46 + bounce, 26, 18, 8);
+              const bounce = Math.sin(time * 4.5) * 2;
+              const bx = customer.pos.x + 24;
+              const by = customer.pos.y - 6 + bounce;
+              ctx.save();
+              ctx.shadowColor = "rgba(255,209,102,0.8)";
+              ctx.shadowBlur = 9;
+              ctx.fillStyle = "#ffd166";
+              roundRect(ctx, bx - 15, by - 11, 30, 22, 10);
               ctx.fill();
-              bowl(ctx, customer.pos.x, customer.pos.y - 37 + bounce, 0.9);
+              ctx.beginPath();
+              ctx.moveTo(bx - 15, by + 2);
+              ctx.lineTo(bx - 22, by + 8);
+              ctx.lineTo(bx - 12, by + 8);
+              ctx.closePath();
+              ctx.fill();
+              ctx.restore();
+              bowl(ctx, bx, by, 1);
             }
             if (customer.state === "eating") {
               ctx.fillStyle = "#ffd166";
@@ -389,6 +435,47 @@ export default function Shop({ onSample, paused }: Props) {
 
       actors.sort((a, b) => a.y - b.y);
       for (const actor of actors) actor.render();
+
+      /* --- 次にやることの案内 --- */
+      const objective = currentObjective(state);
+      if (objective.pos) {
+        const from = state.player.pos;
+        const to = objective.pos;
+        const len = Math.hypot(to.x - from.x, to.y - from.y);
+        if (len > 46) {
+          ctx.save();
+          ctx.setLineDash([5, 7]);
+          ctx.lineDashOffset = -((time * 40) % 12);
+          ctx.strokeStyle = "rgba(255,209,102,0.55)";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(from.x, from.y - 6);
+          ctx.lineTo(to.x, to.y);
+          ctx.stroke();
+          ctx.restore();
+
+          const ring = 0.5 + Math.sin(time * 5) * 0.5;
+          ctx.strokeStyle = `rgba(255,209,102,${0.35 + ring * 0.5})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(to.x, to.y, 18 + ring * 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      const label = objective.label;
+      const labelWidth = ctx.measureText(label).width + 26;
+      roundRect(ctx, WORLD.w / 2 - labelWidth / 2, 52, labelWidth, 24, 12);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,209,102,0.45)";
+      ctx.lineWidth = 1;
+      roundRect(ctx, WORLD.w / 2 - labelWidth / 2, 52, labelWidth, 24, 12);
+      ctx.stroke();
+      ctx.fillStyle = "#ffd166";
+      ctx.fillText(label, WORLD.w / 2, 65);
+      ctx.restore();
 
       /* --- ジョイスティック --- */
       const s = stick.current;

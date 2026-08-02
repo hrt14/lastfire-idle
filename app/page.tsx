@@ -80,7 +80,7 @@ export default function Page() {
       </footer>
 
       {sample && sample.served === 0 ? (
-        <p className="hint">画面をスワイプして移動 → 丼を拾って、待っているお客さんへ</p>
+        <p className="hint">画面をスワイプして移動</p>
       ) : null}
 
       {sample?.toast ? <div className="toast">{sample.toast}</div> : null}
@@ -149,8 +149,12 @@ export default function Page() {
             </div>
             <ul className="notes">
               <li>画面のどこでもスワイプすると、その方向へ店主が歩きます（PCは矢印キー）。</li>
+              <li>画面上部に「次にやること」が出ます。金色の点線がその場所まで伸びます。</li>
               <li>厨房の寸胴には、できあがった丼が溜まります。近づくと自動で持ち上がります。</li>
-              <li>丼を持った状態でお客さんに近づくと、自動で出します。</li>
+              <li>
+                お客さんが座ると、カウンターの<strong>配膳口が金色に光り、矢印が出ます</strong>。
+                そこまで丼を持っていけば自動で出します。
+              </li>
               <li>食べ終わったお客さんはカウンターにお金を置きます。踏むと回収できます。</li>
               <li>
                 緑の枠に立つとお金が吸い出され、席・調理台・店員が増えます。
