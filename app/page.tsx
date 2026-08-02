@@ -144,6 +144,10 @@ export default function Page() {
                 広げた先では<strong>新しい設備と店員</strong>が入ります。製麺所には
                 製麺機・大型冷蔵庫・券売機・呼び込み看板、宴会場には板前がいます。
               </li>
+              <li>
+                券売機を入れるとお金は自動で入るので、
+                <strong>雇っていたレジ係はホール店員に配置転換</strong>されます（無駄になりません）。
+              </li>
             </ul>
             <button type="button" className="ghost" onClick={handleReset}>
               最初からやり直す

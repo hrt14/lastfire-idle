@@ -222,7 +222,7 @@ export const equipment: EquipSpec[] = [
   {
     id: "ticket",
     name: "券売機",
-    detail: "お金が自動でサイフに入る",
+    detail: "お金が自動で入る・レジ係はホールへ",
     pos: { x: 620, y: 300 },
     price: 80000,
     area: 2,
@@ -610,9 +610,15 @@ export const fromPersisted = (input: unknown): ShopState => {
       state.cooking[stove.id] = 0;
     }
   }
+  const ticket = state.unlocked.includes("equip-ticket");
   state.staff = hires
     .filter((hire) => state.unlocked.includes(hire.id))
-    .map((hire, index) => makeStaff(hire, index + 1));
+    .map((hire, index) => {
+      const worker = makeStaff(hire, index + 1);
+      // 券売機があるあいだ、レジ係はホール店員として働く
+      if (ticket && worker.kind === "collector") worker.kind = "waiter";
+      return worker;
+    });
   state.nextId = state.staff.length + 1;
 
   return state;
@@ -690,6 +696,7 @@ export const availablePads = (state: ShopState) =>
 
     // 調理人はその寸胴を買ってから
     const hire = hireById.get(pad.id);
+    if (hire?.kind === "collector" && hasEquip(state, "ticket")) return false;
     if (hire?.stoveId) return state.unlocked.includes(hire.stoveId);
 
     // 席・店員・寸胴・設備は、その区画が開いてから出す
@@ -739,6 +746,7 @@ const unlock = (state: ShopState, padId: string) => {
   const hire = hireById.get(padId);
   if (hire) state.staff.push(makeStaff(hire, state.nextId++));
 
+
   const area = areaById.get(padId);
   const pad = padById.get(padId);
   state.toast = {
@@ -746,6 +754,24 @@ const unlock = (state: ShopState, padId: string) => {
     at: Date.now(),
   };
   state.sfx.push("buy");
+
+  // 券売機を入れるとお金は自動で入るので、レジ係はホールへ回す
+  if (padId === "equip-ticket") {
+    let moved = 0;
+    for (const worker of state.staff) {
+      if (worker.kind !== "collector") continue;
+      worker.kind = "waiter";
+      worker.carry = 0;
+      moved += 1;
+    }
+    if (moved > 0) {
+      state.toast = {
+        text: `レジ係 ${moved}人をホールに配置転換した`,
+        at: Date.now(),
+      };
+      pop(state, { x: 620, y: 280 }, "配置転換！");
+    }
+  }
 };
 
 const spawnCustomers = (state: ShopState, dt: number) => {
@@ -1151,6 +1177,8 @@ const padInspect = (state: ShopState, pad: Pad): Inspect => {
     if (hire?.kind === "waiter") lines.push("雇うと放置中も稼いでくれる");
     if (hire?.kind === "robot") lines.push("店員より速く、5杯以上まとめて運ぶ");
     if (hire?.kind === "cook") lines.push(`調理が ${COOK_BOOST}倍速になる`);
+    if (hire?.kind === "collector") lines.push("券売機を入れるとホールへ移る");
+    if (pad.id === "equip-ticket") lines.push("雇っていたレジ係はホール店員になる");
   }
 
   lines.push(paid > 0 ? `残り ${yen(price - paid)}（${yen(price)}）` : yen(price));
