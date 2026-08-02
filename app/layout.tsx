@@ -2,14 +2,14 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  applicationName: "ラーメン一直線",
-  title: "ラーメン一直線 ― 放置ラーメン屋経営",
+  applicationName: "はんじょうダッシュ",
+  title: "はんじょうダッシュ ― お店とパークの放置ゲーム",
   description:
-    "丼を運び、お客をさばき、店員を雇って店を広げるアーケードアイドル系の放置経営ゲーム。",
+    "スワイプで動かして、お店とテーマパークを大きくしていくアーケードアイドル系の放置ゲーム。",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ラーメン一直線",
+    title: "はんじょうダッシュ",
   },
   formatDetection: {
     telephone: false,

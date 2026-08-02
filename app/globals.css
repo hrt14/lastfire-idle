@@ -762,3 +762,28 @@ button {
 .skin.rarity-R .skin-rarity {
   color: #7fd4ff;
 }
+
+/* ---------- ポータルへの導線 ---------- */
+
+.portal-link {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.portal-foot {
+  margin-top: auto;
+  padding-top: 0.6rem;
+  color: var(--gold);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+}

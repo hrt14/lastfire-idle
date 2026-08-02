@@ -92,11 +92,14 @@ export default function Page() {
     return (
       <main className="top">
         <header className="top-head">
+          <a className="portal-link" href="https://hitobito.jp">
+            ← ひとびと
+          </a>
           <h1>
             <span className="top-mark">🍜</span>
-            はたらくシリーズ
+            はんじょうダッシュ
           </h1>
-          <p>スワイプで動かして、店を大きくしていく放置ゲーム</p>
+          <p>スワイプで動かして、お店とパークを大きくしていく放置ゲーム</p>
         </header>
 
         <ul className="stages">
@@ -144,6 +147,9 @@ export default function Page() {
         <p className="top-note">
           記録はこの端末に保存されます。ステージごとに別々に進みます。
         </p>
+        <a className="portal-foot" href="https://hitobito.jp">
+          ひとびとの他のアプリを見る →
+        </a>
       </main>
     );
   }

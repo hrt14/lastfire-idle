@@ -2,10 +2,10 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "ラーメン一直線 ― 放置ラーメン屋経営",
-    short_name: "ラーメン一直線",
+    name: "はんじょうダッシュ ― お店とパークの放置ゲーム",
+    short_name: "はんじょうダッシュ",
     description:
-      "丼を運び、お客をさばき、店員を雇って店を広げるアーケードアイドル系の放置経営ゲーム。",
+      "スワイプで動かして、お店とテーマパークを大きくしていくアーケードアイドル系の放置ゲーム。",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",
