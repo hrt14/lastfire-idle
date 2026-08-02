@@ -35,7 +35,13 @@ import {
   type StaffKind,
   type UpgradeId,
 } from "@/lib/shop";
-import { catchUp, equippedSkin, getState, save } from "@/lib/shopStore";
+import {
+  catchUp,
+  equippedSkin,
+  equippedStars,
+  getState,
+  save,
+} from "@/lib/shopStore";
 import type { Hat } from "@/data/skins";
 import { formatYen } from "@/lib/format";
 import { isMuted, loadMuted, playSound, unlockAudio } from "@/lib/sfx";
@@ -1892,6 +1898,66 @@ const drawEquip = (
   }
 };
 
+/**
+ * 同じ見た目がダブると増える★の光り方。
+ * ★1 ふちが光る / ★2 きらきら / ★3 虹のオーラ
+ */
+const drawShine = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  stars: number,
+  time: number,
+) => {
+  // 足元の光の輪
+  const pulse = 0.6 + Math.sin(time * 3) * 0.4;
+  const hue = (time * 90) % 360;
+  const ring =
+    stars >= 3
+      ? `hsla(${hue}, 90%, 65%, ${0.35 + pulse * 0.3})`
+      : stars === 2
+        ? `rgba(150,215,255,${0.3 + pulse * 0.25})`
+        : `rgba(255,209,102,${0.25 + pulse * 0.2})`;
+  ctx.strokeStyle = ring;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 7, 15 + pulse * 2, 6 + pulse, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  if (stars >= 3) {
+    // 虹のオーラ
+    const aura = ctx.createRadialGradient(x, y - 10, 4, x, y - 10, 30);
+    aura.addColorStop(0, `hsla(${hue}, 95%, 70%, 0.35)`);
+    aura.addColorStop(1, `hsla(${(hue + 90) % 360}, 95%, 70%, 0)`);
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(x, y - 10, 30, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (stars >= 2) {
+    // きらきら
+    for (let i = 0; i < 4; i += 1) {
+      const t = (time * 0.9 + i * 0.25) % 1;
+      const a = i * 1.9 + time * 1.4;
+      const px = x + Math.cos(a) * (12 + t * 8);
+      const py = y - 6 - t * 24;
+      const size = 3.4 * (1 - t);
+      ctx.fillStyle =
+        stars >= 3
+          ? `hsla(${(hue + i * 60) % 360}, 95%, 75%, ${1 - t})`
+          : `rgba(230,245,255,${1 - t})`;
+      ctx.beginPath();
+      ctx.moveTo(px, py - size);
+      ctx.lineTo(px + size * 0.5, py);
+      ctx.lineTo(px, py + size);
+      ctx.lineTo(px - size * 0.5, py);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+};
+
 /** ガチャの見た目に付く かぶりもの */
 const drawHat = (
   ctx: CanvasRenderingContext2D,
@@ -2708,9 +2774,22 @@ export default function Shop({ onSample, paused }: Props) {
 
       const player = state.player;
       const skin = equippedSkin();
+      const stars = equippedStars();
       actors.push({
         y: player.pos.y,
         render: () => {
+          if (stars > 0) drawShine(ctx, player.pos.x, player.pos.y, stars, time);
+          ctx.save();
+          if (stars > 0) {
+            // ★の数だけ、ふちが強く光る
+            ctx.shadowColor =
+              stars >= 3
+                ? `hsla(${(time * 90) % 360}, 90%, 65%, 0.95)`
+                : stars === 2
+                  ? "rgba(180,230,255,0.9)"
+                  : "rgba(255,225,150,0.85)";
+            ctx.shadowBlur = 8 + stars * 5 + Math.sin(time * 4) * 2;
+          }
           person(ctx, player.pos.x, player.pos.y, skin.coat, skin.head, player.step);
           if (skin.hat === "none") {
             ctx.fillStyle = "#f6e7cf";
@@ -2725,6 +2804,7 @@ export default function Shop({ onSample, paused }: Props) {
               player.pos.y,
             );
           }
+          ctx.restore();
           for (let i = 0; i < player.carry; i += 1) {
             bowl(ctx, player.pos.x, player.pos.y - 34 - i * 6);
           }

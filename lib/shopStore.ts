@@ -14,16 +14,20 @@ import { stageDefs, type StageId } from "@/data/stages";
 import {
   GACHA_COST,
   GACHA_REFUND,
+  MAX_STARS,
   rollSkin,
   skinById,
   type Skin,
 } from "@/data/skins";
+import { setSkinShine } from "@/lib/shop";
 
 type Vault = {
   active: StageId;
   stages: Partial<Record<StageId, Persisted>>;
   /** ガチャで当てた見た目（ステージ共通） */
   skins: string[];
+  /** 見た目ごとの★（ダブるたびに増えて光り方が変わる） */
+  stars: Record<string, number>;
   equipped: string;
 };
 
@@ -31,6 +35,7 @@ const emptyVault = (): Vault => ({
   active: "ramen",
   stages: {},
   skins: ["default"],
+  stars: {},
   equipped: "default",
 });
 
@@ -50,10 +55,19 @@ const readVault = (): Vault => {
     const owned = Array.isArray(parsed.skins)
       ? parsed.skins.filter((id): id is string => typeof id === "string")
       : [];
+    const stars: Record<string, number> = {};
+    if (parsed.stars && typeof parsed.stars === "object") {
+      for (const [id, value] of Object.entries(parsed.stars)) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          stars[id] = Math.max(0, Math.min(MAX_STARS, Math.floor(value)));
+        }
+      }
+    }
     return {
       active: parsed.active === "park" ? "park" : "ramen",
       stages: (parsed.stages ?? {}) as Partial<Record<StageId, Persisted>>,
       skins: Array.from(new Set(["default", ...owned])),
+      stars,
       equipped:
         typeof parsed.equipped === "string" && skinById.has(parsed.equipped)
           ? parsed.equipped
@@ -85,6 +99,7 @@ export const getState = (): ShopState => {
   if (!loaded) {
     vault = readVault();
     loaded = true;
+    setSkinShine(vault.stars[vault.equipped] ?? 0);
   }
   if (!state) state = build(vault.active);
   return state;
@@ -163,7 +178,15 @@ export const openedAreas = () => openAreas(getState()).length;
 
 /* ---------- ガチャ（見た目） ---------- */
 
-export type GachaResult = { skin: Skin; duplicate: boolean };
+export type GachaResult = {
+  skin: Skin;
+  duplicate: boolean;
+  /** ダブりで★が上がったか */
+  shined: boolean;
+  stars: number;
+  /** ★が上限で、お金に変わったか */
+  refunded: boolean;
+};
 
 export const ownedSkins = (): string[] => {
   getState();
@@ -175,10 +198,27 @@ export const equippedSkin = (): Skin => {
   return skinById.get(vault.equipped) ?? skinById.get("default")!;
 };
 
+/** その見た目の★の数 */
+export const skinStars = (id: string): number => {
+  getState();
+  return vault.stars[id] ?? 0;
+};
+
+export const equippedStars = (): number => {
+  getState();
+  return vault.stars[vault.equipped] ?? 0;
+};
+
+/** 装備中の★を、足の速さのおまけとしてエンジンに渡す */
+const syncShine = () => {
+  setSkinShine(vault.stars[vault.equipped] ?? 0);
+};
+
 export const equipSkin = (id: string) => {
   getState();
   if (!vault.skins.includes(id)) return;
   vault.equipped = id;
+  syncShine();
   writeVault();
 };
 
@@ -191,12 +231,31 @@ export const pullGacha = (): GachaResult | null => {
 
   const skin = rollSkin();
   const duplicate = vault.skins.includes(skin.id);
+  let shined = false;
+  let refunded = false;
+
   if (duplicate) {
-    current.money += GACHA_REFUND;
+    const stars = vault.stars[skin.id] ?? 0;
+    if (stars < MAX_STARS) {
+      // ダブると★が増えて、光り方が変わる
+      vault.stars[skin.id] = stars + 1;
+      vault.equipped = skin.id;
+      shined = true;
+    } else {
+      current.money += GACHA_REFUND;
+      refunded = true;
+    }
   } else {
     vault.skins.push(skin.id);
     vault.equipped = skin.id;
   }
+  syncShine();
   save();
-  return { skin, duplicate };
+  return {
+    skin,
+    duplicate,
+    shined,
+    stars: vault.stars[skin.id] ?? 0,
+    refunded,
+  };
 };

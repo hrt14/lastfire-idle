@@ -157,8 +157,8 @@ const ramenEquipment: EquipSpec[] = [
 ];
 
 const ramenUpgrades: Upgrade[] = [
-  { id: "carry", name: "両手鍋", detail: (n) => `${3 + n}杯まで持てる`, pos: { x: 46, y: 66 }, basePrice: 60, growth: 1.7, max: 9 },
-  { id: "speed", name: "厨房シューズ", detail: (n) => `足の速さ +${n * 10}%`, pos: { x: 138, y: 66 }, basePrice: 50, growth: 1.65, max: 12 },
+  { id: "carry", name: "両手鍋", detail: (n) => `${3 + n}杯まで持てる・店員も ${3 + Math.floor(n / 2)}杯`, pos: { x: 46, y: 66 }, basePrice: 60, growth: 1.7, max: 9 },
+  { id: "speed", name: "厨房シューズ", detail: (n) => `足の速さ +${n * 10}%・店員も +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 50, growth: 1.65, max: 12 },
   { id: "cook", name: "業務用寸胴", detail: (n) => `煮える速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 80, growth: 1.7, max: 14 },
   { id: "price", name: "看板メニュー", detail: (n) => `一杯 ${Math.round(55 * Math.pow(1.4, n))}円`, pos: { x: 314, y: 66 }, basePrice: 120, growth: 1.75, max: 20 },
 ];
@@ -328,8 +328,8 @@ const parkEquipment: EquipSpec[] = [
 ];
 
 const parkUpgrades: Upgrade[] = [
-  { id: "carry", name: "チケットホルダー", detail: (n) => `${3 + n}枚まで持てる`, pos: { x: 46, y: 66 }, basePrice: 80, growth: 1.7, max: 9 },
-  { id: "speed", name: "園内カート", detail: (n) => `足の速さ +${n * 10}%`, pos: { x: 138, y: 66 }, basePrice: 70, growth: 1.65, max: 12 },
+  { id: "carry", name: "チケットホルダー", detail: (n) => `${3 + n}枚まで持てる・スタッフも ${3 + Math.floor(n / 2)}枚`, pos: { x: 46, y: 66 }, basePrice: 80, growth: 1.7, max: 9 },
+  { id: "speed", name: "園内カート", detail: (n) => `足の速さ +${n * 10}%・スタッフも +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 70, growth: 1.65, max: 12 },
   { id: "cook", name: "発券機の改良", detail: (n) => `発券の速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 100, growth: 1.7, max: 14 },
   { id: "price", name: "入園料アップ", detail: (n) => `一人 ${Math.round(70 * Math.pow(1.4, n))}円`, pos: { x: 314, y: 66 }, basePrice: 150, growth: 1.75, max: 20 },
 ];

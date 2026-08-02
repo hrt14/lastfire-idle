@@ -546,8 +546,15 @@ export const isBlocked = (state: ShopState, pos: Vec) =>
 
 export const maxCarry = (state: ShopState) => 3 + state.levels.carry;
 
+/** 光っている見た目（★の数）による足の速さのおまけ。ガチャ側から入れる */
+let skinShine = 0;
+export const setSkinShine = (stars: number) => {
+  skinShine = Math.max(0, stars);
+};
+export const skinShineBonus = () => skinShine * 0.05;
+
 export const playerSpeed = (state: ShopState) =>
-  PLAYER_BASE_SPEED * (1 + state.levels.speed * 0.1);
+  PLAYER_BASE_SPEED * (1 + state.levels.speed * 0.1) * (1 + skinShineBonus());
 
 export const hasEquip = (state: ShopState, id: EquipId) =>
   state.unlocked.includes(`equip-${id}`);
@@ -863,11 +870,19 @@ const updatePads = (state: ShopState, dt: number) => {
   state.activePad = active;
 };
 
-const carrierLimit = (state: ShopState, worker: Staff) =>
-  worker.kind === "robot" ? Math.max(5, maxCarry(state)) : 3;
+/** スタッフが一度に運べる数。強化（両手鍋／チケットホルダー）で増える */
+export const carrierLimit = (state: ShopState, worker: Staff) =>
+  worker.kind === "robot"
+    ? Math.max(5, maxCarry(state))
+    : 3 + Math.floor(state.levels.carry / 2);
 
-const carrierSpeed = (worker: Staff) =>
-  worker.kind === "robot" ? ROBOT_SPEED : STAFF_SPEED;
+/** スタッフの足の速さ。強化（厨房シューズ／園内カート）の半分だけ効く */
+export const staffSpeedFactor = (state: ShopState) => 1 + state.levels.speed * 0.05;
+
+const staffSpeed = (state: ShopState) => STAFF_SPEED * staffSpeedFactor(state);
+
+const carrierSpeed = (state: ShopState, worker: Staff) =>
+  (worker.kind === "robot" ? ROBOT_SPEED : STAFF_SPEED) * staffSpeedFactor(state);
 
 /** 調理人の立ち位置（寸胴の奥） */
 export const cookPost = (worker: Staff): Vec => {
@@ -879,12 +894,12 @@ export const cookPost = (worker: Staff): Vec => {
 const updateStaff = (state: ShopState, dt: number) => {
   for (const worker of state.staff) {
     if (worker.kind === "cook") {
-      moveToward(worker.pos, cookPost(worker), STAFF_SPEED, dt);
+      moveToward(worker.pos, cookPost(worker), staffSpeed(state), dt);
       continue;
     }
 
     if (worker.kind === "master") {
-      moveToward(worker.pos, { x: 180, y: 128 }, STAFF_SPEED, dt);
+      moveToward(worker.pos, { x: 180, y: 128 }, staffSpeed(state), dt);
       continue;
     }
 
@@ -899,10 +914,10 @@ const updateStaff = (state: ShopState, dt: number) => {
         }
       }
       if (!best) {
-        moveToward(worker.pos, { x: 230, y: 380 }, STAFF_SPEED * 0.6, dt);
+        moveToward(worker.pos, { x: 230, y: 380 }, staffSpeed(state) * 0.6, dt);
         continue;
       }
-      if (moveToward(worker.pos, best.pos, STAFF_SPEED, dt)) {
+      if (moveToward(worker.pos, best.pos, staffSpeed(state), dt)) {
         collectCoin(state, best);
         state.coins = state.coins.filter((item) => item.id !== -1);
       }
@@ -910,7 +925,7 @@ const updateStaff = (state: ShopState, dt: number) => {
     }
 
     // ホール店員・配膳ロボ: 丼を集めて、待っている客に配る
-    const speed = carrierSpeed(worker);
+    const speed = carrierSpeed(state, worker);
     if (worker.carry > 0) {
       const target = state.customers.find(
         (customer) => customer.state === "waiting",
@@ -1177,20 +1192,27 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
   for (const worker of state.staff) {
     consider(worker.pos, 22, () => {
       const lines: string[] = [];
+      const unit = stageLabels().item === "丼" ? "杯" : "枚";
       if (worker.kind === "cook") {
-        lines.push("寸胴の前に立って調理を速くする", `いまの倍率 ${COOK_BOOST}倍`);
+        lines.push(
+          `${stageLabels().producer}の前に立って速くする`,
+          `いまの倍率 ${COOK_BOOST}倍`,
+        );
       } else if (worker.kind === "master") {
-        lines.push("厨房を仕切り、すべての寸胴を1.4倍速にする");
+        lines.push("全体を仕切り、すべての作る場所を1.4倍速にする");
       } else if (worker.kind === "collector") {
         lines.push("落ちたお金を拾ってくれる");
       } else {
         lines.push(
-          "丼を受け取って、待っている席へ運ぶ",
-          worker.kind === "robot"
-            ? `一度に ${Math.max(5, maxCarry(state))}杯・足が速い`
-            : "一度に 3杯",
-          `いま ${worker.carry}杯 持っている`,
+          `${stageLabels().item}を受け取って、待っている相手へ運ぶ`,
+          `一度に ${carrierLimit(state, worker)}${unit}${
+            worker.kind === "robot" ? "・足が速い" : ""
+          }`,
+          `いま ${worker.carry}${unit} 持っている`,
         );
+      }
+      if (worker.kind !== "cook" && worker.kind !== "master") {
+        lines.push(`強化のおかげで 足の速さ +${state.levels.speed * 5}%`);
       }
       return { title: staffLabel(worker.kind), lines, pos: worker.pos };
     });
@@ -1212,8 +1234,10 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
   consider(state.player.pos, 24, () => ({
     title: "あなた",
     lines: [
-      `運べる数 ${state.player.carry} / ${maxCarry(state)}杯`,
-      `足の速さ +${state.levels.speed * 10}%`,
+      `運べる数 ${state.player.carry} / ${maxCarry(state)}`,
+      `足の速さ +${state.levels.speed * 10}%（スタッフにも +${
+        state.levels.speed * 5
+      }%）`,
       "スワイプで移動・近づくだけで持つ／出す",
     ],
     pos: state.player.pos,

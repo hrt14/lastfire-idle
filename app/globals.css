@@ -772,6 +772,45 @@ button {
   color: #7fd4ff;
 }
 
+.skin-stars {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--gold);
+}
+
+.skin-stars em {
+  font-style: normal;
+  font-size: 0.56rem;
+  color: #9fe6bd;
+}
+
+.gacha-stars {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  text-shadow: 0 0 10px rgba(255, 209, 102, 0.7);
+}
+
+/* ★が付いた見た目は、一覧でも光らせる */
+.skin.is-shining button {
+  border-color: rgba(255, 209, 102, 0.55);
+  box-shadow: 0 0 12px rgba(255, 209, 102, 0.25) inset;
+}
+
+.skin.is-rainbow button {
+  border-color: transparent;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)),
+    linear-gradient(110deg, #ff6b6b, #ffd166, #7ee7a8, #6bd3ff, #a78bfa);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
 /* ---------- ポータルへの導線 ---------- */
 
 .portal-link {

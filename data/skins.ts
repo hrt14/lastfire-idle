@@ -51,8 +51,21 @@ export const rarityWeight: Record<Rarity, number> = { N: 60, R: 32, SR: 8 };
 /** 1回の値段 */
 export const GACHA_COST = 100_000_000;
 
-/** ダブったときの払い戻し */
+/** ★が上がりきったあと、ダブったときの払い戻し */
 export const GACHA_REFUND = 30_000_000;
+
+/** 同じ見た目がダブるたびに★が増えて、光り方が変わる */
+export const MAX_STARS = 3;
+
+export const shineLabel = (stars: number): string => {
+  if (stars >= 3) return "虹のオーラ";
+  if (stars === 2) return "きらきら";
+  if (stars === 1) return "ふちが光る";
+  return "光りなし";
+};
+
+/** ★1つにつき足の速さ +5% */
+export const shineBonus = (stars: number) => stars * 5;
 
 export const rollSkin = (): Skin => {
   const pool = skins.filter((skin) => skin.id !== "default");

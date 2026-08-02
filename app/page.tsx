@@ -8,13 +8,22 @@ import {
   equippedSkin,
   ownedSkins,
   pullGacha,
+  skinStars,
   resetState,
   stageProgress,
   stageUnlocked,
   switchStage,
   type GachaResult,
 } from "@/lib/shopStore";
-import { GACHA_COST, GACHA_REFUND, rarityLabel, skins } from "@/data/skins";
+import {
+  GACHA_COST,
+  GACHA_REFUND,
+  MAX_STARS,
+  rarityLabel,
+  shineBonus,
+  shineLabel,
+  skins,
+} from "@/data/skins";
 import { stageDefs, stageList, type StageId } from "@/data/stages";
 import { formatDuration, formatNumber, formatYen } from "@/lib/format";
 import { setMuted, unlockAudio } from "@/lib/sfx";
@@ -39,6 +48,7 @@ export default function Page() {
   const [result, setResult] = useState<GachaResult | null>(null);
   const [owned, setOwned] = useState<string[]>([]);
   const [wearing, setWearing] = useState("default");
+  const [stars, setStars] = useState<Record<string, number>>({});
   const [offline, setOffline] = useState<OfflineReport | null>(null);
 
   const handleSample = useCallback((next: Sample) => {
@@ -53,8 +63,10 @@ export default function Page() {
   }, []);
 
   const refreshSkins = useCallback(() => {
-    setOwned([...ownedSkins()]);
+    const list = [...ownedSkins()];
+    setOwned(list);
     setWearing(equippedSkin().id);
+    setStars(Object.fromEntries(list.map((id) => [id, skinStars(id)])));
   }, []);
 
   const openGacha = useCallback(() => {
@@ -77,6 +89,9 @@ export default function Page() {
     },
     [],
   );
+
+  const starMark = (count: number) =>
+    "★".repeat(count) + "☆".repeat(Math.max(0, MAX_STARS - count));
 
   const start = useCallback((id: StageId) => {
     switchStage(id);
@@ -341,7 +356,9 @@ export default function Page() {
 
             <p className="gacha-note">
               1回 {formatYen(GACHA_COST)}。店主の見た目が当たります。
-              同じものが出たら {formatYen(GACHA_REFUND)} 返ってきます。
+              同じものが出ると★が増えて光り方が変わり、足の速さも上がります
+              （★1つ +5%・最大 {starMark(MAX_STARS)}）。
+              ★が上限のあとは {formatYen(GACHA_REFUND)} 返ってきます。
             </p>
 
             {result ? (
@@ -350,10 +367,15 @@ export default function Page() {
                   {rarityLabel[result.skin.rarity]}
                 </span>
                 <strong>{result.skin.name}</strong>
+                {result.stars > 0 ? (
+                  <span className="gacha-stars">{starMark(result.stars)}</span>
+                ) : null}
                 <small>
-                  {result.duplicate
-                    ? `ダブり ・ ${formatYen(GACHA_REFUND)} 返金`
-                    : "着替えました！"}
+                  {result.shined
+                    ? `ダブり ・ ★${result.stars} になった！ ${shineLabel(result.stars)}`
+                    : result.refunded
+                      ? `★は上限 ・ ${formatYen(GACHA_REFUND)} 返金`
+                      : "着替えました！"}
                 </small>
               </div>
             ) : null}
@@ -380,6 +402,8 @@ export default function Page() {
                     key={skin.id}
                     className={`skin rarity-${skin.rarity}${have ? "" : " is-locked"}${
                       wearing === skin.id ? " is-on" : ""
+                    }${(stars[skin.id] ?? 0) > 0 ? " is-shining" : ""}${
+                      (stars[skin.id] ?? 0) >= MAX_STARS ? " is-rainbow" : ""
                     }`}
                   >
                     <button
@@ -392,7 +416,14 @@ export default function Page() {
                         style={{ background: have ? skin.coat : "#3a3229" }}
                       />
                       <span className="skin-name">{have ? skin.name : "？？？"}</span>
-                      <span className="skin-rarity">{skin.rarity}</span>
+                      {have && (stars[skin.id] ?? 0) > 0 ? (
+                        <span className="skin-stars">
+                          {starMark(stars[skin.id] ?? 0)}
+                          <em>+{shineBonus(stars[skin.id] ?? 0)}%</em>
+                        </span>
+                      ) : (
+                        <span className="skin-rarity">{skin.rarity}</span>
+                      )}
                     </button>
                   </li>
                 );
