@@ -403,6 +403,8 @@ export type Staff = {
   trips: number;
   /** 充電の残り時間。0 より大きいあいだは休んでいる */
   charge: number;
+  /** いま担当している場所（ほかのスタッフと取り合わないように） */
+  target: string | null;
 };
 
 export type Player = {
@@ -492,6 +494,7 @@ const makeStaff = (hire: HireSpec, id: number): Staff => ({
   home: { ...hire.pos },
   trips: 0,
   charge: 0,
+  target: null,
 });
 
 export const createState = (): ShopState => ({
@@ -1165,10 +1168,13 @@ export const carrierLimit = (state: ShopState, worker: Staff) =>
 /** スタッフの足の速さ。強化（厨房シューズ／園内カート）の半分だけ効く */
 export const staffSpeedFactor = (state: ShopState) => 1 + state.levels.speed * 0.05;
 
-const staffSpeed = (state: ShopState) => STAFF_SPEED * staffSpeedFactor(state);
+const staffSpeed = (state: ShopState, worker?: Staff) =>
+  STAFF_SPEED * staffSpeedFactor(state) * (worker ? personalSpeed(worker) : 1);
 
 const carrierSpeed = (state: ShopState, worker: Staff) =>
-  (worker.kind === "robot" ? ROBOT_SPEED : STAFF_SPEED) * staffSpeedFactor(state);
+  (worker.kind === "robot" ? ROBOT_SPEED : STAFF_SPEED) *
+  staffSpeedFactor(state) *
+  personalSpeed(worker);
 
 /** 調理人の立ち位置（寸胴の奥） */
 export const cookPost = (worker: Staff): Vec => {
@@ -1177,12 +1183,51 @@ export const cookPost = (worker: Staff): Vec => {
   return { x: stove.pos.x, y: stove.pos.y - 40 };
 };
 
+/**
+ * 同じ役割でも、ひとりずつ性格が違う。
+ * id から決まるので、雇い直しても同じ人は同じ動きをする
+ */
+export const trait = (worker: Staff) => worker.id % 3;
+
+/** 足の速さの個人差（±8%くらい） */
+const personalSpeed = (worker: Staff) => 1 + ((worker.id % 5) - 2) * 0.04;
+
+/** その場所を、ほかのスタッフが担当していないか */
+const claimedByOther = (state: ShopState, worker: Staff, id: string) =>
+  state.staff.some((other) => other.id !== worker.id && other.target === id);
+
+/**
+ * 近づく位置を少しずらす。
+ * まっすぐ行く人、ふらふら回り込む人、外側から入る人がいる
+ */
+const approach = (state: ShopState, worker: Staff, at: Vec): Vec => {
+  const lane = ((worker.id % 3) - 1) * 13;
+  const sway =
+    trait(worker) === 1
+      ? Math.sin(state.playTime * 1.6 + worker.id) * 9
+      : trait(worker) === 2
+        ? Math.cos(state.playTime * 1.1 + worker.id * 2) * 5
+        : 0;
+  return {
+    x: at.x + lane + sway,
+    y: at.y + (worker.id % 2 === 0 ? 5 : -5),
+  };
+};
+
 /** 手が空いたときの待ち場所。ひとりずつ違う場所で待つ */
 const idleSpot = (state: ShopState, worker: Staff): Vec => {
-  const sway = Math.sin(state.playTime * 0.6 + worker.id * 1.7) * 26;
+  const style = trait(worker);
+  const t = state.playTime * (0.4 + style * 0.25) + worker.id * 1.7;
+  // 0: その場でうろうろ / 1: 左右に往復 / 2: 小さく円を描く
+  if (style === 0) {
+    return { x: worker.home.x + Math.sin(t * 2) * 8, y: worker.home.y - 26 };
+  }
+  if (style === 1) {
+    return { x: worker.home.x + Math.sin(t) * 40, y: worker.home.y - 30 };
+  }
   return {
-    x: worker.home.x + sway,
-    y: worker.home.y - 30 - (worker.id % 3) * 14,
+    x: worker.home.x + Math.cos(t) * 26,
+    y: worker.home.y - 30 + Math.sin(t) * 16,
   };
 };
 
@@ -1197,8 +1242,8 @@ const spread = (state: ShopState, dt: number) => {
       const dx = b.pos.x - a.pos.x;
       const dy = b.pos.y - a.pos.y;
       const d = Math.hypot(dx, dy);
-      if (d > 20 || d < 0.001) continue;
-      const push = ((20 - d) / 20) * 26 * dt;
+      if (d > 15 || d < 0.001) continue;
+      const push = ((15 - d) / 15) * 10 * dt;
       const nx = dx / d;
       const ny = dy / d;
       a.pos.x -= nx * push;
@@ -1212,7 +1257,7 @@ const spread = (state: ShopState, dt: number) => {
 const updateStaff = (state: ShopState, dt: number) => {
   for (const worker of state.staff) {
     if (worker.kind === "cook") {
-      moveToward(worker.pos, cookPost(worker), staffSpeed(state), dt);
+      moveToward(worker.pos, cookPost(worker), staffSpeed(state, worker), dt);
       continue;
     }
 
@@ -1220,7 +1265,7 @@ const updateStaff = (state: ShopState, dt: number) => {
       // 板前・園長は、作る場所のあいだをゆっくり見回る
       const posts = openStoves(state);
       if (posts.length === 0) {
-        moveToward(worker.pos, worker.home, staffSpeed(state) * 0.5, dt);
+        moveToward(worker.pos, worker.home, staffSpeed(state, worker) * 0.5, dt);
         continue;
       }
       const post = posts[Math.floor(state.playTime / 6 + worker.id) % posts.length];
@@ -1228,7 +1273,7 @@ const updateStaff = (state: ShopState, dt: number) => {
         moveToward(
           worker.pos,
           { x: post.pos.x, y: post.pos.y - 44 },
-          staffSpeed(state) * 0.55,
+          staffSpeed(state, worker) * 0.55,
           dt,
         )
       ) {
@@ -1258,12 +1303,12 @@ const updateStaff = (state: ShopState, dt: number) => {
             x: (box.x0 + box.x1) / 2 + Math.cos(t) * (box.x1 - box.x0) * 0.32,
             y: (box.y0 + outsideTop(state)) / 2 + Math.sin(t * 1.3) * 90,
           },
-          staffSpeed(state) * 0.7,
+          staffSpeed(state, worker) * 0.7,
           dt,
         );
         continue;
       }
-      if (moveToward(worker.pos, best.pos, staffSpeed(state) * 1.15, dt)) {
+      if (moveToward(worker.pos, best.pos, staffSpeed(state, worker) * 1.15, dt)) {
         collectCoin(state, best);
         state.coins = state.coins.filter((item) => item.id !== -1);
       }
@@ -1278,32 +1323,46 @@ const updateStaff = (state: ShopState, dt: number) => {
       }
       // 皿が残ったのが古いテーブルから片づける
       const table = openSeats(state)
-        .filter((seat) => seatMode(seat) === "table" && isDirty(state, seat.id))
+        .filter(
+          (seat) =>
+            seatMode(seat) === "table" &&
+            isDirty(state, seat.id) &&
+            !claimedByOther(state, worker, seat.id),
+        )
         .sort((a, b) => (state.dirty[a.id] ?? 0) - (state.dirty[b.id] ?? 0))[0];
       if (!table) {
         const home = openSeats(state).find((seat) => seatMode(seat) === "table");
         moveToward(
           worker.pos,
           home ? { x: home.serve.x, y: home.serve.y - 40 } : { x: 180, y: 250 },
-          staffSpeed(state) * 0.6,
+          staffSpeed(state, worker) * 0.6,
           dt,
         );
         continue;
       }
-      if (moveToward(worker.pos, table.serve, staffSpeed(state) * 0.9, dt)) {
-        if (clearTable(state, worker.pos)) worker.charge = 0.8;
+      worker.target = table.id;
+      if (
+        moveToward(worker.pos, approach(state, worker, table.serve), staffSpeed(state, worker) * 0.9, dt)
+      ) {
+        if (clearTable(state, worker.pos)) {
+          worker.charge = 0.8;
+          worker.target = null;
+        }
       }
       continue;
     }
 
     if (worker.kind === "stocker") {
       // 品出し係: 倉庫から商品を運んで棚に並べる
-      const speed = staffSpeed(state);
+      const speed = staffSpeed(state, worker);
       const limit = carrierLimit(state, worker);
       // いちばん減っている棚から埋める
       const shelfNeed = openSeats(state)
         .filter(
-          (seat) => seatMode(seat) === "shelf" && shelfStock(state, seat.id) < SHELF_MAX,
+          (seat) =>
+            seatMode(seat) === "shelf" &&
+            shelfStock(state, seat.id) < SHELF_MAX &&
+            !claimedByOther(state, worker, seat.id),
         )
         .sort((a, b) => shelfStock(state, a.id) - shelfStock(state, b.id))[0];
 
@@ -1312,9 +1371,11 @@ const updateStaff = (state: ShopState, dt: number) => {
           moveToward(worker.pos, { x: worker.pos.x, y: worker.pos.y }, speed, dt);
           continue;
         }
-        if (moveToward(worker.pos, shelfNeed.tray, speed, dt)) {
+        worker.target = shelfNeed.id;
+        if (moveToward(worker.pos, approach(state, worker, shelfNeed.tray), speed, dt)) {
           if (restock(state, worker.pos)) {
             worker.carry -= 1;
+            worker.target = null;
             if (worker.carry === 0) worker.item = null;
           }
         }
@@ -1384,7 +1445,9 @@ const updateStaff = (state: ShopState, dt: number) => {
             !!item &&
             seatMode(item) !== "shelf" &&
             seatNeeds(item) === worker.item &&
-            seatCost(item) <= worker.carry
+            seatCost(item) <= worker.carry &&
+            // ほかのスタッフが向かっている席は狙わない
+            !claimedByOther(state, worker, customer.seatId)
           );
         })
         .map((customer) => ({
@@ -1394,22 +1457,31 @@ const updateStaff = (state: ShopState, dt: number) => {
         .sort((a, b) => {
           const da = dist(worker.pos, a.seat.serve);
           const db = dist(worker.pos, b.seat.serve);
-          return worker.kind === "robot" ? db - da : da - db;
+          const style = trait(worker);
+          // 0: 近い順 / 1: 遠い順 / 2: 待たせている順
+          if (style === 2) return a.customer.id - b.customer.id;
+          const far = worker.kind === "robot" ? style !== 0 : style === 1;
+          return far ? db - da : da - db;
         });
-      const target = reachable[0]?.customer ?? null;
-      const seat = target ? seatById.get(target.seatId) : null;
+      // いま担当している席を優先して、目移りしないようにする
+      const keep = reachable.find((item) => item.seat.id === worker.target);
+      const picked = keep ?? reachable[0] ?? null;
+      const seat = picked?.seat ?? null;
 
       if (seat) {
-        if (moveToward(worker.pos, seat.serve, speed, dt)) {
+        worker.target = seat.id;
+        if (moveToward(worker.pos, approach(state, worker, seat.serve), speed, dt)) {
           const used = serve(state, worker.pos, worker.item, worker.carry);
           if (used > 0) {
             worker.carry -= used;
             worker.trips += 1;
+            worker.target = null;
             if (worker.carry === 0) worker.item = null;
           }
         }
         continue;
       }
+      worker.target = null;
 
       // 足りないときは、同じものをもう少し受け取りに行く
       const more =
@@ -1422,7 +1494,7 @@ const updateStaff = (state: ShopState, dt: number) => {
               .sort((a, b) => dist(worker.pos, a.pos) - dist(worker.pos, b.pos))[0]
           : null;
       if (more) {
-        if (moveToward(worker.pos, more.pos, speed, dt)) {
+        if (moveToward(worker.pos, approach(state, worker, more.pos), speed, dt)) {
           while (worker.carry < limit) {
             const item = pickUp(state, worker.pos, worker.carry, limit, worker.item);
             if (!item) break;
@@ -1472,7 +1544,7 @@ const updateStaff = (state: ShopState, dt: number) => {
       if (!dirtyTable) moveToward(worker.pos, idleSpot(state, worker), speed * 0.6, dt);
       continue;
     }
-    if (moveToward(worker.pos, stove.pos, speed, dt)) {
+    if (moveToward(worker.pos, approach(state, worker, stove.pos), speed, dt)) {
       while (worker.carry < limit) {
         const item = pickUp(state, worker.pos, worker.carry, limit, worker.item);
         if (!item) break;
