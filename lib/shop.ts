@@ -85,7 +85,9 @@ export type StaffKind =
   /** レストランの片づけ係 */
   | "busser"
   /** お土産屋の品出し係 */
-  | "stocker";
+  | "stocker"
+  /** レストランの料理を運ぶ係 */
+  | "server";
 
 export type HireSpec = {
   id: string;
@@ -252,6 +254,7 @@ const hireSub: Record<StaffKind, string> = {
   master: "すべての寸胴が1.4倍速くなる",
   busser: "テーブルの皿を片づける",
   stocker: "倉庫から棚へ商品を並べる",
+  server: "厨房の料理をテーブルへ運ぶ",
 };
 
 const buildPads = (): Pad[] => [
@@ -1382,6 +1385,14 @@ const updatePads = (state: ShopState, dt: number) => {
   state.activePad = active;
 };
 
+/**
+ * その係が扱えるもの。
+ * 案内係・配膳ロボはチケット（丼）だけ、料理は料理係、商品は品出しが運ぶ。
+ * プレイヤーは何でも持てる
+ */
+export const handledItem = (worker: Staff): ItemKind =>
+  worker.kind === "server" ? "food" : worker.kind === "stocker" ? "goods" : "main";
+
 /** スタッフが一度に運べる数。強化（両手鍋／チケットホルダー）で増える */
 export const carrierLimit = (state: ShopState, worker: Staff) =>
   worker.kind === "robot"
@@ -1709,8 +1720,23 @@ const updateStaff = (state: ShopState, dt: number) => {
       continue;
     }
 
-    // ホール店員・配膳ロボ: 待っている相手に合うものを運ぶ
+    // ホール店員・配膳ロボ・料理係: 自分が扱えるものだけを運ぶ
     const speed = carrierSpeed(state, worker);
+    const mine = handledItem(worker);
+    if (worker.item && worker.item !== mine) {
+      // 手持ちが担当外なら、いちど作る場所へ返す
+      const wrong = openStoves(state)
+        .filter((item) => stoveItem(item) === worker.item)
+        .sort((a, b) => dist(worker.pos, a.pos) - dist(worker.pos, b.pos))[0];
+      if (wrong && go(state, worker, wrong.pos, speed, dt)) {
+        state.ready[wrong.id] = (state.ready[wrong.id] ?? 0) + worker.carry;
+        worker.carry = 0;
+        worker.item = null;
+      }
+      if (wrong) continue;
+      worker.carry = 0;
+      worker.item = null;
+    }
 
 
     const limit = carrierLimit(state, worker);
@@ -1727,6 +1753,7 @@ const updateStaff = (state: ShopState, dt: number) => {
             seatMode(item) !== "shelf" &&
             // 自動供給機が付いている場所は機械にまかせる
             !hasAuto(state, item) &&
+            seatNeeds(item) === mine &&
             seatNeeds(item) === worker.item &&
             seatCost(item) <= worker.carry &&
             // ほかのスタッフが向かっている席は狙わない
@@ -1846,14 +1873,14 @@ const updateStaff = (state: ShopState, dt: number) => {
       const seat = seatById.get(customer.seatId);
       if (!seat || seatMode(seat) === "shelf" || hasAuto(state, seat)) continue;
       const kind = seatNeeds(seat);
+      // 自分が扱えるものだけを数える
+      if (kind !== mine) continue;
       wanted.add(kind);
       demand.set(kind, (demand.get(kind) ?? 0) + seatCost(seat));
     }
 
     const ready = openStoves(state).filter(
-      (item) =>
-        (state.ready[item.id] ?? 0) > 0 &&
-        (wanted.size === 0 ? stoveItem(item) === "main" : wanted.has(stoveItem(item))),
+      (item) => (state.ready[item.id] ?? 0) > 0 && stoveItem(item) === mine,
     );
     // すでに持っているものがあれば、それと同じ種類だけ足す
     const usable = worker.item
@@ -2318,7 +2345,7 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
           `いま ${worker.carry}${unit} 持っている`,
         );
       }
-      if (worker.kind === "robot" || worker.kind === "waiter") {
+      if (worker.kind === "robot" || worker.kind === "waiter" || worker.kind === "server") {
         lines.push(
           worker.wait > 0
             ? `次の相手を選び直すまで あと ${worker.wait.toFixed(1)}秒`
@@ -2328,6 +2355,15 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
       if (worker.kind !== "cook" && worker.kind !== "master") {
         const zone = areaById.get(`area-${worker.area}`);
         lines.push(
+          worker.kind === "server"
+            ? "料理だけを運ぶ"
+            : worker.kind === "stocker"
+              ? "商品だけを運ぶ"
+              : worker.kind === "collector"
+                ? "お金だけを拾う"
+                : worker.kind === "busser"
+                  ? "皿だけを片づける"
+                  : `${stageLabels().item}だけを運ぶ`,
           `担当は ${zone ? zone.label.replace("をつくる", "") : "この区画"}（空いていれば他も手伝う）`,
           `強化のおかげで 足の速さ +${state.levels.speed * 5}%`,
         );

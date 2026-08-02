@@ -3878,6 +3878,7 @@ export default function Shop({ onSample, paused }: Props) {
         master: "#2f3b4d",
         busser: "#4f9e83",
         stocker: "#b5763f",
+        server: "#c2402f",
       };
 
       for (const customer of state.customers) {
@@ -4012,6 +4013,16 @@ export default function Shop({ onSample, paused }: Props) {
                   ctx.ellipse(wx + 11, wy - 12, 6, 2.6, 0, 0, Math.PI * 2);
                   ctx.fill();
                 }
+              }
+              if (worker.kind === "server") {
+                // 料理係: 白い前掛けと丸いトレイ
+                ctx.fillStyle = "rgba(255,255,255,0.85)";
+                roundRect(ctx, wx - 6, wy - 7, 12, 11, 2);
+                ctx.fill();
+                ctx.fillStyle = "#c9b79a";
+                ctx.beginPath();
+                ctx.ellipse(wx + 12, wy - 14, 7, 3, 0, 0, Math.PI * 2);
+                ctx.fill();
               }
               if (worker.kind === "collector") {
                 // 集金かばん

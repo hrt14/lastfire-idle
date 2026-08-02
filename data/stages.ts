@@ -499,7 +499,8 @@ const parkHires: HireSpec[] = [
   // レストラン街: 料理人・ホール・テーブル係
   { id: "cook-6", kind: "cook", pos: { x: 840, y: 574 }, price: 90000000, label: "料理人", stoveId: "kitchen-1", area: 7 },
   { id: "cook-7", kind: "cook", pos: { x: 1040, y: 574 }, price: 200000000, label: "料理人", stoveId: "kitchen-2", area: 7 },
-  { id: "waiter-6", kind: "waiter", pos: { x: 780, y: 912 }, price: 110000000, label: "ホール係", area: 7 },
+  { id: "server-1", kind: "server", pos: { x: 780, y: 912 }, price: 110000000, label: "料理係", area: 7 },
+  { id: "server-2", kind: "server", pos: { x: 860, y: 912 }, price: 280000000, label: "料理係", area: 7 },
   { id: "busser-1", kind: "busser", pos: { x: 900, y: 912 }, price: 150000000, label: "テーブル係", area: 7 },
   { id: "busser-2", kind: "busser", pos: { x: 1020, y: 912 }, price: 400000000, label: "テーブル係", area: 7 },
 
@@ -511,6 +512,7 @@ const parkHires: HireSpec[] = [
   { id: "collector-3", kind: "collector", pos: { x: 900, y: 1172 }, price: 700000000, label: "レジ係", area: 8 },
 
   // あとから前の区画に出てくるスタッフ
+  { id: "server-3", kind: "server", pos: { x: 300, y: 434 }, price: 160000000, label: "料理係", area: 0, unlockAfter: "area-7" },
   { id: "busser-3", kind: "busser", pos: { x: 380, y: 434 }, price: 200000000, label: "テーブル係", area: 0, unlockAfter: "area-7" },
   { id: "stocker-3", kind: "stocker", pos: { x: 700, y: 434 }, price: 800000000, label: "品出しスタッフ", area: 1, unlockAfter: "area-8" },
 ];
@@ -572,6 +574,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         master: "板前",
         busser: "皿洗い",
         stocker: "品出し",
+        server: "配膳係",
       },
       objective: {
         pickup: "厨房で丼を受け取ろう",
@@ -615,6 +618,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         master: "園長",
         busser: "テーブル係",
         stocker: "品出しスタッフ",
+        server: "料理係",
       },
       objective: {
         pickup: "券売所でチケットを受け取ろう",
