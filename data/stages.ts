@@ -600,7 +600,6 @@ export const stageDefs: Record<StageId, StageDef> = {
     upgrades: parkUpgrades,
     baseValue: 70,
     admission: 40,
-    autoServer: true,
     requiresAreas: 4,
     labels: {
       item: "チケット",

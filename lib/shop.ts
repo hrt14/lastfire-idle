@@ -797,11 +797,23 @@ export const stoveHasCook = (state: ShopState, stoveId: string) =>
     (worker) => worker.kind === "cook" && worker.stoveId === stoveId,
   );
 
+/** ここを超えたら値上がりを緩やかにする */
+export const SOFT_CAP = 50_000_000;
+
+/**
+ * 高くなりすぎた値段をならす。
+ * 5000万を超えたぶんだけ、ゆるやかな伸びに置き換える
+ */
+export const softPrice = (price: number) => {
+  if (!Number.isFinite(price) || price <= SOFT_CAP) return price;
+  return Math.round(SOFT_CAP * Math.pow(price / SOFT_CAP, 0.55));
+};
+
 export const padPrice = (state: ShopState, pad: Pad) => {
   if (pad.kind === "upgrade" && pad.upgradeId) {
-    return upgradePrice(pad.upgradeId, state.levels[pad.upgradeId]);
+    return softPrice(upgradePrice(pad.upgradeId, state.levels[pad.upgradeId]));
   }
-  return pad.price ?? Infinity;
+  return softPrice(pad.price ?? Infinity);
 };
 
 export const padLevel = (state: ShopState, pad: Pad) =>
