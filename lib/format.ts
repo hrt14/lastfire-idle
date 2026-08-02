@@ -44,3 +44,10 @@ export const formatClock = (seconds: number): string => {
   const rest = total % 60;
   return `${minutes}:${String(rest).padStart(2, "0")}`;
 };
+
+/** 円の表示。1万未満は整数、そこから上は万・億でまとめる */
+export const formatYen = (value: number): string => {
+  const abs = Math.abs(value);
+  if (abs < 10000) return `${Math.round(value).toLocaleString("ja-JP")}円`;
+  return `${formatNumber(value)}円`;
+};

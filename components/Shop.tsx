@@ -1,0 +1,568 @@
+"use client";
+
+import { useCallback, useEffect, useRef } from "react";
+import {
+  ENTRANCE,
+  PAD_RADIUS,
+  STOVE_CAPACITY,
+  WORLD,
+  availablePads,
+  maxCarry,
+  openSeats,
+  openStoves,
+  seatById,
+  update,
+  type Input,
+  type ShopState,
+} from "@/lib/shop";
+import { catchUp, getState, save } from "@/lib/shopStore";
+import type { OfflineReport, UpgradeId } from "@/lib/shop";
+import { formatYen } from "@/lib/format";
+
+export type Sample = {
+  money: number;
+  carry: number;
+  maxCarry: number;
+  served: number;
+  unlocked: number;
+  levels: Record<UpgradeId, number>;
+  toast: string | null;
+  offline: OfflineReport | null;
+};
+
+type Props = {
+  onSample: (sample: Sample) => void;
+  paused: boolean;
+};
+
+const FONT = `700 11px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+
+const roundRect = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) => {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+};
+
+const shadow = (ctx: CanvasRenderingContext2D, x: number, y: number, r: number) => {
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(x, y, r, r * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+const bowl = (ctx: CanvasRenderingContext2D, x: number, y: number, s = 1) => {
+  ctx.fillStyle = "#f4f1ea";
+  ctx.beginPath();
+  ctx.ellipse(x, y, 7.5 * s, 4.4 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#d94f3d";
+  ctx.beginPath();
+  ctx.ellipse(x, y - 0.6 * s, 5.2 * s, 2.8 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ffe9b0";
+  ctx.beginPath();
+  ctx.ellipse(x - 1.4 * s, y - 1 * s, 2.2 * s, 1.2 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+const person = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  coat: string,
+  head: string,
+  bob: number,
+) => {
+  shadow(ctx, x, y + 7, 10);
+  const oy = Math.sin(bob) * 1.6;
+  ctx.fillStyle = coat;
+  roundRect(ctx, x - 8.5, y - 15 + oy, 17, 19, 7.5);
+  ctx.fill();
+  ctx.fillStyle = head;
+  ctx.beginPath();
+  ctx.arc(x, y - 20 + oy, 7.6, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+export default function Shop({ onSample, paused }: Props) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const input = useRef<Input>({ x: 0, y: 0 });
+  const keys = useRef(new Set<string>());
+  const stick = useRef<{
+    id: number;
+    origin: { x: number; y: number };
+    at: { x: number; y: number };
+  } | null>(null);
+  const pausedRef = useRef(paused);
+  const sampleRef = useRef(onSample);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+
+  useEffect(() => {
+    sampleRef.current = onSample;
+  }, [onSample]);
+
+  const draw = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      state: ShopState,
+      scale: number,
+      ox: number,
+      oy: number,
+      time: number,
+    ) => {
+      const canvas = ctx.canvas;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(scale, 0, 0, scale, ox, oy);
+      ctx.font = FONT;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      /* --- 床 --- */
+      const floor = ctx.createLinearGradient(0, 0, 0, WORLD.h);
+      floor.addColorStop(0, "#3b322a");
+      floor.addColorStop(1, "#2a231d");
+      ctx.fillStyle = floor;
+      ctx.fillRect(0, 0, WORLD.w, WORLD.h);
+
+      ctx.strokeStyle = "rgba(0,0,0,0.16)";
+      ctx.lineWidth = 1;
+      for (let y = 40; y < WORLD.h; y += 34) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(WORLD.w, y);
+        ctx.stroke();
+      }
+
+      /* --- 厨房 --- */
+      ctx.fillStyle = "#241d18";
+      ctx.fillRect(0, 0, WORLD.w, 92);
+      ctx.fillStyle = "#7a5636";
+      roundRect(ctx, 14, 86, WORLD.w - 28, 46, 10);
+      ctx.fill();
+      ctx.fillStyle = "#9a7148";
+      roundRect(ctx, 14, 86, WORLD.w - 28, 12, 6);
+      ctx.fill();
+
+      // のれん
+      ctx.fillStyle = "#c2402f";
+      roundRect(ctx, 10, 8, WORLD.w - 20, 34, 6);
+      ctx.fill();
+      ctx.fillStyle = "#f6e7cf";
+      ctx.font = `800 17px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+      ctx.fillText("ら ー め ん", WORLD.w / 2, 26);
+      ctx.font = FONT;
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      for (let i = 1; i < 5; i += 1) {
+        ctx.fillRect(10 + ((WORLD.w - 20) / 5) * i - 1, 8, 2, 34);
+      }
+
+      for (const stove of openStoves(state)) {
+        const { x, y } = stove.pos;
+        ctx.fillStyle = "#2f353c";
+        roundRect(ctx, x - 24, y - 20, 48, 34, 8);
+        ctx.fill();
+        ctx.fillStyle = "#454d57";
+        ctx.beginPath();
+        ctx.ellipse(x, y - 6, 16, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#8d5a2b";
+        ctx.beginPath();
+        ctx.ellipse(x, y - 7, 12, 6.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 湯気
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        for (let i = 0; i < 3; i += 1) {
+          const t = ((time * 0.5 + i * 0.33) % 1);
+          ctx.beginPath();
+          ctx.arc(x + Math.sin(t * 6 + i) * 5, y - 14 - t * 26, 4 - t * 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 受け取り口
+        ctx.fillStyle = "rgba(255,255,255,0.05)";
+        roundRect(ctx, stove.stand.x - 26, stove.stand.y - 14, 52, 28, 9);
+        ctx.fill();
+
+        // できあがった丼（カウンターの上に積まれる）
+        const ready = state.ready[stove.id] ?? 0;
+        for (let i = 0; i < ready; i += 1) {
+          bowl(ctx, x, 126 - i * 5.5);
+        }
+        if (ready >= STOVE_CAPACITY) {
+          ctx.fillStyle = "#ffd166";
+          ctx.fillText("満杯", x, 142);
+        }
+      }
+
+      /* --- カウンター --- */
+      ctx.fillStyle = "#6b4a2f";
+      roundRect(ctx, 16, 300, WORLD.w - 32, 34, 10);
+      ctx.fill();
+      ctx.fillStyle = "#8a6440";
+      roundRect(ctx, 16, 300, WORLD.w - 32, 11, 6);
+      ctx.fill();
+
+      for (const seat of openSeats(state)) {
+        if (seat.row === 0) {
+          ctx.fillStyle = "#b0463a";
+          ctx.beginPath();
+          ctx.ellipse(seat.pos.x, seat.pos.y + 8, 12, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "#6b4a2f";
+          roundRect(ctx, seat.pos.x - 30, seat.pos.y - 40, 60, 26, 8);
+          ctx.fill();
+          ctx.fillStyle = "#8a6440";
+          roundRect(ctx, seat.pos.x - 30, seat.pos.y - 40, 60, 9, 5);
+          ctx.fill();
+        }
+      }
+
+      /* --- 店内の飾り --- */
+      for (const px of [26, 334]) {
+        ctx.fillStyle = "#5a3f2a";
+        roundRect(ctx, px - 9, 518, 18, 16, 4);
+        ctx.fill();
+        ctx.fillStyle = "#2f6b4a";
+        ctx.beginPath();
+        ctx.ellipse(px, 512, 13, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#3d8a5f";
+        ctx.beginPath();
+        ctx.ellipse(px - 4, 508, 8, 7, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#3a2c22";
+      roundRect(ctx, 12, 196, 26, 74, 5);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(25, 233);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillStyle = "#d9c7a8";
+      ctx.fillText("本日のおすすめ", 0, 0);
+      ctx.restore();
+
+      /* --- 入口 --- */
+      ctx.fillStyle = "rgba(255,255,255,0.06)";
+      roundRect(ctx, ENTRANCE.x - 42, WORLD.h - 26, 84, 20, 8);
+      ctx.fill();
+      ctx.fillStyle = "rgba(246,231,207,0.55)";
+      ctx.fillText("入口", ENTRANCE.x, WORLD.h - 16);
+
+      /* --- 解放パッド --- */
+      for (const pad of availablePads(state)) {
+        const paid = state.padProgress[pad.id] ?? 0;
+        const ratio = Math.min(1, paid / pad.price);
+        const near = state.activePad === pad.id;
+        const canPay = state.money > 0;
+
+        ctx.save();
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = near
+          ? "#7ee7a8"
+          : canPay
+            ? "rgba(126,231,168,0.75)"
+            : "rgba(255,255,255,0.3)";
+        ctx.fillStyle = near ? "rgba(126,231,168,0.2)" : "rgba(126,231,168,0.08)";
+        roundRect(ctx, pad.pos.x - PAD_RADIUS, pad.pos.y - PAD_RADIUS + 6, PAD_RADIUS * 2, PAD_RADIUS * 2 - 12, 10);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        if (ratio > 0) {
+          ctx.fillStyle = "rgba(126,231,168,0.35)";
+          roundRect(
+            ctx,
+            pad.pos.x - PAD_RADIUS,
+            pad.pos.y + PAD_RADIUS - 6 - (PAD_RADIUS * 2 - 12) * ratio,
+            PAD_RADIUS * 2,
+            (PAD_RADIUS * 2 - 12) * ratio,
+            10,
+          );
+          ctx.fill();
+        }
+
+        ctx.fillStyle = "#eafff2";
+        ctx.fillText(pad.label, pad.pos.x, pad.pos.y - 8);
+        ctx.fillStyle = "#ffd166";
+        ctx.fillText(
+          formatYen(Math.max(0, pad.price - paid)),
+          pad.pos.x,
+          pad.pos.y + 8,
+        );
+      }
+
+      /* --- お金 --- */
+      for (const coin of state.coins) {
+        const lift = Math.min(6, coin.age * 24);
+        shadow(ctx, coin.pos.x, coin.pos.y + 4, 6);
+        ctx.fillStyle = "#ffd166";
+        ctx.beginPath();
+        ctx.arc(coin.pos.x, coin.pos.y - lift, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#a8761b";
+        ctx.fillText("円", coin.pos.x, coin.pos.y - lift + 0.5);
+      }
+
+      /* --- 人 --- */
+      const actors: { y: number; render: () => void }[] = [];
+
+      for (const customer of state.customers) {
+        const seat = seatById.get(customer.seatId);
+        actors.push({
+          y: customer.pos.y,
+          render: () => {
+            const coats = ["#5b7fbc", "#7a6bb5", "#4f9e83", "#c07a4a", "#a35b7a"];
+            person(
+              ctx,
+              customer.pos.x,
+              customer.pos.y,
+              coats[customer.id % coats.length],
+              "#f0cfae",
+              customer.state === "walking" ? performance.now() / 90 : 0,
+            );
+            if (customer.state === "waiting" && seat) {
+              const bounce = Math.sin(time * 4) * 1.6;
+              ctx.fillStyle = "rgba(12,10,8,0.8)";
+              roundRect(ctx, customer.pos.x - 13, customer.pos.y - 46 + bounce, 26, 18, 8);
+              ctx.fill();
+              bowl(ctx, customer.pos.x, customer.pos.y - 37 + bounce, 0.9);
+            }
+            if (customer.state === "eating") {
+              ctx.fillStyle = "#ffd166";
+              ctx.fillText("…", customer.pos.x, customer.pos.y - 34);
+            }
+          },
+        });
+      }
+
+      for (const worker of state.staff) {
+        actors.push({
+          y: worker.pos.y,
+          render: () => {
+            person(
+              ctx,
+              worker.pos.x,
+              worker.pos.y,
+              worker.kind === "waiter" ? "#d98c2b" : "#4aa3c7",
+              "#f0cfae",
+              performance.now() / 110,
+            );
+            for (let i = 0; i < worker.carry; i += 1) {
+              bowl(ctx, worker.pos.x, worker.pos.y - 30 - i * 6, 0.85);
+            }
+          },
+        });
+      }
+
+      const player = state.player;
+      actors.push({
+        y: player.pos.y,
+        render: () => {
+          person(ctx, player.pos.x, player.pos.y, "#e2483c", "#f7d9b8", player.step);
+          ctx.fillStyle = "#f6e7cf";
+          roundRect(ctx, player.pos.x - 8, player.pos.y - 29, 16, 6, 3);
+          ctx.fill();
+          for (let i = 0; i < player.carry; i += 1) {
+            bowl(ctx, player.pos.x, player.pos.y - 34 - i * 6);
+          }
+        },
+      });
+
+      actors.sort((a, b) => a.y - b.y);
+      for (const actor of actors) actor.render();
+
+      /* --- ジョイスティック --- */
+      const s = stick.current;
+      if (s) {
+        const dx = s.at.x - s.origin.x;
+        const dy = s.at.y - s.origin.y;
+        const len = Math.hypot(dx, dy);
+        const max = 42;
+        const nx = len > max ? (dx / len) * max : dx;
+        const ny = len > max ? (dy / len) * max : dy;
+        ctx.fillStyle = "rgba(255,255,255,0.1)";
+        ctx.beginPath();
+        ctx.arc(s.origin.x, s.origin.y, max, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.28)";
+        ctx.beginPath();
+        ctx.arc(s.origin.x + nx, s.origin.y + ny, 19, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const wrap = wrapRef.current;
+    if (!canvas || !wrap) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const state = getState();
+    let pendingOffline: OfflineReport | null = catchUp();
+    let scale = 1;
+    let ox = 0;
+    let oy = 0;
+    let dpr = 1;
+
+    const resize = () => {
+      const rect = wrap.getBoundingClientRect();
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      const fit = Math.min(rect.width / WORLD.w, rect.height / WORLD.h);
+      scale = fit * dpr;
+      ox = ((rect.width - WORLD.w * fit) / 2) * dpr;
+      oy = ((rect.height - WORLD.h * fit) / 2) * dpr;
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(wrap);
+
+    const toWorld = (event: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const fit = Math.min(rect.width / WORLD.w, rect.height / WORLD.h);
+      return {
+        x: (event.clientX - rect.left - (rect.width - WORLD.w * fit) / 2) / fit,
+        y: (event.clientY - rect.top - (rect.height - WORLD.h * fit) / 2) / fit,
+      };
+    };
+
+    const onDown = (event: PointerEvent) => {
+      event.preventDefault();
+      canvas.setPointerCapture(event.pointerId);
+      const point = toWorld(event);
+      stick.current = { id: event.pointerId, origin: point, at: point };
+    };
+    const onMove = (event: PointerEvent) => {
+      const s = stick.current;
+      if (!s || s.id !== event.pointerId) return;
+      s.at = toWorld(event);
+      const dx = s.at.x - s.origin.x;
+      const dy = s.at.y - s.origin.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 4) {
+        input.current = { x: 0, y: 0 };
+        return;
+      }
+      const scaled = Math.min(1, len / 34);
+      input.current = { x: (dx / len) * scaled, y: (dy / len) * scaled };
+    };
+    const onUp = (event: PointerEvent) => {
+      if (stick.current?.id !== event.pointerId) return;
+      stick.current = null;
+      input.current = { x: 0, y: 0 };
+    };
+
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
+
+    const keyDown = (event: KeyboardEvent) => {
+      keys.current.add(event.key.toLowerCase());
+    };
+    const keyUp = (event: KeyboardEvent) => {
+      keys.current.delete(event.key.toLowerCase());
+    };
+    window.addEventListener("keydown", keyDown);
+    window.addEventListener("keyup", keyUp);
+
+    let raf = 0;
+    let last = performance.now();
+    let sampleAt = 0;
+    let saveAt = 0;
+
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      const held = keys.current;
+      const kx =
+        (held.has("arrowright") || held.has("d") ? 1 : 0) -
+        (held.has("arrowleft") || held.has("a") ? 1 : 0);
+      const ky =
+        (held.has("arrowdown") || held.has("s") ? 1 : 0) -
+        (held.has("arrowup") || held.has("w") ? 1 : 0);
+      const move: Input = kx || ky ? { x: kx, y: ky } : input.current;
+
+      if (!pausedRef.current && !document.hidden) {
+        update(state, move, dt);
+      }
+      draw(ctx, state, scale, ox, oy, now / 1000);
+
+      if (now - sampleAt > 110) {
+        sampleAt = now;
+        sampleRef.current({
+          money: state.money,
+          carry: state.player.carry,
+          maxCarry: maxCarry(state),
+          served: state.served,
+          unlocked: state.unlocked.length,
+          levels: { ...state.levels },
+          toast:
+            state.toast && Date.now() - state.toast.at < 2200
+              ? state.toast.text
+              : null,
+          offline: pendingOffline,
+        });
+        pendingOffline = null;
+      }
+      if (now - saveAt > 5000) {
+        saveAt = now;
+        save();
+      }
+    };
+    raf = requestAnimationFrame(frame);
+
+    const onHide = () => {
+      if (document.hidden) save();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", save);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("keydown", keyDown);
+      window.removeEventListener("keyup", keyUp);
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", save);
+      save();
+    };
+  }, [draw]);
+
+  return (
+    <div className="stage" ref={wrapRef}>
+      <canvas ref={canvasRef} className="shop" />
+    </div>
+  );
+}

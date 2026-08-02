@@ -2,15 +2,15 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "ラストファイア ― 雪原拠点経営",
-    short_name: "ラストファイア",
+    name: "ラーメン一直線 ― 放置ラーメン屋経営",
+    short_name: "ラーメン一直線",
     description:
-      "焚き火をかき立て、資源を集め、雪原の拠点を大きくしていく放置系の経営シミュレーションゲーム。",
+      "丼を運び、お客をさばき、店員を雇って店を広げるアーケードアイドル系の放置経営ゲーム。",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#070d18",
-    theme_color: "#070d18",
+    background_color: "#14100d",
+    theme_color: "#14100d",
     icons: [
       {
         src: "/icon.svg",
