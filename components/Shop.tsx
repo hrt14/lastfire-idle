@@ -10,6 +10,7 @@ import {
   currentObjective,
   inspectAt,
   maxCarry,
+  customerDraw,
   openSeats,
   openStoves,
   ROBOT_CHARGE,
@@ -2098,6 +2099,263 @@ const drawEquip = (
     }
     return;
   }
+  if (id === "flag") {
+    // のぼり旗
+    ctx.fillStyle = "#6b5433";
+    ctx.fillRect(x - 2, y - 44, 4, 58);
+    const wave = Math.sin(time * 3) * 3;
+    ctx.fillStyle = park ? "#4d6b9e" : "#c2402f";
+    ctx.beginPath();
+    ctx.moveTo(x + 2, y - 44);
+    ctx.quadraticCurveTo(x + 18 + wave, y - 30, x + 2, y - 16);
+    ctx.lineTo(x + 2, y - 44);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#fff3d9";
+    ctx.font = SMALL;
+    ctx.fillText(park ? "P" : "麺", x + 7, y - 30);
+    ctx.font = FONT;
+    return;
+  }
+  if (id === "lantern") {
+    // 大提灯
+    ctx.fillStyle = "#4a3524";
+    ctx.fillRect(x - 22, y - 46, 44, 4);
+    const glow = 0.6 + Math.abs(Math.sin(time * 1.6)) * 0.4;
+    ctx.fillStyle = `rgba(255,120,90,${glow})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 20, 18, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(90,30,20,0.6)";
+    ctx.lineWidth = 1.4;
+    for (let i = -2; i <= 2; i += 1) {
+      ctx.beginPath();
+      ctx.ellipse(x, y - 20, 18 - Math.abs(i) * 2, 24, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#3a2118";
+    roundRect(ctx, x - 8, y - 46, 16, 6, 2);
+    ctx.fill();
+    roundRect(ctx, x - 8, y - 2, 16, 6, 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff3d9";
+    ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+    ctx.fillText("祭", x, y - 20);
+    ctx.font = FONT;
+    return;
+  }
+  if (id === "queue") {
+    // 行列の整理棒（並んでいる人つき）
+    for (let i = 0; i < 3; i += 1) {
+      const px = x - 24 + i * 24;
+      ctx.fillStyle = "#c8b49a";
+      ctx.fillRect(px - 2, y - 22, 4, 24);
+      ctx.fillStyle = "#8a8f98";
+      ctx.beginPath();
+      ctx.ellipse(px, y + 4, 8, 3.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (i < 2) {
+        ctx.strokeStyle = "#c2402f";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px, y - 20);
+        ctx.quadraticCurveTo(px + 12, y - 12, px + 24, y - 20);
+        ctx.stroke();
+      }
+    }
+    for (let i = 0; i < 2; i += 1) {
+      const px = x - 12 + i * 24;
+      const bob = Math.sin(time * 2 + i * 1.4) * 1.5;
+      ctx.fillStyle = ["#5b7fbc", "#a35b7a"][i];
+      roundRect(ctx, px - 6, y - 30 + bob, 12, 14, 5);
+      ctx.fill();
+      ctx.fillStyle = "#f0cfae";
+      ctx.beginPath();
+      ctx.arc(px, y - 33 + bob, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return;
+  }
+  if (id === "screen") {
+    // 街頭ビジョン
+    ctx.fillStyle = "#3a4048";
+    ctx.fillRect(x - 4, y - 10, 8, 24);
+    ctx.fillStyle = "#22282f";
+    roundRect(ctx, x - 32, y - 46, 64, 38, 4);
+    ctx.fill();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x - 28, y - 42, 56, 30);
+    ctx.clip();
+    const hue = (time * 60) % 360;
+    ctx.fillStyle = `hsl(${hue}, 65%, 45%)`;
+    ctx.fillRect(x - 28, y - 42, 56, 30);
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    for (let i = 0; i < 3; i += 1) {
+      const px = x - 28 + ((time * 40 + i * 22) % 60);
+      ctx.fillRect(px, y - 34 + i * 8, 14, 4);
+    }
+    ctx.restore();
+    ctx.fillStyle = `rgba(255,255,255,${0.1 + Math.abs(Math.sin(time * 2)) * 0.1})`;
+    roundRect(ctx, x - 32, y - 46, 64, 38, 4);
+    ctx.fill();
+    return;
+  }
+  if (id === "truck") {
+    // 宣伝トラック
+    const roll = Math.sin(time * 1.2) * 3;
+    ctx.fillStyle = "#c2402f";
+    roundRect(ctx, x - 30 + roll, y - 26, 40, 24, 4);
+    ctx.fill();
+    ctx.fillStyle = "#8a2f22";
+    roundRect(ctx, x + 8 + roll, y - 18, 20, 16, 4);
+    ctx.fill();
+    ctx.fillStyle = "#6bd3ff";
+    roundRect(ctx, x + 12 + roll, y - 15, 12, 8, 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff3d9";
+    ctx.font = SMALL;
+    ctx.fillText("SALE", x - 10 + roll, y - 14);
+    ctx.font = FONT;
+    ctx.fillStyle = "#2b2b33";
+    ctx.beginPath();
+    ctx.arc(x - 18 + roll, y + 2, 6, 0, Math.PI * 2);
+    ctx.arc(x + 16 + roll, y + 2, 6, 0, Math.PI * 2);
+    ctx.fill();
+    // スピーカー
+    ctx.fillStyle = "#8f9fc7";
+    ctx.beginPath();
+    ctx.moveTo(x - 26 + roll, y - 30);
+    ctx.lineTo(x - 14 + roll, y - 38);
+    ctx.lineTo(x - 14 + roll, y - 26);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  if (id === "balloon") {
+    // 巨大バルーン
+    const lift = Math.sin(time * 1.1) * 4;
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 14);
+    ctx.lineTo(x, y - 20 + lift);
+    ctx.stroke();
+    ctx.fillStyle = "#f0a6c0";
+    ctx.beginPath();
+    ctx.arc(x, y - 40 + lift, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fdf1f6";
+    ctx.beginPath();
+    ctx.arc(x - 15, y - 54 + lift, 9, 0, Math.PI * 2);
+    ctx.arc(x + 15, y - 54 + lift, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#2b2b33";
+    ctx.beginPath();
+    ctx.arc(x - 7, y - 42 + lift, 3, 0, Math.PI * 2);
+    ctx.arc(x + 7, y - 42 + lift, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e8574a";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 32 + lift, 6, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  if (id === "greet") {
+    // キャラクターグリーティング（着ぐるみ＋看板）
+    const bob = Math.sin(time * 2.4) * 2;
+    ctx.fillStyle = "#4f9e83";
+    roundRect(ctx, x - 12, y - 26 + bob, 24, 26, 10);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x, y - 34 + bob, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#3d7a66";
+    ctx.beginPath();
+    ctx.arc(x - 10, y - 44 + bob, 5, 0, Math.PI * 2);
+    ctx.arc(x + 10, y - 44 + bob, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f4f1ea";
+    ctx.beginPath();
+    ctx.arc(x - 4, y - 36 + bob, 2.6, 0, Math.PI * 2);
+    ctx.arc(x + 4, y - 36 + bob, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+    // 手をふる
+    ctx.strokeStyle = "#4f9e83";
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y - 20 + bob);
+    ctx.lineTo(x + 20, y - 30 + Math.sin(time * 6) * 6);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+    ctx.lineWidth = 1;
+    return;
+  }
+  if (id === "parade") {
+    // パレードカー
+    const roll = ((time * 12) % 24) - 12;
+    ctx.fillStyle = "#a78bfa";
+    roundRect(ctx, x - 28 + roll, y - 22, 56, 22, 8);
+    ctx.fill();
+    ctx.fillStyle = "#ffd166";
+    roundRect(ctx, x - 20 + roll, y - 34, 40, 14, 6);
+    ctx.fill();
+    for (let i = 0; i < 5; i += 1) {
+      ctx.fillStyle = FLAGS[i % FLAGS.length];
+      ctx.beginPath();
+      ctx.arc(x - 20 + roll + i * 10, y - 40 + Math.sin(time * 4 + i) * 3, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#f0cfae";
+    ctx.beginPath();
+    ctx.arc(x + roll, y - 40, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#2b2b33";
+    ctx.beginPath();
+    ctx.arc(x - 16 + roll, y + 2, 6, 0, Math.PI * 2);
+    ctx.arc(x + 16 + roll, y + 2, 6, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  if (id === "firework") {
+    // 花火の打ち上げ台
+    ctx.fillStyle = "#4a5568";
+    roundRect(ctx, x - 20, y - 8, 40, 20, 4);
+    ctx.fill();
+    ctx.fillStyle = "#2f3a4a";
+    for (const fx of [x - 10, x + 10]) {
+      roundRect(ctx, fx - 5, y - 22, 10, 16, 3);
+      ctx.fill();
+    }
+    // 打ち上がる花火
+    for (let i = 0; i < 2; i += 1) {
+      const t = (time * 0.5 + i * 0.5) % 1;
+      const hue = (i * 120 + Math.floor(time * 0.5 + i * 0.5) * 60) % 360;
+      if (t < 0.45) {
+        ctx.fillStyle = `hsla(${hue}, 95%, 75%, 0.9)`;
+        ctx.beginPath();
+        ctx.arc(x - 10 + i * 20, y - 24 - t * 90, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const spread = (t - 0.45) / 0.55;
+        for (let k = 0; k < 10; k += 1) {
+          const a = (k / 10) * Math.PI * 2;
+          ctx.fillStyle = `hsla(${hue}, 95%, 72%, ${1 - spread})`;
+          ctx.beginPath();
+          ctx.arc(
+            x - 10 + i * 20 + Math.cos(a) * spread * 30,
+            y - 64 + Math.sin(a) * spread * 30,
+            2.4 * (1 - spread) + 0.6,
+            0,
+            Math.PI * 2,
+          );
+          ctx.fill();
+        }
+      }
+    }
+    return;
+  }
   if (id === "noodle") {
     // 製麺機: 銀色の台に2本のローラー、麺が垂れている
     ctx.fillStyle = "#4d5661";
@@ -3113,6 +3371,19 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.font = SMALL;
       ctx.fillText(isPark ? "入園口" : "入口", entrance.x, top - 5);
       ctx.font = FONT;
+
+      // 集客が上がるほど、外の通りがにぎわう
+      const draw = customerDraw(state);
+      const crowd = Math.min(14, Math.round((draw - 1) * 4));
+      for (let i = 0; i < crowd; i += 1) {
+        const span = box.x1 - box.x0 + 120;
+        const dir = i % 2 === 0 ? 1 : -1;
+        const base = (time * (14 + (i % 3) * 5) + i * 97) % span;
+        const px = dir > 0 ? box.x0 - 60 + base : box.x1 + 60 - base;
+        const py = top + 62 + ((i * 37) % 34);
+        const palette = ["#5b7fbc", "#7a6bb5", "#4f9e83", "#c07a4a", "#a35b7a"];
+        person(ctx, px, py, palette[i % palette.length], "#f0cfae", time * 8 + i);
+      }
 
       // 街灯
       const lampX = box.x0 + 40;

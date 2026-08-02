@@ -133,7 +133,8 @@ export type AreaSpec = {
   palette: AreaPalette;
 };
 
-export type EquipId = "noodle" | "fridge" | "ticket" | "sign";
+/** 設備の名前。集客オブジェクトもここに並ぶ */
+export type EquipId = string;
 
 export type EquipSpec = {
   id: EquipId;
@@ -145,6 +146,10 @@ export type EquipSpec = {
   area: number;
   /** 店の外（歩道）に置く */
   outside?: boolean;
+  /** 集客の倍率（お客さんが来る速さ）。掛け算で効く */
+  draw?: number;
+  /** この区画が開くまで出てこない */
+  unlockAfter?: string;
 };
 
 export type UpgradeId = "carry" | "speed" | "cook" | "price";
@@ -677,8 +682,15 @@ export const cookSpeedFactor = (state: ShopState) =>
 export const stoveCapacity = (state: ShopState) =>
   STOVE_CAPACITY + (hasEquip(state, "fridge") ? 4 : 0);
 
-export const spawnInterval = (state: ShopState) =>
-  SPAWN_TIME / (hasEquip(state, "sign") ? 1.5 : 1);
+/** 集客オブジェクトを全部かけ合わせた、お客さんの来る速さ */
+export const customerDraw = (state: ShopState) =>
+  equipment.reduce(
+    (total, item) =>
+      item.draw && hasEquip(state, item.id) ? total * item.draw : total,
+    1,
+  );
+
+export const spawnInterval = (state: ShopState) => SPAWN_TIME / customerDraw(state);
 
 export const stoveHasCook = (state: ShopState, stoveId: string) =>
   state.staff.some(
@@ -726,7 +738,10 @@ export const availablePads = (state: ShopState) =>
       return areaOpen(state, stove.area);
     }
     const equip = equipById.get(pad.id.replace("equip-", "") as EquipId);
-    if (equip) return equip.outside || areaOpen(state, equip.area);
+    if (equip) {
+      if (equip.unlockAfter && !state.unlocked.includes(equip.unlockAfter)) return false;
+      return equip.outside || areaOpen(state, equip.area);
+    }
 
     // 区画の枠は、ひとつ前の区画が開いてから出す
     const area = areaById.get(pad.id);
@@ -781,6 +796,9 @@ const unlock = (state: ShopState, padId: string) => {
       ...seats.filter((item) => item.unlockAfter === padId),
       ...stoves.filter((item) => item.unlockAfter === padId),
       ...hires.filter((item) => item.unlockAfter === padId),
+      ...equipment
+        .filter((item) => item.unlockAfter === padId)
+        .map((item) => ({ ...item, label: item.name })),
     ];
     if (fresh.length > 0) {
       const names = Array.from(new Set(fresh.map((item) => item.label ?? "新しい設備")));
@@ -1727,6 +1745,9 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
       `足の速さ +${state.levels.speed * 10}%（スタッフにも +${
         state.levels.speed * 5
       }%）`,
+      `集客 ×${customerDraw(state).toFixed(2)}（${spawnInterval(state).toFixed(
+        2,
+      )}秒に1人）`,
       "スワイプで移動・近づくだけで持つ／出す",
     ],
     pos: state.player.pos,

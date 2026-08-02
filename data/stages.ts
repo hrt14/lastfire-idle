@@ -239,7 +239,13 @@ const ramenEquipment: EquipSpec[] = [
   { id: "noodle", name: "製麺機", detail: "すべての寸胴の調理が +30%", pos: { x: 420, y: 300 }, price: 30000, area: 2 },
   { id: "fridge", name: "大型冷蔵庫", detail: "寸胴に置ける数 +4杯", pos: { x: 520, y: 300 }, price: 45000, area: 2 },
   { id: "ticket", name: "券売機", detail: "お金が自動で入る・レジ係はホールへ", pos: { x: 112, y: 0 }, price: 80000, area: 0, outside: true },
-  { id: "sign", name: "呼び込み看板", detail: "お客さんが 1.5倍のペースで来る", pos: { x: 240, y: 0 }, price: 120000, area: 0, outside: true },
+  { id: "sign", name: "呼び込み看板", detail: "お客さんが 1.5倍のペースで来る", pos: { x: 240, y: 0 }, price: 120000, area: 0, outside: true, draw: 1.5 },
+  // 集客オブジェクト（掛け算で効く）
+  { id: "flag", name: "のぼり旗", detail: "通りから目立つ。集客 1.25倍", pos: { x: 40, y: 0 }, price: 9000, area: 0, outside: true, draw: 1.25 },
+  { id: "lantern", name: "大提灯", detail: "夜の通りで光る。集客 1.35倍", pos: { x: 176, y: 0 }, price: 260000, area: 0, outside: true, draw: 1.35 },
+  { id: "queue", name: "行列の整理棒", detail: "並ぶ人が見えて人を呼ぶ。集客 1.4倍", pos: { x: 330, y: 0 }, price: 900000, area: 0, outside: true, draw: 1.4 },
+  { id: "screen", name: "街頭ビジョン", detail: "でかい映像で宣伝する。集客 1.6倍", pos: { x: 470, y: 0 }, price: 4000000, area: 2, outside: true, draw: 1.6, unlockAfter: "area-2" },
+  { id: "truck", name: "宣伝トラック", detail: "町じゅうを回ってくる。集客 1.8倍", pos: { x: 620, y: 0 }, price: 18000000, area: 3, outside: true, draw: 1.8, unlockAfter: "area-3" },
 ];
 
 const ramenUpgrades: Upgrade[] = [
@@ -494,7 +500,13 @@ const parkEquipment: EquipSpec[] = [
   { id: "noodle", name: "高速印刷機", detail: "すべての券売所が +30%", pos: { x: 470, y: 190 }, price: 40000, area: 1 },
   { id: "fridge", name: "チケット倉庫", detail: "券売所に貯めておける数 +4枚", pos: { x: 610, y: 190 }, price: 60000, area: 1 },
   { id: "ticket", name: "自動改札", detail: "お金が自動で入る・集金係は案内へ", pos: { x: 112, y: 0 }, price: 110000, area: 0, outside: true },
-  { id: "sign", name: "園内アナウンス", detail: "お客さんが 1.5倍のペースで来る", pos: { x: 240, y: 0 }, price: 160000, area: 0, outside: true },
+  { id: "sign", name: "園内アナウンス", detail: "お客さんが 1.5倍のペースで来る", pos: { x: 240, y: 0 }, price: 160000, area: 0, outside: true, draw: 1.5 },
+  // 集客オブジェクト（掛け算で効く）
+  { id: "flag", name: "のぼり旗", detail: "並木道から目立つ。集客 1.25倍", pos: { x: 40, y: 0 }, price: 12000, area: 0, outside: true, draw: 1.25 },
+  { id: "balloon", name: "巨大バルーン", detail: "遠くからでも見える。集客 1.4倍", pos: { x: 380, y: 0 }, price: 700000, area: 1, outside: true, draw: 1.4, unlockAfter: "area-1" },
+  { id: "greet", name: "キャラクターグリーティング", detail: "着ぐるみが出迎える。集客 1.5倍", pos: { x: 520, y: 0 }, price: 6000000, area: 1, outside: true, draw: 1.5, unlockAfter: "area-2" },
+  { id: "parade", name: "パレードカー", detail: "毎日パレードが出る。集客 1.7倍", pos: { x: 660, y: 0 }, price: 40000000, area: 3, outside: true, draw: 1.7, unlockAfter: "area-3" },
+  { id: "firework", name: "花火の打ち上げ台", detail: "夜空に花火が上がる。集客 2倍", pos: { x: 800, y: 0 }, price: 600000000, area: 5, outside: true, draw: 2, unlockAfter: "area-5" },
 ];
 
 const parkUpgrades: Upgrade[] = [
