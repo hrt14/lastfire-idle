@@ -152,7 +152,7 @@ export type EquipSpec = {
   unlockAfter?: string;
 };
 
-export type UpgradeId = "carry" | "speed" | "cook" | "price";
+export type UpgradeId = "carry" | "speed" | "cook" | "price" | "gate";
 
 export type Upgrade = {
   id: UpgradeId;
@@ -162,6 +162,8 @@ export type Upgrade = {
   basePrice: number;
   growth: number;
   max: number;
+  /** 店の外（入口）に置く強化 */
+  outside?: boolean;
 };
 
 /* ---------- いま遊んでいるステージ ---------- */
@@ -191,6 +193,12 @@ export let padById = new Map<string, Pad>();
 export const cookFactor = (level: number) => Math.pow(0.92, level);
 export const coinValue = (level: number) =>
   Math.round(currentStage.baseValue * Math.pow(1.4, level));
+
+/** 入場券の値段（入口で受け取る）。ステージに入場料がないときは 0 */
+export const admissionValue = (state: ShopState) =>
+  currentStage.admission
+    ? Math.round(currentStage.admission * Math.pow(1.45, state.levels.gate ?? 0))
+    : 0;
 
 
 export const upgradePrice = (id: UpgradeId, level: number) => {
@@ -222,7 +230,7 @@ export const autoPrice = (seat: SeatSpec) =>
   Math.max(2500, Math.round(seat.price * 6 + 2500));
 
 export const hasAuto = (state: ShopState, seat: SeatSpec) =>
-  state.unlocked.includes(autoId(seat));
+  !!currentStage.autoServer && state.unlocked.includes(autoId(seat));
 
 /** 自動供給機を置く場所（配膳口の横） */
 export const autoPos = (seat: SeatSpec): Vec => ({
@@ -241,8 +249,8 @@ const hireSub: Record<StaffKind, string> = {
 };
 
 const buildPads = (): Pad[] => [
-  // 場所ごとの自動供給機
-  ...seats.map(
+  // 場所ごとの自動供給機（置けるステージだけ）
+  ...(currentStage.autoServer ? seats : []).map(
     (seat): Pad => ({
       id: autoId(seat),
       kind: "unlock",
@@ -306,6 +314,7 @@ const buildPads = (): Pad[] => [
     label: upgrade.name,
     sub: "何度でも強化できる",
     upgradeId: upgrade.id,
+    outside: upgrade.outside,
   })),
 ];
 
@@ -401,9 +410,10 @@ export type Customer = {
    * waiting = 待っている（棚なら在庫待ち）
    * eating  = 使っている（乗る・食べる）
    * paying  = 商品を持ってレジへ向かう
+   * roaming = 次に空く場所を園内で待つ
    * leaving = 帰る
    */
-  state: "walking" | "waiting" | "eating" | "paying" | "leaving";
+  state: "walking" | "waiting" | "eating" | "paying" | "roaming" | "leaving";
   pos: Vec;
   timer: number;
   /** 今日まわる予定の数（場所が増えるほど増える） */
@@ -434,6 +444,8 @@ export type Staff = {
   target: string | null;
   /** 目的地に着いて作業中か（着いた人は押されない） */
   settled?: boolean;
+  /** 担当エリア（雇った区画。ここを優先して回る） */
+  area: number;
 };
 
 export type Player = {
@@ -490,6 +502,8 @@ export const PAD_RADIUS = 26;
 export const STOVE_CAPACITY = 5;
 /** 自動供給機が1回動くのにかかる時間（秒） */
 export const AUTO_TIME = 1.2;
+/** 次の場所が空くのを待つ時間（秒） */
+export const ROAM_TIME = 12;
 /** 配膳ロボが充電に戻るまでの配達数 */
 export const ROBOT_TRIPS = 5;
 /** 充電にかかる時間（秒） */
@@ -525,6 +539,7 @@ const makeStaff = (hire: HireSpec, id: number): Staff => ({
   item: null,
   stoveId: hire.stoveId ?? null,
   home: { ...hire.pos },
+  area: hire.area,
   trips: 0,
   charge: 0,
   target: null,
@@ -536,7 +551,7 @@ export const createState = (): ShopState => ({
   money: 0,
   unlocked: ["stove-1", "seat-0-1", "seat-0-2"],
   padProgress: {},
-  levels: { carry: 0, speed: 0, cook: 0, price: 0 },
+  levels: { carry: 0, speed: 0, cook: 0, price: 0, gate: 0 },
   served: 0,
   playTime: 0,
   lastSeen: Date.now(),
@@ -887,6 +902,9 @@ const spawnCustomers = (state: ShopState, dt: number) => {
   if (state.spawnTimer > 0) return;
   state.spawnTimer = spawnInterval(state);
 
+  // 園内で次を待っている人がいるあいだは、新しい客を入れない
+  if (state.customers.some((customer) => customer.state === "roaming")) return;
+
   const taken = new Set(
     state.customers
       .filter((customer) => customer.state !== "leaving")
@@ -899,7 +917,7 @@ const spawnCustomers = (state: ShopState, dt: number) => {
   if (!free) return;
 
   // 遊べる場所が多いほど、ひとりが何か所もまわる
-  const variety = Math.min(4, Math.floor(openSeats(state).length / 3));
+  const variety = Math.min(5, Math.floor(openSeats(state).length / 2));
   state.customers.push({
     id: state.nextId++,
     seatId: free.id,
@@ -909,9 +927,27 @@ const spawnCustomers = (state: ShopState, dt: number) => {
       y: streetPos(state).y,
     },
     timer: 0,
-    budget: 1 + Math.floor(Math.random() * (variety + 1)),
+    budget: 1 + Math.max(0, Math.floor(Math.random() * (variety + 1))),
     visits: 0,
   });
+
+  // 入場券の売上（入口に落ちる。自動改札があるとサイフへ直行）
+  const fee = admissionValue(state);
+  if (fee > 0) {
+    const gate = entrancePos(state);
+    if (hasEquip(state, "ticket")) {
+      state.money += fee;
+      pop(state, { x: gate.x, y: gate.y - 12 }, `+${fee.toLocaleString("ja-JP")}円`);
+      state.sfx.push("coin");
+    } else {
+      state.coins.push({
+        id: state.nextId++,
+        pos: { x: gate.x + (Math.random() * 40 - 20), y: gate.y + 14 },
+        value: fee,
+        age: 0,
+      });
+    }
+  }
 };
 
 const updateStoves = (state: ShopState, dt: number) => {
@@ -950,24 +986,36 @@ const payOut = (state: ShopState, seat: SeatSpec, at: Vec) => {
   state.served += 1;
 };
 
-/** 次にまわる場所をさがす。なければ帰る */
+/** いま空いている場所（ほかの人が向かっていない・皿も残っていない） */
+const freeSeats = (state: ShopState, customer: Customer) => {
+  const taken = new Set(
+    state.customers
+      .filter(
+        (item) =>
+          item.id !== customer.id &&
+          item.state !== "leaving" &&
+          item.state !== "roaming",
+      )
+      .map((item) => item.seatId),
+  );
+  return openSeats(state).filter(
+    (seat) =>
+      seat.id !== customer.seatId && !taken.has(seat.id) && !isDirty(state, seat.id),
+  );
+};
+
+/** 次にまわる場所へ。空いていなければ、園内をぶらぶらして待つ */
 const nextStop = (state: ShopState, customer: Customer) => {
   customer.visits += 1;
   if (customer.visits >= customer.budget) {
     customer.state = "leaving";
     return;
   }
-  const taken = new Set(
-    state.customers
-      .filter((item) => item.id !== customer.id && item.state !== "leaving")
-      .map((item) => item.seatId),
-  );
-  const free = openSeats(state).filter(
-    (seat) =>
-      seat.id !== customer.seatId && !taken.has(seat.id) && !isDirty(state, seat.id),
-  );
+  const free = freeSeats(state, customer);
   if (free.length === 0) {
-    customer.state = "leaving";
+    // すぐに帰らず、空くのを少し待つ
+    customer.state = "roaming";
+    customer.timer = ROAM_TIME;
     return;
   }
   const seat = free[Math.floor(Math.random() * free.length)];
@@ -1006,6 +1054,27 @@ const updateCustomers = (state: ShopState, dt: number) => {
         // レストランは皿が残る。片づけるまで次の客が来ない
         if (mode === "table") state.dirty[seat.id] = state.playTime;
         nextStop(state, customer);
+      }
+    } else if (customer.state === "roaming") {
+      // 空くのを待ちながら、あたりを歩く
+      customer.timer -= dt;
+      const free = freeSeats(state, customer);
+      if (free.length > 0) {
+        const next = free[Math.floor(Math.random() * free.length)];
+        customer.seatId = next.id;
+        customer.state = "walking";
+        customer.timer = 0;
+        pop(state, { x: customer.pos.x, y: customer.pos.y - 30 }, "次いこう！");
+      } else if (customer.timer <= 0) {
+        customer.state = "leaving";
+      } else {
+        const t = state.playTime * 0.6 + customer.id;
+        moveToward(
+          customer.pos,
+          { x: seat.pos.x + Math.cos(t) * 60, y: seat.pos.y + Math.sin(t) * 34 },
+          70,
+          dt,
+        );
       }
     } else if (customer.state === "leaving") {
       if (moveToward(customer.pos, streetPos(state), 112, dt)) customer.id = -1;
@@ -1209,13 +1278,10 @@ export const carrierLimit = (state: ShopState, worker: Staff) =>
 /** スタッフの足の速さ。強化（厨房シューズ／園内カート）の半分だけ効く */
 export const staffSpeedFactor = (state: ShopState) => 1 + state.levels.speed * 0.05;
 
-const staffSpeed = (state: ShopState, worker?: Staff) =>
-  STAFF_SPEED * staffSpeedFactor(state) * (worker ? personalSpeed(worker) : 1);
+const staffSpeed = (state: ShopState) => STAFF_SPEED * staffSpeedFactor(state);
 
 const carrierSpeed = (state: ShopState, worker: Staff) =>
-  (worker.kind === "robot" ? ROBOT_SPEED : STAFF_SPEED) *
-  staffSpeedFactor(state) *
-  personalSpeed(worker);
+  (worker.kind === "robot" ? ROBOT_SPEED : STAFF_SPEED) * staffSpeedFactor(state);
 
 /** 調理人の立ち位置（寸胴の奥） */
 export const cookPost = (worker: Staff): Vec => {
@@ -1228,10 +1294,7 @@ export const cookPost = (worker: Staff): Vec => {
  * 同じ役割でも、ひとりずつ性格が違う。
  * id から決まるので、雇い直しても同じ人は同じ動きをする
  */
-export const trait = (worker: Staff) => worker.id % 3;
 
-/** 足の速さの個人差（±8%くらい） */
-const personalSpeed = (worker: Staff) => 1 + ((worker.id % 5) - 2) * 0.04;
 
 /**
  * スタッフの移動。目的地の近くまで来たら settled を立てて、
@@ -1249,46 +1312,26 @@ const go = (
   return moveToward(worker.pos, target, speed, dt);
 };
 
-/** その場所を、ほかのスタッフが担当していないか */
+/**
+ * その場所を、ほかのスタッフが担当していないか。
+ * 配膳ロボは最初のとおり素直に動かすので、予約を見ない
+ */
 const claimedByOther = (state: ShopState, worker: Staff, id: string) =>
+  worker.kind !== "robot" &&
   state.staff.some((other) => other.id !== worker.id && other.target === id);
 
 /**
  * 近づく位置を少しずらす。
  * まっすぐ行く人、ふらふら回り込む人、外側から入る人がいる
  */
-const approach = (state: ShopState, worker: Staff, at: Vec): Vec => {
-  const lane = ((worker.id % 3) - 1) * 13;
-  // 遠いあいだだけ道を膨らませる。近づいたら消して、必ず届くようにする
-  const away = Math.min(1, Math.max(0, (dist(worker.pos, at) - 30) / 70));
-  const sway =
-    trait(worker) === 1
-      ? Math.sin(state.playTime * 1.6 + worker.id) * 9
-      : trait(worker) === 2
-        ? Math.cos(state.playTime * 1.1 + worker.id * 2) * 5
-        : 0;
-  return {
-    x: at.x + (lane + sway) * away,
-    y: at.y + (worker.id % 2 === 0 ? 5 : -5) * away,
-  };
+const approach = (_state: ShopState, worker: Staff, at: Vec): Vec => {
+  // まっすぐ向かう。重ならないように行き先だけ少しずらす
+  if (worker.kind === "robot") return at;
+  return { x: at.x + ((worker.id % 3) - 1) * 10, y: at.y };
 };
 
-/** 手が空いたときの待ち場所。ひとりずつ違う場所で待つ */
-const idleSpot = (state: ShopState, worker: Staff): Vec => {
-  const style = trait(worker);
-  const t = state.playTime * (0.4 + style * 0.25) + worker.id * 1.7;
-  // 0: その場でうろうろ / 1: 左右に往復 / 2: 小さく円を描く
-  if (style === 0) {
-    return { x: worker.home.x + Math.sin(t * 2) * 8, y: worker.home.y - 26 };
-  }
-  if (style === 1) {
-    return { x: worker.home.x + Math.sin(t) * 40, y: worker.home.y - 30 };
-  }
-  return {
-    x: worker.home.x + Math.cos(t) * 26,
-    y: worker.home.y - 30 + Math.sin(t) * 16,
-  };
-};
+/** 手が空いたときの待ち場所（雇った場所で待つ） */
+const idleSpot = (_state: ShopState, worker: Staff): Vec => worker.home;
 
 /** 近くにいる仲間と少しだけ離れる（団子にならないように） */
 const spread = (state: ShopState, dt: number) => {
@@ -1298,6 +1341,8 @@ const spread = (state: ShopState, dt: number) => {
       const a = list[i];
       const b = list[k];
       if (a.kind === "cook" || b.kind === "cook") continue;
+      // ロボはぶつかり判定を持たない（すり抜ける）
+      if (a.kind === "robot" || b.kind === "robot") continue;
       // 着いて作業している人は押さない（押し合いで震えないように）
       if (a.settled || b.settled) continue;
       if (a.charge > 0 || b.charge > 0) continue;
@@ -1382,7 +1427,7 @@ const updateAuto = (state: ShopState, dt: number) => {
 const updateStaff = (state: ShopState, dt: number) => {
   for (const worker of state.staff) {
     if (worker.kind === "cook") {
-      go(state, worker, cookPost(worker), staffSpeed(state, worker), dt);
+      go(state, worker, cookPost(worker), staffSpeed(state), dt);
       continue;
     }
 
@@ -1390,7 +1435,7 @@ const updateStaff = (state: ShopState, dt: number) => {
       // 板前・園長は、作る場所のあいだをゆっくり見回る
       const posts = openStoves(state);
       if (posts.length === 0) {
-        go(state, worker, worker.home, staffSpeed(state, worker) * 0.5, dt);
+        go(state, worker, worker.home, staffSpeed(state) * 0.5, dt);
         continue;
       }
       const post = posts[Math.floor(state.playTime / 6 + worker.id) % posts.length];
@@ -1399,7 +1444,7 @@ const updateStaff = (state: ShopState, dt: number) => {
           state,
           worker,
           { x: post.pos.x, y: post.pos.y - 44 },
-          staffSpeed(state, worker) * 0.55,
+          staffSpeed(state) * 0.55,
           dt,
         )
       ) {
@@ -1420,22 +1465,25 @@ const updateStaff = (state: ShopState, dt: number) => {
         }
       }
       if (!best) {
-        // 手が空いたら、店のなかを大きく見回る
-        const box = worldBounds(state);
+        // 手が空いたら、担当エリアのなかを見回る
+        const zone = areaById.get(`area-${worker.area}`)?.rect;
+        const box = zone ?? worldBounds(state);
         const t = state.playTime * 0.35 + worker.id;
         go(
           state,
           worker,
           {
-            x: (box.x0 + box.x1) / 2 + Math.cos(t) * (box.x1 - box.x0) * 0.32,
-            y: (box.y0 + outsideTop(state)) / 2 + Math.sin(t * 1.3) * 90,
+            x: (box.x0 + box.x1) / 2 + Math.cos(t) * (box.x1 - box.x0) * 0.3,
+            y:
+              (box.y0 + Math.min(box.y1, outsideTop(state))) / 2 +
+              Math.sin(t * 1.3) * (box.y1 - box.y0) * 0.26,
           },
-          staffSpeed(state, worker) * 0.7,
+          staffSpeed(state) * 0.8,
           dt,
         );
         continue;
       }
-      if (go(state, worker, best.pos, staffSpeed(state, worker) * 1.15, dt)) {
+      if (go(state, worker, best.pos, staffSpeed(state) * 1.15, dt)) {
         collectCoin(state, best);
         state.coins = state.coins.filter((item) => item.id !== -1);
       }
@@ -1456,14 +1504,19 @@ const updateStaff = (state: ShopState, dt: number) => {
             isDirty(state, seat.id) &&
             !claimedByOther(state, worker, seat.id),
         )
-        .sort((a, b) => (state.dirty[a.id] ?? 0) - (state.dirty[b.id] ?? 0))[0];
+        .sort((a, b) => {
+          const side =
+            (a.area === worker.area ? 0 : 1) - (b.area === worker.area ? 0 : 1);
+          if (side !== 0) return side;
+          return (state.dirty[a.id] ?? 0) - (state.dirty[b.id] ?? 0);
+        })[0];
       if (!table) {
         const home = openSeats(state).find((seat) => seatMode(seat) === "table");
         go(
           state,
           worker,
           home ? { x: home.serve.x, y: home.serve.y - 40 } : { x: 180, y: 250 },
-          staffSpeed(state, worker) * 0.6,
+          staffSpeed(state) * 0.6,
           dt,
         );
         continue;
@@ -1473,7 +1526,7 @@ const updateStaff = (state: ShopState, dt: number) => {
         state,
         worker,
         approach(state, worker, table.serve),
-        staffSpeed(state, worker) * 0.9,
+        staffSpeed(state) * 0.9,
         dt,
       );
       if (clearTable(state, worker.pos)) {
@@ -1485,7 +1538,7 @@ const updateStaff = (state: ShopState, dt: number) => {
 
     if (worker.kind === "stocker") {
       // 品出し係: 倉庫から商品を運んで棚に並べる
-      const speed = staffSpeed(state, worker);
+      const speed = staffSpeed(state);
       const limit = carrierLimit(state, worker);
       // いちばん減っている棚から埋める
       const shelfNeed = openSeats(state)
@@ -1495,7 +1548,12 @@ const updateStaff = (state: ShopState, dt: number) => {
             shelfStock(state, seat.id) < SHELF_MAX &&
             !claimedByOther(state, worker, seat.id),
         )
-        .sort((a, b) => shelfStock(state, a.id) - shelfStock(state, b.id))[0];
+        .sort((a, b) => {
+          const side =
+            (a.area === worker.area ? 0 : 1) - (b.area === worker.area ? 0 : 1);
+          if (side !== 0) return side;
+          return shelfStock(state, a.id) - shelfStock(state, b.id);
+        })[0];
 
       if (worker.carry > 0) {
         if (!shelfNeed) {
@@ -1587,13 +1645,14 @@ const updateStaff = (state: ShopState, dt: number) => {
           seat: seatById.get(customer.seatId)!,
         }))
         .sort((a, b) => {
-          const da = dist(worker.pos, a.seat.serve);
-          const db = dist(worker.pos, b.seat.serve);
-          const style = trait(worker);
-          // 0: 近い順 / 1: 遠い順 / 2: 待たせている順
-          if (style === 2) return a.customer.id - b.customer.id;
-          const far = worker.kind === "robot" ? style !== 0 : style === 1;
-          return far ? db - da : da - db;
+          // ロボは待っている順（最初の挙動）
+          if (worker.kind === "robot") return a.customer.id - b.customer.id;
+          // 人は担当エリアを優先して、そのなかで近い順
+          const side =
+            (a.seat.area === worker.area ? 0 : 1) -
+            (b.seat.area === worker.area ? 0 : 1);
+          if (side !== 0) return side;
+          return dist(worker.pos, a.seat.serve) - dist(worker.pos, b.seat.serve);
         });
       // いま担当している席を優先して、目移りしないようにする
       const keep = reachable.find((item) => item.seat.id === worker.target);
@@ -1659,14 +1718,14 @@ const updateStaff = (state: ShopState, dt: number) => {
         (wanted.size === 0 ? stoveItem(item) === "main" : wanted.has(stoveItem(item))),
     );
     // ロボは在庫の多い場所へまとめて取りに行き、店員は近い場所から取る
-    const stove =
-      worker.kind === "robot"
-        ? ready.sort(
-            (a, b) => (state.ready[b.id] ?? 0) - (state.ready[a.id] ?? 0),
-          )[0]
-        : ready.sort(
-            (a, b) => dist(worker.pos, a.pos) - dist(worker.pos, b.pos),
-          )[0];
+    const stove = ready.sort((a, b) => {
+      if (worker.kind !== "robot") {
+        const side =
+          (a.area === worker.area ? 0 : 1) - (b.area === worker.area ? 0 : 1);
+        if (side !== 0) return side;
+      }
+      return dist(worker.pos, a.pos) - dist(worker.pos, b.pos);
+    })[0];
 
     if (!stove) {
       if (dirtyTable && go(state, worker, dirtyTable.serve, speed, dt)) {
@@ -1950,6 +2009,9 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
       title: stageLabels().outside,
       lines: [
         `${stageLabels().guest}はここから入ってくる`,
+        ...(admissionValue(state) > 0
+          ? [`入場券は 1人 ${yen(admissionValue(state))}（入口に落ちる）`]
+          : []),
         stageLabels().outsideDetail,
       ],
       pos: streetPos(state),
@@ -2063,7 +2125,11 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
         );
       }
       if (worker.kind !== "cook" && worker.kind !== "master") {
-        lines.push(`強化のおかげで 足の速さ +${state.levels.speed * 5}%`);
+        const zone = areaById.get(`area-${worker.area}`);
+        lines.push(
+          `担当は ${zone ? zone.label.replace("をつくる", "") : "この区画"}（空いていれば他も手伝う）`,
+          `強化のおかげで 足の速さ +${state.levels.speed * 5}%`,
+        );
       }
       return { title: staffLabel(worker.kind), lines, pos: worker.pos };
     });
@@ -2079,6 +2145,8 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
             ? [`${stageLabels().using}（あと ${Math.max(0, customer.timer).toFixed(1)}秒）`]
             : customer.state === "paying"
               ? ["商品を持ってレジへ向かっている"]
+              : customer.state === "roaming"
+              ? ["次に乗れる場所が空くのを待っている"]
               : customer.state === "leaving"
                 ? ["満足して帰るところ"]
                 : ["次の場所へ向かっている"]),

@@ -61,6 +61,10 @@ export type StageDef = {
   labels: StageLabels;
   /** 一杯（一人）あたりの基本単価 */
   baseValue: number;
+  /** 入口で取る入場券の基本料金（ないステージは省略） */
+  admission?: number;
+  /** 場所ごとの自動供給機を置けるステージか */
+  autoServer?: boolean;
   /** このステージを開けるのに必要な、前ステージの区画数 */
   requiresAreas: number;
 };
@@ -525,10 +529,12 @@ const parkEquipment: EquipSpec[] = [
 ];
 
 const parkUpgrades: Upgrade[] = [
-  { id: "carry", name: "チケットホルダー", detail: (n) => `${3 + n}枚まで持てる・スタッフも ${3 + Math.floor(n / 2)}枚`, pos: { x: 46, y: 66 }, basePrice: 80, growth: 1.7, max: 9 },
-  { id: "speed", name: "園内カート", detail: (n) => `足の速さ +${n * 10}%・スタッフも +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 70, growth: 1.65, max: 12 },
-  { id: "cook", name: "発券機の改良", detail: (n) => `発券の速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 100, growth: 1.7, max: 14 },
-  { id: "price", name: "入園料アップ", detail: (n) => `一人 ${Math.round(70 * Math.pow(1.4, n))}円`, pos: { x: 314, y: 66 }, basePrice: 150, growth: 1.75, max: 20 },
+  { id: "carry", name: "チケットホルダー", detail: (n) => `${3 + n}枚まで持てる・スタッフも ${3 + Math.floor(n / 2)}枚`, pos: { x: 46, y: 66 }, basePrice: 80, growth: 1.7, max: 15 },
+  { id: "speed", name: "園内カート", detail: (n) => `足の速さ +${n * 10}%・スタッフも +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 70, growth: 1.65, max: 18 },
+  { id: "cook", name: "発券機の改良", detail: (n) => `発券の速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 100, growth: 1.7, max: 22 },
+  { id: "price", name: "乗り物券アップ", detail: (n) => `一回 ${Math.round(70 * Math.pow(1.4, n))}円`, pos: { x: 314, y: 66 }, basePrice: 150, growth: 1.72, max: 45 },
+  // 入場券は入口で取る。乗らない人からももらえる
+  { id: "gate", name: "入場券アップ", detail: (n) => `入場料 ${Math.round(40 * Math.pow(1.45, n))}円`, pos: { x: 176, y: 0 }, basePrice: 400, growth: 1.7, max: 45, outside: true },
 ];
 
 /* ==================== 登録 ==================== */
@@ -590,6 +596,8 @@ export const stageDefs: Record<StageId, StageDef> = {
     equipment: parkEquipment,
     upgrades: parkUpgrades,
     baseValue: 70,
+    admission: 40,
+    autoServer: true,
     requiresAreas: 4,
     labels: {
       item: "チケット",
