@@ -5,7 +5,6 @@ import {
   EAT_TIME,
   KITCHEN,
   PAD_RADIUS,
-  STOVE_CAPACITY,
   WORLD,
   availablePads,
   currentObjective,
@@ -13,14 +12,16 @@ import {
   maxCarry,
   openSeats,
   openStoves,
+  areas,
   entrancePos,
-  nextArea,
+  equipment,
   openAreas,
+  stoveCapacity,
+  worldBounds,
   padLevel,
   padPrice,
   trayPos,
   update,
-  worldHeight,
   type Inspect,
   type Input,
   type OfflineReport,
@@ -153,7 +154,7 @@ export default function Shop({ onSample, paused }: Props) {
     moved: boolean;
   } | null>(null);
   const inspect = useRef<{ data: Inspect; until: number } | null>(null);
-  const camera = useRef(0);
+  const camera = useRef({ x: 0, y: 0 });
   const pausedRef = useRef(paused);
   const sampleRef = useRef(onSample);
 
@@ -175,7 +176,9 @@ export default function Shop({ onSample, paused }: Props) {
       time: number,
     ) => {
       const canvas = ctx.canvas;
-      const worldH = worldHeight(state);
+      const box = worldBounds(state);
+      const worldH = box.y1;
+      const camX = -ox / scale;
       const camY = -oy / scale;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -189,43 +192,51 @@ export default function Shop({ onSample, paused }: Props) {
       floor.addColorStop(0, "#3b322a");
       floor.addColorStop(1, "#282019");
       ctx.fillStyle = floor;
-      ctx.fillRect(0, 0, WORLD.w, worldH);
+      ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
       ctx.strokeStyle = "rgba(0,0,0,0.16)";
       ctx.lineWidth = 1;
       for (let y = KITCHEN.bottom + 20; y < worldH; y += 34) {
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(WORLD.w, y);
+        ctx.moveTo(box.x0, y);
+        ctx.lineTo(box.x1, y);
         ctx.stroke();
       }
 
       /* --- 厨房（歩いて入れる） --- */
-      ctx.fillStyle = "#2b241d";
-      ctx.fillRect(0, 0, WORLD.w, KITCHEN.bottom);
-      ctx.fillStyle = "rgba(255,255,255,0.03)";
-      for (let y = KITCHEN.top; y < KITCHEN.bottom; y += 22) {
-        for (let x = 0; x < WORLD.w; x += 22) {
-          if (((x + y) / 22) % 2 === 0) ctx.fillRect(x, y, 22, 22);
+      for (const area of openAreas(state)) {
+        if (area.rect.y0 !== 0) continue;
+        const { x0, x1 } = area.rect;
+        ctx.fillStyle = "#2b241d";
+        ctx.fillRect(x0, 0, x1 - x0, KITCHEN.bottom);
+        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        for (let y = KITCHEN.top; y < KITCHEN.bottom; y += 22) {
+          for (let x = x0; x < x1; x += 22) {
+            if (((x + y) / 22) % 2 === 0) ctx.fillRect(x, y, 22, 22);
+          }
         }
-      }
-      ctx.strokeStyle = "rgba(246,231,207,0.16)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, KITCHEN.bottom);
-      ctx.lineTo(WORLD.w, KITCHEN.bottom);
-      ctx.stroke();
+        ctx.strokeStyle = "rgba(246,231,207,0.16)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x0, KITCHEN.bottom);
+        ctx.lineTo(x1, KITCHEN.bottom);
+        ctx.stroke();
 
-      // のれん
-      ctx.fillStyle = "#c2402f";
-      roundRect(ctx, 10, 4, WORLD.w - 20, 30, 6);
-      ctx.fill();
-      ctx.fillStyle = "#f6e7cf";
-      ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
-      ctx.fillText("ら ー め ん", WORLD.w / 2, 20);
-      ctx.font = FONT;
-      ctx.fillStyle = "rgba(0,0,0,0.25)";
-      for (let i = 1; i < 5; i += 1) {
-        ctx.fillRect(10 + ((WORLD.w - 20) / 5) * i - 1, 4, 2, 30);
+        // のれん
+        ctx.fillStyle = area.price === 0 ? "#c2402f" : "#8a5a3c";
+        roundRect(ctx, x0 + 10, 4, x1 - x0 - 20, 30, 6);
+        ctx.fill();
+        ctx.fillStyle = "#f6e7cf";
+        ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+        ctx.fillText(
+          area.price === 0 ? "ら ー め ん" : "製 麺 所",
+          (x0 + x1) / 2,
+          20,
+        );
+        ctx.font = FONT;
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        for (let i = 1; i < 5; i += 1) {
+          ctx.fillRect(x0 + 10 + ((x1 - x0 - 20) / 5) * i - 1, 4, 2, 30);
+        }
       }
 
       /* --- 寸胴 --- */
@@ -253,7 +264,7 @@ export default function Shop({ onSample, paused }: Props) {
 
         const ready = state.ready[stove.id] ?? 0;
         for (let i = 0; i < ready; i += 1) bowl(ctx, x, y + 22 - i * 5.5);
-        if (ready >= STOVE_CAPACITY) {
+        if (ready >= stoveCapacity(state)) {
           ctx.fillStyle = "#ffd166";
           ctx.fillText("満杯", x, y + 36);
         }
@@ -261,10 +272,10 @@ export default function Shop({ onSample, paused }: Props) {
 
       /* --- カウンター --- */
       ctx.fillStyle = "#6b4a2f";
-      roundRect(ctx, 16, 306, WORLD.w - 32, 34, 10);
+      roundRect(ctx, 16, 306, 328, 34, 10);
       ctx.fill();
       ctx.fillStyle = "#8a6440";
-      roundRect(ctx, 16, 306, WORLD.w - 32, 11, 6);
+      roundRect(ctx, 16, 306, 328, 11, 6);
       ctx.fill();
 
       for (const seat of openSeats(state)) {
@@ -340,37 +351,110 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
-      /* --- 区画の仕切り --- */
-      for (const area of openAreas(state)) {
-        if (area.top <= 0) continue;
-        ctx.strokeStyle = "rgba(246,231,207,0.14)";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([10, 8]);
-        ctx.beginPath();
-        ctx.moveTo(0, area.top);
-        ctx.lineTo(WORLD.w, area.top);
-        ctx.stroke();
-        ctx.setLineDash([]);
+      /* --- 導入した設備 --- */
+      for (const item of equipment) {
+        if (!state.unlocked.includes(`equip-${item.id}`)) continue;
+        const { x, y } = item.pos;
+        ctx.fillStyle = "#3c4652";
+        roundRect(ctx, x - 24, y - 22, 48, 40, 8);
+        ctx.fill();
+        ctx.fillStyle = "#55616f";
+        roundRect(ctx, x - 24, y - 22, 48, 10, 5);
+        ctx.fill();
+        ctx.fillStyle = "#7ee7a8";
+        roundRect(ctx, x - 13, y - 6, 26, 12, 4);
+        ctx.fill();
+        ctx.fillStyle = "#16202c";
         ctx.font = SMALL;
-        ctx.fillStyle = "rgba(246,231,207,0.4)";
-        ctx.fillText(area.label.replace("をつくる", ""), WORLD.w / 2, area.top + 12);
+        ctx.fillText(item.name, x, y + 26);
+        ctx.fillStyle = "rgba(246,231,207,0.6)";
+        ctx.fillText(item.name, x, y + 26);
         ctx.font = FONT;
       }
 
-      /* --- この先に広げられる壁 --- */
-      const upcoming = nextArea(state);
-      if (upcoming) {
+      /* --- 区画の仕切り --- */
+      for (const area of openAreas(state)) {
+        if (area.price === 0 || area.rect.y0 === 0) continue;
+        ctx.strokeStyle = "rgba(246,231,207,0.14)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 8]);
+        ctx.strokeRect(
+          area.rect.x0 + 1,
+          area.rect.y0 + 1,
+          area.rect.x1 - area.rect.x0 - 2,
+          area.rect.y1 - area.rect.y0 - 2,
+        );
+        ctx.setLineDash([]);
+        ctx.font = SMALL;
+        ctx.fillStyle = "rgba(246,231,207,0.4)";
+        ctx.fillText(
+          area.label.replace("をつくる", ""),
+          (area.rect.x0 + area.rect.x1) / 2,
+          area.rect.y0 + 14,
+        );
+        ctx.font = FONT;
+      }
+
+      /* --- この先に広げられる柵 --- */
+      const openIds = new Set(openAreas(state).map((area) => area.id));
+      for (const area of areas) {
+        if (openIds.has(area.id)) continue;
+        // 店の内側に残っている工事中の区画は、面ごと塗って入れなくする
+        const ix0 = Math.max(area.rect.x0, box.x0);
+        const iy0 = Math.max(area.rect.y0, box.y0);
+        const ix1 = Math.min(area.rect.x1, box.x1);
+        const iy1 = Math.min(area.rect.y1, box.y1);
+        if (ix1 > ix0 && iy1 > iy0) {
+          ctx.fillStyle = "#150f0c";
+          ctx.fillRect(ix0, iy0, ix1 - ix0, iy1 - iy0);
+          ctx.fillStyle = "rgba(255,209,102,0.07)";
+          for (let x = ix0 - 40; x < ix1 + 40; x += 30) {
+            ctx.beginPath();
+            ctx.moveTo(x, iy0);
+            ctx.lineTo(x + 15, iy0);
+            ctx.lineTo(x + 15 - (iy1 - iy0), iy1);
+            ctx.lineTo(x - (iy1 - iy0), iy1);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.fillStyle = "rgba(246,231,207,0.5)";
+          ctx.font = SMALL;
+          ctx.fillText("工事中", (ix0 + ix1) / 2, (iy0 + iy1) / 2);
+          ctx.font = FONT;
+          continue;
+        }
+
+        const below = area.rect.y0 >= box.y1;
+        const right = area.rect.x0 >= box.x1;
+        if (!below && !right) continue;
+        const bx = below ? area.rect.x0 : box.x1 - 16;
+        const by = below ? box.y1 - 16 : area.rect.y0;
+        const bw = below ? area.rect.x1 - area.rect.x0 : 16;
+        const bh = below ? 16 : Math.min(area.rect.y1, box.y1) - area.rect.y0;
+        if (bw <= 0 || bh <= 0) continue;
         ctx.fillStyle = "#191310";
-        ctx.fillRect(0, worldH - 16, WORLD.w, 16);
+        ctx.fillRect(bx, by, bw, bh);
         ctx.fillStyle = "rgba(255,209,102,0.16)";
-        for (let x = -20; x < WORLD.w + 20; x += 26) {
-          ctx.beginPath();
-          ctx.moveTo(x, worldH - 16);
-          ctx.lineTo(x + 13, worldH - 16);
-          ctx.lineTo(x + 26, worldH);
-          ctx.lineTo(x + 13, worldH);
-          ctx.closePath();
-          ctx.fill();
+        if (below) {
+          for (let x = bx - 20; x < bx + bw + 20; x += 26) {
+            ctx.beginPath();
+            ctx.moveTo(x, by);
+            ctx.lineTo(x + 13, by);
+            ctx.lineTo(x + 26, by + bh);
+            ctx.lineTo(x + 13, by + bh);
+            ctx.closePath();
+            ctx.fill();
+          }
+        } else {
+          for (let y = by - 20; y < by + bh + 20; y += 26) {
+            ctx.beginPath();
+            ctx.moveTo(bx, y);
+            ctx.lineTo(bx, y + 13);
+            ctx.lineTo(bx + bw, y + 26);
+            ctx.lineTo(bx + bw, y + 13);
+            ctx.closePath();
+            ctx.fill();
+          }
         }
       }
 
@@ -457,6 +541,7 @@ export default function Shop({ onSample, paused }: Props) {
         robot: "#8fa4bb",
         collector: "#4aa3c7",
         cook: "#eee8dc",
+        master: "#2f3b4d",
       };
 
       for (const customer of state.customers) {
@@ -530,6 +615,12 @@ export default function Shop({ onSample, paused }: Props) {
                 roundRect(ctx, worker.pos.x - 7, worker.pos.y - 32, 14, 9, 4);
                 ctx.fill();
               }
+              if (worker.kind === "master") {
+                // 鉢巻き
+                ctx.fillStyle = "#d94f3d";
+                roundRect(ctx, worker.pos.x - 8, worker.pos.y - 25, 16, 4, 2);
+                ctx.fill();
+              }
             }
             for (let i = 0; i < worker.carry; i += 1) {
               bowl(ctx, worker.pos.x, worker.pos.y - 30 - i * 6, 0.85);
@@ -599,15 +690,15 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.save();
       ctx.fillStyle = "rgba(0,0,0,0.6)";
       const width = ctx.measureText(objective.label).width + 26;
-      const bannerY = camY + 16;
-      roundRect(ctx, WORLD.w / 2 - width / 2, bannerY, width, 24, 12);
+      const bannerY = camY + canvas.height / scale - 46;
+      roundRect(ctx, camX + WORLD.w / 2 - width / 2, bannerY, width, 24, 12);
       ctx.fill();
       ctx.strokeStyle = "rgba(255,209,102,0.45)";
       ctx.lineWidth = 1;
-      roundRect(ctx, WORLD.w / 2 - width / 2, bannerY, width, 24, 12);
+      roundRect(ctx, camX + WORLD.w / 2 - width / 2, bannerY, width, 24, 12);
       ctx.stroke();
       ctx.fillStyle = "#ffd166";
-      ctx.fillText(objective.label, WORLD.w / 2, bannerY + 13);
+      ctx.fillText(objective.label, camX + WORLD.w / 2, bannerY + 13);
       ctx.restore();
 
       /* --- 長押しの説明 --- */
@@ -621,7 +712,10 @@ export default function Shop({ onSample, paused }: Props) {
             ...lines.map((line) => ctx.measureText(line).width),
           ) + 22;
         const height = 26 + lines.length * 15;
-        const cx = Math.min(WORLD.w - width / 2 - 6, Math.max(width / 2 + 6, info.pos.x));
+        const cx = Math.min(
+          camX + WORLD.w - width / 2 - 6,
+          Math.max(camX + width / 2 + 6, info.pos.x),
+        );
         let top = info.pos.y - height - 30;
         if (top < 6) top = Math.min(worldH - height - 6, info.pos.y + 30);
 
@@ -707,8 +801,8 @@ export default function Shop({ onSample, paused }: Props) {
       const rect = canvas.getBoundingClientRect();
       const fit = rect.width / WORLD.w;
       return {
-        x: (event.clientX - rect.left) / fit,
-        y: (event.clientY - rect.top) / fit + camera.current,
+        x: (event.clientX - rect.left) / fit + camera.current.x,
+        y: (event.clientY - rect.top) / fit + camera.current.y,
       };
     };
 
@@ -800,20 +894,32 @@ export default function Shop({ onSample, paused }: Props) {
 
       if (!pausedRef.current && !document.hidden) update(state, move, dt);
 
-      // カメラ: 店が画面より縦に長いときだけ、店主を追って動く
+      // カメラ: 店が画面より広いぶんだけ、店主を追って縦横に動く
       {
-        const worldH = worldHeight(state);
+        const box = worldBounds(state);
+        const viewW = canvas.width / scale;
         const viewH = canvas.height / scale;
-        const target =
-          worldH <= viewH
-            ? -(viewH - worldH) / 2
+        const worldW = box.x1 - box.x0;
+        const worldH2 = box.y1 - box.y0;
+        const targetX =
+          worldW <= viewW
+            ? box.x0 - (viewW - worldW) / 2
             : Math.min(
-                Math.max(state.player.pos.y - viewH / 2, 0),
-                worldH - viewH,
+                Math.max(state.player.pos.x - viewW / 2, box.x0),
+                box.x1 - viewW,
+              );
+        const targetY =
+          worldH2 <= viewH
+            ? box.y0 - (viewH - worldH2) / 2
+            : Math.min(
+                Math.max(state.player.pos.y - viewH / 2, box.y0),
+                box.y1 - viewH,
               );
         const follow = Math.min(1, dt * 6);
-        camera.current += (target - camera.current) * follow;
-        oy = -camera.current * scale;
+        camera.current.x += (targetX - camera.current.x) * follow;
+        camera.current.y += (targetY - camera.current.y) * follow;
+        ox = -camera.current.x * scale;
+        oy = -camera.current.y * scale;
       }
 
       // 効果音を鳴らす（同じ音が同フレームで重ならないようにする）

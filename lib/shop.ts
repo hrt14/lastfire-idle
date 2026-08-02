@@ -28,6 +28,7 @@ export type StoveSpec = {
   id: string;
   pos: Vec;
   price: number;
+  area: number;
 };
 
 export type SeatSpec = {
@@ -44,7 +45,7 @@ export type SeatSpec = {
   label: string;
 };
 
-export type StaffKind = "waiter" | "robot" | "collector" | "cook";
+export type StaffKind = "waiter" | "robot" | "collector" | "cook" | "master";
 
 export type HireSpec = {
   id: string;
@@ -61,14 +62,15 @@ export type HireSpec = {
 /** 厨房エリア（歩いて入れる） */
 export const KITCHEN = { top: 38, bottom: 210 };
 
-/** 店の区画。買うと店そのものが下へ広がる */
+/** 店の区画。買うと店そのものが広がる（下にも右にも） */
+export type Rect = { x0: number; y0: number; x1: number; y1: number };
+
 export type AreaSpec = {
   id: string;
   label: string;
   price: number;
-  top: number;
-  bottom: number;
-  /** 買う枠の位置（ひとつ前の区画の中に置く） */
+  rect: Rect;
+  /** 買う枠の位置（すでに開いている区画の中に置く） */
   padPos: Vec;
 };
 
@@ -77,44 +79,50 @@ export const areas: AreaSpec[] = [
     id: "area-0",
     label: "屋台",
     price: 0,
-    top: 0,
-    bottom: 480,
-    padPos: { x: 150, y: 452 },
+    rect: { x0: 0, y0: 0, x1: 360, y1: 480 },
+    padPos: { x: 0, y: 0 },
   },
   {
     id: "area-1",
     label: "テーブル席をつくる",
     price: 2600,
-    top: 480,
-    bottom: 790,
+    rect: { x0: 0, y0: 480, x1: 360, y1: 790 },
     padPos: { x: 150, y: 452 },
   },
   {
     id: "area-2",
-    label: "座敷をつくる",
-    price: 24000,
-    top: 790,
-    bottom: 1100,
-    padPos: { x: 150, y: 762 },
+    label: "製麺所をつくる",
+    price: 22000,
+    rect: { x0: 360, y0: 0, x1: 720, y1: 480 },
+    padPos: { x: 298, y: 250 },
+  },
+  {
+    id: "area-3",
+    label: "宴会場をつくる",
+    price: 140000,
+    rect: { x0: 360, y0: 480, x1: 720, y1: 790 },
+    padPos: { x: 540, y: 452 },
   },
 ];
 
 export const areaById = new Map(areas.map((area) => [area.id, area]));
 
 export const stoves: StoveSpec[] = [
-  { id: "stove-1", pos: { x: 72, y: 176 }, price: 0 },
-  { id: "stove-2", pos: { x: 180, y: 176 }, price: 150 },
-  { id: "stove-3", pos: { x: 288, y: 176 }, price: 700 },
+  { id: "stove-1", pos: { x: 72, y: 176 }, price: 0, area: 0 },
+  { id: "stove-2", pos: { x: 180, y: 176 }, price: 150, area: 0 },
+  { id: "stove-3", pos: { x: 288, y: 176 }, price: 700, area: 0 },
+  { id: "stove-4", pos: { x: 470, y: 176 }, price: 26000, area: 2 },
+  { id: "stove-5", pos: { x: 610, y: 176 }, price: 60000, area: 2 },
 ];
 
-/** カウンター（区画0）・テーブル（区画1）・座敷（区画2） */
+/** カウンター・テーブル・座敷 */
 const seatRows = [
   { area: 0, xs: [60, 140, 220, 300], serveY: 294, trayY: 318, seatY: 358,
     prices: [0, 0, 100, 300], label: "カウンター席" },
   { area: 1, xs: [80, 180, 280], serveY: 552, trayY: 574, seatY: 616,
     prices: [400, 900, 2000], label: "テーブル席" },
-  { area: 2, xs: [72, 156, 240, 316], serveY: 862, trayY: 884, seatY: 926,
-    prices: [4000, 8000, 16000, 30000], label: "座敷席" },
+  { area: 3, xs: [432, 516, 600, 684], serveY: 552, trayY: 574, seatY: 616,
+    prices: [9000, 18000, 34000, 60000], label: "座敷席" },
 ];
 
 export const seats: SeatSpec[] = seatRows.flatMap((row) =>
@@ -134,68 +142,102 @@ export const hires: HireSpec[] = [
     id: `cook-${i + 1}`,
     kind: "cook" as const,
     pos: { x: stove.pos.x + 40, y: 130 },
-    price: [600, 1800, 4500][i],
+    price: [600, 1800, 4500, 30000, 70000][i],
     label: "調理人",
     stoveId: stove.id,
-    area: 0,
+    area: stove.area,
   })),
   {
-    id: "waiter-1",
-    kind: "waiter",
-    pos: { x: 50, y: 394 },
-    price: 280,
-    label: "ホール店員",
-    area: 0,
+    id: "waiter-1", kind: "waiter", pos: { x: 50, y: 394 },
+    price: 280, label: "ホール店員", area: 0,
   },
   {
-    id: "waiter-2",
-    kind: "waiter",
-    pos: { x: 130, y: 394 },
-    price: 1500,
-    label: "ホール店員",
-    area: 0,
+    id: "waiter-2", kind: "waiter", pos: { x: 130, y: 394 },
+    price: 1500, label: "ホール店員", area: 0,
   },
   {
-    id: "collector-1",
-    kind: "collector",
-    pos: { x: 230, y: 394 },
-    price: 900,
-    label: "レジ係",
-    area: 0,
+    id: "collector-1", kind: "collector", pos: { x: 230, y: 394 },
+    price: 900, label: "レジ係", area: 0,
   },
   {
-    id: "robot-1",
-    kind: "robot",
-    pos: { x: 310, y: 394 },
-    price: 4000,
-    label: "配膳ロボ",
-    area: 0,
+    id: "robot-1", kind: "robot", pos: { x: 310, y: 394 },
+    price: 4000, label: "配膳ロボ", area: 0,
   },
   {
-    id: "waiter-3",
-    kind: "waiter",
-    pos: { x: 60, y: 700 },
-    price: 9000,
-    label: "ホール店員",
-    area: 1,
+    id: "waiter-3", kind: "waiter", pos: { x: 60, y: 700 },
+    price: 9000, label: "ホール店員", area: 1,
   },
   {
-    id: "collector-2",
-    kind: "collector",
-    pos: { x: 180, y: 704 },
-    price: 14000,
-    label: "レジ係",
-    area: 1,
+    id: "collector-2", kind: "collector", pos: { x: 180, y: 704 },
+    price: 14000, label: "レジ係", area: 1,
   },
   {
-    id: "robot-2",
-    kind: "robot",
-    pos: { x: 300, y: 700 },
-    price: 26000,
-    label: "配膳ロボ",
-    area: 1,
+    id: "robot-2", kind: "robot", pos: { x: 300, y: 700 },
+    price: 26000, label: "配膳ロボ", area: 1,
+  },
+  {
+    id: "master-1", kind: "master", pos: { x: 430, y: 700 },
+    price: 180000, label: "板前", area: 3,
+  },
+  {
+    id: "robot-3", kind: "robot", pos: { x: 560, y: 700 },
+    price: 260000, label: "配膳ロボ", area: 3,
+  },
+  {
+    id: "waiter-4", kind: "waiter", pos: { x: 680, y: 700 },
+    price: 90000, label: "ホール店員", area: 3,
   },
 ];
+
+/* ---------- 設備（製麺所で導入する） ---------- */
+
+export type EquipId = "noodle" | "fridge" | "ticket" | "sign";
+
+export type EquipSpec = {
+  id: EquipId;
+  name: string;
+  detail: string;
+  pos: Vec;
+  price: number;
+  area: number;
+};
+
+export const equipment: EquipSpec[] = [
+  {
+    id: "noodle",
+    name: "製麺機",
+    detail: "すべての寸胴の調理が +30%",
+    pos: { x: 420, y: 300 },
+    price: 30000,
+    area: 2,
+  },
+  {
+    id: "fridge",
+    name: "大型冷蔵庫",
+    detail: "寸胴に置ける数 +4杯",
+    pos: { x: 520, y: 300 },
+    price: 45000,
+    area: 2,
+  },
+  {
+    id: "ticket",
+    name: "券売機",
+    detail: "お金が自動でサイフに入る",
+    pos: { x: 620, y: 300 },
+    price: 80000,
+    area: 2,
+  },
+  {
+    id: "sign",
+    name: "呼び込み看板",
+    detail: "お客さんが 1.5倍のペースで来る",
+    pos: { x: 520, y: 390 },
+    price: 120000,
+    area: 2,
+  },
+];
+
+export const equipById = new Map(equipment.map((item) => [item.id, item]));
 
 /* ---------- 強化（厨房の中の設置物） ---------- */
 
@@ -280,6 +322,7 @@ const hireSub: Record<StaffKind, string> = {
   robot: "とても速く運ぶ",
   collector: "自動でお金を拾う",
   cook: "この寸胴が速くなる",
+  master: "すべての寸胴が1.4倍速くなる",
 };
 
 export const pads: Pad[] = [
@@ -303,6 +346,14 @@ export const pads: Pad[] = [
       label: seat.label,
       sub: "お客さんが増える",
     })),
+  ...equipment.map((item): Pad => ({
+    id: `equip-${item.id}`,
+    kind: "unlock",
+    pos: item.pos,
+    price: item.price,
+    label: item.name,
+    sub: item.detail,
+  })),
   ...areas
     .filter((area) => area.price > 0)
     .map((area): Pad => ({
@@ -336,16 +387,28 @@ export const padById = new Map(pads.map((pad) => [pad.id, pad]));
 export const openAreas = (state: ShopState) =>
   areas.filter((area) => area.price === 0 || state.unlocked.includes(area.id));
 
-/** いまの店の縦の長さ */
-export const worldHeight = (state: ShopState) => {
+/** いまの店の外周 */
+export const worldBounds = (state: ShopState): Rect => {
   const open = openAreas(state);
-  return open[open.length - 1]?.bottom ?? areas[0].bottom;
+  return open.reduce<Rect>(
+    (box, area) => ({
+      x0: Math.min(box.x0, area.rect.x0),
+      y0: Math.min(box.y0, area.rect.y0),
+      x1: Math.max(box.x1, area.rect.x1),
+      y1: Math.max(box.y1, area.rect.y1),
+    }),
+    { ...areas[0].rect },
+  );
 };
 
-export const entrancePos = (state: ShopState): Vec => ({
-  x: 306,
-  y: worldHeight(state) - 30,
-});
+export const worldHeight = (state: ShopState) => worldBounds(state).y1;
+
+/** 入口は左側の列のいちばん奥 */
+export const entrancePos = (state: ShopState): Vec => {
+  const open = openAreas(state).filter((area) => area.rect.x0 === 0);
+  const bottom = open.reduce((max, area) => Math.max(max, area.rect.y1), 480);
+  return { x: 306, y: bottom - 30 };
+};
 
 /** 次に買える区画（なければ null） */
 export const nextArea = (state: ShopState) =>
@@ -501,6 +564,8 @@ export const fromPersisted = (input: unknown): ShopState => {
     ...stoves.map((item) => item.id),
     ...seats.map((item) => item.id),
     ...hires.map((item) => item.id),
+    ...areas.map((item) => item.id),
+    ...equipment.map((item) => `equip-${item.id}`),
   ]);
   const migrate = (id: string) =>
     id.replace(/^seat-a(\d+)$/, "seat-0-$1").replace(/^seat-b(\d+)$/, "seat-1-$1");
@@ -564,10 +629,40 @@ export const openSeats = (state: ShopState) =>
 export const areaOpen = (state: ShopState, area: number) =>
   area === 0 || state.unlocked.includes(`area-${area}`);
 
+/** まだ買っていない区画の中か（工事中で入れない） */
+export const isBlocked = (state: ShopState, pos: Vec) =>
+  areas.some(
+    (area) =>
+      area.price > 0 &&
+      !state.unlocked.includes(area.id) &&
+      pos.x > area.rect.x0 &&
+      pos.x < area.rect.x1 &&
+      pos.y > area.rect.y0 &&
+      pos.y < area.rect.y1,
+  );
+
 export const maxCarry = (state: ShopState) => 3 + state.levels.carry;
 
 export const playerSpeed = (state: ShopState) =>
   PLAYER_BASE_SPEED * (1 + state.levels.speed * 0.1);
+
+export const hasEquip = (state: ShopState, id: EquipId) =>
+  state.unlocked.includes(`equip-${id}`);
+
+export const hasMaster = (state: ShopState) =>
+  state.staff.some((worker) => worker.kind === "master");
+
+/** 設備・板前を含めた調理の速さ（小さいほど速い） */
+export const cookSpeedFactor = (state: ShopState) =>
+  cookFactor(state.levels.cook) *
+  (hasEquip(state, "noodle") ? 1 / 1.3 : 1) *
+  (hasMaster(state) ? 1 / 1.4 : 1);
+
+export const stoveCapacity = (state: ShopState) =>
+  STOVE_CAPACITY + (hasEquip(state, "fridge") ? 4 : 0);
+
+export const spawnInterval = (state: ShopState) =>
+  SPAWN_TIME / (hasEquip(state, "sign") ? 1.5 : 1);
 
 export const stoveHasCook = (state: ShopState, stoveId: string) =>
   state.staff.some(
@@ -597,10 +692,14 @@ export const availablePads = (state: ShopState) =>
     const hire = hireById.get(pad.id);
     if (hire?.stoveId) return state.unlocked.includes(hire.stoveId);
 
-    // 席と店員は、その区画が開いてから出す
+    // 席・店員・寸胴・設備は、その区画が開いてから出す
     const seat = seatById.get(pad.id);
     if (seat) return areaOpen(state, seat.area);
     if (hire) return areaOpen(state, hire.area);
+    const stove = stoveById.get(pad.id);
+    if (stove) return areaOpen(state, stove.area);
+    const equip = equipById.get(pad.id.replace("equip-", "") as EquipId);
+    if (equip) return areaOpen(state, equip.area);
 
     // 区画の枠は、ひとつ前の区画が開いてから出す
     const area = areaById.get(pad.id);
@@ -652,7 +751,7 @@ const unlock = (state: ShopState, padId: string) => {
 const spawnCustomers = (state: ShopState, dt: number) => {
   state.spawnTimer -= dt;
   if (state.spawnTimer > 0) return;
-  state.spawnTimer = SPAWN_TIME;
+  state.spawnTimer = spawnInterval(state);
 
   const taken = new Set(
     state.customers
@@ -675,10 +774,11 @@ const spawnCustomers = (state: ShopState, dt: number) => {
 };
 
 const updateStoves = (state: ShopState, dt: number) => {
-  const factor = cookFactor(state.levels.cook);
+  const factor = cookSpeedFactor(state);
+  const capacity = stoveCapacity(state);
   for (const stove of openStoves(state)) {
     const ready = state.ready[stove.id] ?? 0;
-    if (ready >= STOVE_CAPACITY) continue;
+    if (ready >= capacity) continue;
     const boost = stoveHasCook(state, stove.id) ? COOK_BOOST : 1;
     const progress =
       (state.cooking[stove.id] ?? 0) + (dt * boost) / (COOK_TIME * factor);
@@ -702,12 +802,24 @@ const updateCustomers = (state: ShopState, dt: number) => {
       customer.timer -= dt;
       if (customer.timer <= 0) {
         customer.state = "leaving";
-        state.coins.push({
-          id: state.nextId++,
-          pos: { x: seat.serve.x + (Math.random() * 18 - 9), y: seat.serve.y },
-          value: coinValue(state.levels.price),
-          age: 0,
-        });
+        const value = coinValue(state.levels.price);
+        if (hasEquip(state, "ticket")) {
+          // 券売機があるとお金は自動でサイフに入る
+          state.money += value;
+          pop(
+            state,
+            { x: seat.serve.x, y: seat.serve.y - 10 },
+            `+${Math.round(value).toLocaleString("ja-JP")}円`,
+          );
+          state.sfx.push("coin");
+        } else {
+          state.coins.push({
+            id: state.nextId++,
+            pos: { x: seat.serve.x + (Math.random() * 18 - 9), y: seat.serve.y },
+            value,
+            age: 0,
+          });
+        }
         state.served += 1;
       }
     } else if (customer.state === "leaving") {
@@ -766,8 +878,20 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
     const nx = input.x / len;
     const ny = input.y / len;
     const scale = Math.min(1, len);
-    player.pos.x = clamp(player.pos.x + nx * speed * scale * dt, 18, WORLD.w - 18);
-    player.pos.y = clamp(player.pos.y + ny * speed * scale * dt, 54, worldHeight(state) - 26);
+    const box = worldBounds(state);
+    const nextX = clamp(
+      player.pos.x + nx * speed * scale * dt,
+      box.x0 + 18,
+      box.x1 - 18,
+    );
+    const nextY = clamp(
+      player.pos.y + ny * speed * scale * dt,
+      box.y0 + 54,
+      box.y1 - 26,
+    );
+    // 工事中の区画には入れない（軸ごとに判定して壁ぎわを滑れるようにする）
+    if (!isBlocked(state, { x: nextX, y: player.pos.y })) player.pos.x = nextX;
+    if (!isBlocked(state, { x: player.pos.x, y: nextY })) player.pos.y = nextY;
     player.step += dt * speed * 0.06 * scale;
   }
 
@@ -832,6 +956,11 @@ const updateStaff = (state: ShopState, dt: number) => {
   for (const worker of state.staff) {
     if (worker.kind === "cook") {
       moveToward(worker.pos, cookPost(worker), STAFF_SPEED, dt);
+      continue;
+    }
+
+    if (worker.kind === "master") {
+      moveToward(worker.pos, { x: 180, y: 128 }, STAFF_SPEED, dt);
       continue;
     }
 
@@ -969,7 +1098,7 @@ export const applyOffline = (
   if (carriers.length === 0) return null;
 
   const capped = Math.min(elapsed, OFFLINE_CAP_HOURS * 3600);
-  const factor = cookFactor(state.levels.cook);
+  const factor = cookSpeedFactor(state);
 
   const cookRate = openStoves(state).reduce(
     (sum, stove) =>
@@ -1038,6 +1167,7 @@ const staffLabel: Record<StaffKind, string> = {
   robot: "配膳ロボ",
   collector: "レジ係",
   cook: "調理人",
+  master: "板前",
 };
 
 /** その場所にあるものの説明を返す */
@@ -1091,6 +1221,8 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
       const lines: string[] = [];
       if (worker.kind === "cook") {
         lines.push("寸胴の前に立って調理を速くする", `いまの倍率 ${COOK_BOOST}倍`);
+      } else if (worker.kind === "master") {
+        lines.push("厨房を仕切り、すべての寸胴を1.4倍速にする");
       } else if (worker.kind === "collector") {
         lines.push("落ちたお金を拾ってくれる");
       } else {
