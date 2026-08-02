@@ -10,6 +10,7 @@ import {
   WORLD,
   availablePads,
   currentObjective,
+  inspectAt,
   maxCarry,
   openSeats,
   openStoves,
@@ -17,6 +18,7 @@ import {
   padPrice,
   trayPos,
   update,
+  type Inspect,
   type Input,
   type OfflineReport,
   type ShopState,
@@ -144,7 +146,10 @@ export default function Shop({ onSample, paused }: Props) {
     id: number;
     origin: { x: number; y: number };
     at: { x: number; y: number };
+    downAt: number;
+    moved: boolean;
   } | null>(null);
+  const inspect = useRef<{ data: Inspect; until: number } | null>(null);
   const pausedRef = useRef(paused);
   const sampleRef = useRef(onSample);
 
@@ -572,9 +577,48 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.fillText(objective.label, WORLD.w / 2, 247);
       ctx.restore();
 
+      /* --- 長押しの説明 --- */
+      const info = inspect.current?.data;
+      if (info) {
+        ctx.font = FONT;
+        const lines = info.lines;
+        const width =
+          Math.max(
+            ctx.measureText(info.title).width + 8,
+            ...lines.map((line) => ctx.measureText(line).width),
+          ) + 22;
+        const height = 26 + lines.length * 15;
+        const cx = Math.min(WORLD.w - width / 2 - 6, Math.max(width / 2 + 6, info.pos.x));
+        let top = info.pos.y - height - 30;
+        if (top < 6) top = Math.min(WORLD.h - height - 6, info.pos.y + 30);
+
+        ctx.strokeStyle = "rgba(255,209,102,0.6)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(info.pos.x, info.pos.y, 22, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(12,9,7,0.94)";
+        roundRect(ctx, cx - width / 2, top, width, height, 12);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,209,102,0.55)";
+        ctx.lineWidth = 1.5;
+        roundRect(ctx, cx - width / 2, top, width, height, 12);
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffd166";
+        ctx.font = `800 12px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+        ctx.fillText(info.title, cx, top + 15);
+        ctx.font = FONT;
+        ctx.fillStyle = "#e8ddcd";
+        lines.forEach((line, i) => {
+          ctx.fillText(line, cx, top + 33 + i * 15);
+        });
+      }
+
       /* --- ジョイスティック --- */
       const s = stick.current;
-      if (s) {
+      if (s && !info) {
         const dx = s.at.x - s.origin.x;
         const dy = s.at.y - s.origin.y;
         const len = Math.hypot(dx, dy);
@@ -639,7 +683,13 @@ export default function Shop({ onSample, paused }: Props) {
       unlockAudio();
       canvas.setPointerCapture(event.pointerId);
       const point = toWorld(event);
-      stick.current = { id: event.pointerId, origin: point, at: point };
+      stick.current = {
+        id: event.pointerId,
+        origin: point,
+        at: point,
+        downAt: performance.now(),
+        moved: false,
+      };
     };
     const onMove = (event: PointerEvent) => {
       const s = stick.current;
@@ -648,7 +698,8 @@ export default function Shop({ onSample, paused }: Props) {
       const dx = s.at.x - s.origin.x;
       const dy = s.at.y - s.origin.y;
       const len = Math.hypot(dx, dy);
-      if (len < 4) {
+      if (len > 12) s.moved = true;
+      if (len < 4 || inspect.current) {
         input.current = { x: 0, y: 0 };
         return;
       }
@@ -659,6 +710,8 @@ export default function Shop({ onSample, paused }: Props) {
       if (stick.current?.id !== event.pointerId) return;
       stick.current = null;
       input.current = { x: 0, y: 0 };
+      // 指を離しても少しのあいだ読めるように残す
+      if (inspect.current) inspect.current.until = performance.now() + 2200;
     };
 
     canvas.addEventListener("pointerdown", onDown);
@@ -691,7 +744,25 @@ export default function Shop({ onSample, paused }: Props) {
       const ky =
         (held.has("arrowdown") || held.has("s") ? 1 : 0) -
         (held.has("arrowup") || held.has("w") ? 1 : 0);
-      const move: Input = kx || ky ? { x: kx, y: ky } : input.current;
+      // 長押し（動かさずに 380ms）でその場所の説明を出す
+      const s = stick.current;
+      if (s && !s.moved && !inspect.current && now - s.downAt > 380) {
+        const found = inspectAt(state, s.origin);
+        if (found) {
+          inspect.current = { data: found, until: Infinity };
+          input.current = { x: 0, y: 0 };
+        } else {
+          s.moved = true;
+        }
+      }
+      if (inspect.current && now > inspect.current.until) inspect.current = null;
+
+      const move: Input =
+        inspect.current !== null
+          ? { x: 0, y: 0 }
+          : kx || ky
+            ? { x: kx, y: ky }
+            : input.current;
 
       if (!pausedRef.current && !document.hidden) update(state, move, dt);
 

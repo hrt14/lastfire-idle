@@ -874,3 +874,142 @@ export const applyOffline = (
   state.playTime += capped;
   return { seconds: capped, earned };
 };
+
+/* ---------- 長押しで見る説明 ---------- */
+
+export type Inspect = { title: string; lines: string[]; pos: Vec };
+
+const yen = (value: number) =>
+  value < 10000
+    ? `${Math.round(value).toLocaleString("ja-JP")}円`
+    : `${Math.round(value).toLocaleString("ja-JP")}円`;
+
+const padInspect = (state: ShopState, pad: Pad): Inspect => {
+  const price = padPrice(state, pad);
+  const paid = state.padProgress[pad.id] ?? 0;
+  const lines: string[] = [];
+
+  if (pad.kind === "upgrade" && pad.upgradeId) {
+    const upgrade = upgradeById.get(pad.upgradeId);
+    const level = state.levels[pad.upgradeId];
+    if (upgrade) {
+      lines.push(`いま: ${upgrade.detail(level)}`);
+      if (level + 1 <= upgrade.max) {
+        lines.push(`次に: ${upgrade.detail(level + 1)}`);
+      }
+    }
+  } else {
+    lines.push(pad.sub);
+    const hire = hireById.get(pad.id);
+    if (hire?.kind === "waiter") lines.push("雇うと放置中も稼いでくれる");
+    if (hire?.kind === "robot") lines.push("店員より速く、5杯以上まとめて運ぶ");
+    if (hire?.kind === "cook") lines.push(`調理が ${COOK_BOOST}倍速になる`);
+  }
+
+  lines.push(paid > 0 ? `残り ${yen(price - paid)}（${yen(price)}）` : yen(price));
+  lines.push("枠の上に立つと払える");
+  return {
+    title: pad.kind === "upgrade" ? `${pad.label}（強化）` : pad.label,
+    lines,
+    pos: pad.pos,
+  };
+};
+
+const staffLabel: Record<StaffKind, string> = {
+  waiter: "ホール店員",
+  robot: "配膳ロボ",
+  collector: "レジ係",
+  cook: "調理人",
+};
+
+/** その場所にあるものの説明を返す */
+export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
+  let best: { d: number; make: () => Inspect } | null = null;
+  const consider = (pos: Vec, radius: number, make: () => Inspect) => {
+    const d = dist(at, pos);
+    if (d > radius) return;
+    if (!best || d < best.d) best = { d, make };
+  };
+
+  for (const pad of availablePads(state)) {
+    consider(pad.pos, PAD_RADIUS + 10, () => padInspect(state, pad));
+  }
+
+  for (const stove of openStoves(state)) {
+    consider(stove.pos, 34, () => {
+      const hasCook = stoveHasCook(state, stove.id);
+      const seconds =
+        (COOK_TIME * cookFactor(state.levels.cook)) / (hasCook ? COOK_BOOST : 1);
+      return {
+        title: "寸胴",
+        lines: [
+          `${seconds.toFixed(1)}秒に1杯できる`,
+          `${STOVE_CAPACITY}杯まで置いておける`,
+          hasCook ? "調理人が付いている" : "調理人を雇うと2.2倍速",
+          "近づくと自動で持ち上げる",
+        ],
+        pos: stove.pos,
+      };
+    });
+  }
+
+  for (const seat of openSeats(state)) {
+    const tray = trayPos(seat);
+    const make = (): Inspect => ({
+      title: seat.row === 0 ? "カウンター席" : "テーブル席",
+      lines: [
+        "お客さんが座って丼を待つ",
+        "光っている配膳口に持っていくと出せる",
+        `食べ終わると ${yen(coinValue(state.levels.price))} 置いていく`,
+      ],
+      pos: tray,
+    });
+    consider(tray, 30, make);
+    consider(seat.pos, 30, make);
+  }
+
+  for (const worker of state.staff) {
+    consider(worker.pos, 22, () => {
+      const lines: string[] = [];
+      if (worker.kind === "cook") {
+        lines.push("寸胴の前に立って調理を速くする", `いまの倍率 ${COOK_BOOST}倍`);
+      } else if (worker.kind === "collector") {
+        lines.push("落ちたお金を拾ってくれる");
+      } else {
+        lines.push(
+          "丼を受け取って、待っている席へ運ぶ",
+          worker.kind === "robot"
+            ? `一度に ${Math.max(5, maxCarry(state))}杯・足が速い`
+            : "一度に 3杯",
+          `いま ${worker.carry}杯 持っている`,
+        );
+      }
+      return { title: staffLabel[worker.kind], lines, pos: worker.pos };
+    });
+  }
+
+  for (const customer of state.customers) {
+    consider(customer.pos, 22, () => ({
+      title: "お客さん",
+      lines:
+        customer.state === "waiting"
+          ? ["丼を待っている", "配膳口まで運ぼう"]
+          : customer.state === "eating"
+            ? [`食べている（あと ${Math.max(0, customer.timer).toFixed(1)}秒）`]
+            : ["席へ向かっている"],
+      pos: customer.pos,
+    }));
+  }
+
+  consider(state.player.pos, 24, () => ({
+    title: "店主（あなた）",
+    lines: [
+      `運べる数 ${state.player.carry} / ${maxCarry(state)}杯`,
+      `足の速さ +${state.levels.speed * 10}%`,
+      "スワイプで移動・近づくだけで持つ／出す",
+    ],
+    pos: state.player.pos,
+  }));
+
+  return best ? (best as { make: () => Inspect }).make() : null;
+};

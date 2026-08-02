@@ -74,7 +74,7 @@ export default function Page() {
           <small className="carry-note">運べる数</small>
         </div>
         <p className="dock-note">
-          緑の枠に立つと、席・寸胴・店員・強化が買えます
+          緑の枠に立つと買えます・長押しで説明
         </p>
       </footer>
 
@@ -105,6 +105,10 @@ export default function Page() {
             </div>
             <ul className="notes">
               <li>画面のどこでもスワイプすると、その方向へ店主が歩きます（PCは矢印キー）。</li>
+              <li>
+                <strong>何でも長押しすると説明が出ます</strong>。緑の枠・寸胴・席・店員・
+                お客さん・自分。値段や効果、次のレベルで何がどう変わるかも読めます。
+              </li>
               <li>画面の中央に「次にやること」が出て、金色の点線がその場所まで伸びます。</li>
               <li>厨房の寸胴には丼が溜まります。近づくと自動で持ち上がります。</li>
               <li>
