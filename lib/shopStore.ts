@@ -20,8 +20,11 @@ import {
   type Skin,
 } from "@/data/skins";
 import { setSkinShine } from "@/lib/shop";
+import { bindVault, syncVault } from "@/lib/cloud";
 
 type Vault = {
+  /** 最後に保存した時刻。クラウドと突き合わせるときに使う */
+  savedAt?: number;
   active: StageId;
   stages: Partial<Record<StageId, Persisted>>;
   /** ガチャで当てた見た目（ステージ共通） */
@@ -64,6 +67,7 @@ const readVault = (): Vault => {
       }
     }
     return {
+      savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : 0,
       active: parsed.active === "park" ? "park" : "ramen",
       stages: (parsed.stages ?? {}) as Partial<Record<StageId, Persisted>>,
       skins: Array.from(new Set(["default", ...owned])),
@@ -79,11 +83,14 @@ const readVault = (): Vault => {
 };
 
 const writeVault = () => {
+  vault.savedAt = Date.now();
   try {
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(vault));
   } catch {
     // 保存できない環境ではそのまま続行する
   }
+  // ログインしているときは、少し待ってからクラウドにも送る
+  syncVault(vault as unknown as Record<string, unknown>);
 };
 
 const build = (id: StageId): ShopState => {
@@ -93,6 +100,28 @@ const build = (id: StageId): ShopState => {
   next.stageId = id;
   return next;
 };
+
+/** クラウド側と受け渡しするための出入口 */
+const readVaultForCloud = () => {
+  if (!loaded) {
+    vault = readVault();
+    loaded = true;
+  }
+  return vault as unknown as Record<string, unknown>;
+};
+
+/** クラウドのセーブを取り込む（新しい方が向こうにあったとき） */
+const writeVaultFromCloud = (incoming: Record<string, unknown>) => {
+  try {
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(incoming));
+  } catch {
+    // 保存できないときは、そのまま次の保存にまかせる
+  }
+  // 取り込んだ内容で遊べるように、いちど読み直す
+  window.location.reload();
+};
+
+bindVault(readVaultForCloud, writeVaultFromCloud);
 
 /** クライアントでのみ呼ぶこと */
 export const getState = (): ShopState => {

@@ -2,14 +2,14 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  applicationName: "はんじょうダッシュ",
-  title: "はんじょうダッシュ ― お店とパークの放置ゲーム",
+  applicationName: "ワーキングプラネット",
+  title: "ワーキングプラネット ― 働いて大きくする放置ゲーム",
   description:
-    "スワイプで動かして、お店とテーマパークを大きくしていくアーケードアイドル系の放置ゲーム。",
+    "働いて街と星を大きくしていく放置ゲームのシリーズ。いまは はんじょうダッシュ（ラーメン屋・テーマパーク）が遊べます。",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "はんじょうダッシュ",
+    title: "ワーキングプラネット",
   },
   formatDetection: {
     telephone: false,

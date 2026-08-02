@@ -2,10 +2,10 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "はんじょうダッシュ ― お店とパークの放置ゲーム",
-    short_name: "はんじょうダッシュ",
+    name: "ワーキングプラネット ― 働いて大きくする放置ゲーム",
+    short_name: "ワーキングプラネット",
     description:
-      "スワイプで動かして、お店とテーマパークを大きくしていくアーケードアイドル系の放置ゲーム。",
+      "働いて街と星を大きくしていく放置ゲームのシリーズ。",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",

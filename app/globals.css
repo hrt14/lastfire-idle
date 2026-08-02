@@ -826,6 +826,87 @@ button {
   text-shadow: 0 0 8px rgba(255, 209, 102, 0.9);
 }
 
+/* ---------- アカウント ---------- */
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.9rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+
+.account-face {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+  object-fit: cover;
+  flex: none;
+}
+
+.account-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.account-body strong {
+  font-size: 0.84rem;
+}
+
+.account-body small {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.account-in,
+.account-out {
+  flex: none;
+  padding: 0.42rem 0.7rem;
+  border-radius: 12px;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.account-in {
+  border: 1px solid rgba(255, 209, 102, 0.45);
+  background: linear-gradient(180deg, #f0a63a, #d97a1e);
+  color: #2a1806;
+}
+
+.account-out {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+
+/* ---------- シリーズの見出し ---------- */
+
+.series-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.86rem;
+  color: var(--gold);
+}
+
+.series-head.is-soon {
+  margin-top: 1rem;
+  color: var(--muted);
+}
+
 /* ---------- ポータルへの導線 ---------- */
 
 .portal-link {

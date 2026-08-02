@@ -27,6 +27,14 @@ import {
 import { stageDefs, stageList, type StageId } from "@/data/stages";
 import { formatDuration, formatNumber, formatYen } from "@/lib/format";
 import { setMuted, unlockAudio } from "@/lib/sfx";
+import {
+  cloudReady,
+  cloudState,
+  signIn,
+  signOutAccount,
+  startCloud,
+  watchCloud,
+} from "@/lib/cloud";
 
 const noop = () => () => {};
 
@@ -38,8 +46,12 @@ const useMounted = () =>
     () => false,
   );
 
+const cloudSnapshot = () => cloudState();
+const cloudServer = () => ({ account: null, status: "off" as const, at: 0 });
+
 export default function Page() {
   const mounted = useMounted();
+  const cloud = useSyncExternalStore(watchCloud, cloudSnapshot, cloudServer);
   const [view, setView] = useState<"top" | "play">("top");
   const [stageId, setStageId] = useState<StageId>("ramen");
   const [sample, setSample] = useState<Sample | null>(null);
@@ -110,6 +122,15 @@ export default function Page() {
         : stageDefs[stageId].itemIcon;
 
   if (view === "top") {
+    if (mounted) startCloud();
+    const syncNote =
+      cloud.status === "syncing"
+        ? "同期中…"
+        : cloud.status === "ok"
+          ? "同期ずみ"
+          : cloud.status === "error"
+            ? "同期できませんでした"
+            : "";
     return (
       <main className="top">
         <header className="top-head">
@@ -117,12 +138,66 @@ export default function Page() {
             ← ひとびと
           </a>
           <h1>
-            <span className="top-mark">🏪</span>
-            はんじょうダッシュ
+            <span className="top-mark">🪐</span>
+            ワーキングプラネット
           </h1>
-          <p>スワイプで動かして、お店とパークを大きくしていく放置ゲーム</p>
+          <p>働いて、街と星を大きくしていく放置ゲームのシリーズ</p>
         </header>
 
+        {mounted && cloudReady() ? (
+          <div className="account">
+            {cloud.account ? (
+              <>
+                {cloud.account.photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    className="account-face"
+                    src={cloud.account.photo}
+                    alt=""
+                    width={28}
+                    height={28}
+                  />
+                ) : (
+                  <span className="account-face" aria-hidden>
+                    👤
+                  </span>
+                )}
+                <div className="account-body">
+                  <strong>{cloud.account.name}</strong>
+                  <small>{syncNote || "記録はアカウントに保存されます"}</small>
+                </div>
+                <button
+                  type="button"
+                  className="account-out"
+                  onClick={() => void signOutAccount()}
+                >
+                  ログアウト
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="account-face" aria-hidden>
+                  ☁️
+                </span>
+                <div className="account-body">
+                  <strong>記録を端末の外に残す</strong>
+                  <small>ログインすると、別の端末でも続きから遊べます</small>
+                </div>
+                <button
+                  type="button"
+                  className="account-in"
+                  onClick={() => void signIn()}
+                >
+                  Google でログイン
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
+
+        <h2 className="series-head">
+          <span aria-hidden>🏪</span> はんじょうダッシュ
+        </h2>
         <ul className="stages">
           {stageList.map((def) => {
             const open = mounted ? stageUnlocked(def.id) : def.requiresAreas === 0;
@@ -165,8 +240,27 @@ export default function Page() {
           })}
         </ul>
 
+        <h2 className="series-head is-soon">
+          <span aria-hidden>🦕</span> ワーキングプラネット
+        </h2>
+        <ul className="stages">
+          <li className="stage-card is-locked">
+            <div className="stage-art" aria-hidden>
+              🔥
+            </div>
+            <div className="stage-body">
+              <strong>火のはじまり</strong>
+              <p>原始からはじまる、時代がすすむシリーズ</p>
+              <span className="stage-progress">準備中</span>
+            </div>
+            <button type="button" className="stage-go" disabled>
+              近日
+            </button>
+          </li>
+        </ul>
+
         <p className="top-note">
-          記録はこの端末に保存されます。ステージごとに別々に進みます。
+          記録はこの端末に保存されます。ログインすると、アカウントにも保存されます。
         </p>
         <a className="portal-foot" href="https://hitobito.jp">
           ひとびとの他のアプリを見る →

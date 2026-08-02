@@ -1,11 +1,53 @@
-# ラーメン一直線 ― 放置ラーメン屋経営
+# ワーキングプラネット ― 放置ゲームのシリーズ
+
+働いて街と星を大きくしていく、スマホ向けWebゲームのシリーズです。
+公開先は `working-planet.hitobito.jp`。いまは **はんじょうダッシュ**（ラーメン一直線／
+ドリームパーク）が遊べて、原始時代からはじまる **ワーキングプラネット** 本編は準備中です。
+
+## 公開の設定
+
+### ドメイン
+1. Vercel のプロジェクト → Settings → Domains に `working-planet.hitobito.jp` を追加
+2. `hitobito.jp` の DNS に **CNAME `working-planet` → `cname.vercel-dns.com`** を足す
+3. 証明書が発行されるまで数分待つ（Vercel の画面が Valid になれば完了）
+
+### Google ログインとクラウドセーブ（Firebase）
+未設定でも遊べます。その場合は記録がブラウザのなかだけに残ります。
+
+1. [Firebase コンソール](https://console.firebase.google.com/) でプロジェクトを作る
+2. **Authentication → Sign-in method → Google** を有効にする
+3. **Authentication → Settings → 承認済みドメイン** に
+   `working-planet.hitobito.jp` と Vercel のプレビュー用ドメインを足す
+4. **Firestore Database** を作る（本番モード）。ルールはこれだけでよい:
+
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /saves/{uid} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+     }
+   }
+   ```
+
+5. プロジェクトの設定 → マイアプリ（ウェブ）の値を、Vercel の環境変数に入れる
+   （`.env.example` と同じ名前。ローカルでは `.env.local` に置く）
+
+セーブは `saves/{uid}` に丸ごと1件で入ります。ログインすると、端末とクラウドの
+**新しい方**を正として合わせ、そのあとは保存のたびに数秒おきに送ります。
+
+---
+
+## はんじょうダッシュ
 
 『ホワイトアウトサバイバル』の広告で見かけるタイプ ——
 **アーケードアイドル（arcade idle / ハイブリッドカジュアル）** のスマホ向けWebゲームです。
 『ピザレディ』『ザ・パーフェクトホテル』『オフィスマスター』『スージーの美食帝国』と
 同じ型で、店主を直接動かしてラーメンを運び、店を広げ、店員を雇って自動化していきます。
 
-ブラウザだけで動き、サーバーもアカウントも不要です。記録は端末の `localStorage` に保存されます。
+ブラウザだけで動きます。記録は端末の `localStorage` に保存され、
+Google でログインするとアカウントにも保存されます（別の端末でも続きから遊べます）。
 
 ## 中核のループ
 
