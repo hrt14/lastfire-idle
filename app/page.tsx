@@ -24,7 +24,7 @@ import {
   shineLabel,
   skins,
 } from "@/data/skins";
-import { stageDefs, stageList, type StageId } from "@/data/stages";
+import { planetStages, stageDefs, stageList, type StageId } from "@/data/stages";
 import { formatDuration, formatNumber, formatYen } from "@/lib/format";
 import { setMuted, unlockAudio } from "@/lib/sfx";
 import {
@@ -266,24 +266,42 @@ export default function Page() {
           </li>
         </ul>
 
-        <h2 className="series-head is-soon">
+        <h2 className="series-head">
           <span aria-hidden>🦕</span> ワーキングプラネット
         </h2>
         <ul className="stages">
-          <li className="stage-card is-locked">
-            <div className="stage-art" aria-hidden>
-              🔥
-            </div>
-            <div className="stage-body">
-              <strong>火のはじまり</strong>
-              <p>原始からはじまる、時代がすすむシリーズ</p>
-              <span className="stage-progress">準備中</span>
-            </div>
-            <button type="button" className="stage-go" disabled>
-              近日
-            </button>
-          </li>
+          {planetStages.map((def) => {
+            const progress = mounted
+              ? stageProgress(def.id)
+              : { started: false, money: 0, served: 0, areas: 1, totalAreas: def.areas.length };
+            return (
+              <li key={def.id} className={`stage-card stage-${def.id}`}>
+                <div className="stage-art" aria-hidden>
+                  {def.icon}
+                </div>
+                <div className="stage-body">
+                  <strong>{def.name}</strong>
+                  <p>{def.subtitle}</p>
+                  <span className="stage-progress">
+                    {progress.started
+                      ? `区画 ${progress.areas}/${progress.totalAreas}・${progress.served.toLocaleString("ja-JP")}人`
+                      : "はじめから"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="stage-go"
+                  onClick={() => start(def.id)}
+                >
+                  {progress.started ? "つづき" : "はじめる"}
+                </button>
+              </li>
+            );
+          })}
         </ul>
+        <p className="top-note" style={{ marginTop: "-4px" }}>
+          原始からはじまる、時代がすすむシリーズ。しなものは何段もの工程を通って完成する。
+        </p>
 
         <p className="top-note">
           記録はこの端末に保存されます。ログインすると、アカウントにも保存されます。

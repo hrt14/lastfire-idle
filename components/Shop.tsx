@@ -25,7 +25,11 @@ import {
   shelfStock,
   SHELF_MAX,
   stoveItem,
+  isStation,
+  holdCap,
+  stoveById,
   type ItemKind,
+  type StoveSpec,
   OUTSIDE_DEPTH,
   areas,
   entrancePos,
@@ -36,7 +40,6 @@ import {
   padPosOf,
   stage,
   openAreas,
-  stoveCapacity,
   worldBounds,
   padLevel,
   padPrice,
@@ -888,6 +891,47 @@ const parcel = (ctx: CanvasRenderingContext2D, x: number, y: number, s = 1) => {
 };
 
 /** 持ちものの絵（種類で変わる） */
+/** ワーキングプラネットの工程の品（種類ごとに色と形を変える） */
+const chainItem = (
+  ctx: CanvasRenderingContext2D,
+  item: string,
+  x: number,
+  y: number,
+  s: number,
+  time: number,
+) => {
+  const spec: Record<string, { body: string; cap: string; steam?: boolean }> = {
+    nut: { body: "#8a5a2b", cap: "#5f3d1c" },
+    roast: { body: "#5a3417", cap: "#3a220f", steam: true },
+    fish: { body: "#8fa9b8", cap: "#5f7686" },
+    fillet: { body: "#e6b7a6", cap: "#c98d78" },
+    cooked: { body: "#c2703f", cap: "#8a4a26", steam: true },
+  };
+  const it = spec[item] ?? { body: "#b98a4a", cap: "#7a5a2b" };
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  shadow(ctx, 0, 4, 6);
+  ctx.fillStyle = it.body;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 6, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = it.cap;
+  ctx.beginPath();
+  ctx.ellipse(0, -4, 6, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (it.steam) {
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    for (let i = 0; i < 2; i += 1) {
+      const t = (time * 0.6 + i * 0.5) % 1;
+      ctx.beginPath();
+      ctx.arc(Math.sin(t * 6 + i) * 3, -8 - t * 12, 2.4 - t * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+};
+
 const held = (
   ctx: CanvasRenderingContext2D,
   item: ItemKind | null,
@@ -895,9 +939,68 @@ const held = (
   y: number,
   s = 1,
 ) => {
+  if (item === null) return;
   if (item === "food") plate(ctx, x, y, s);
   else if (item === "goods") parcel(ctx, x, y, s);
-  else bowl(ctx, x, y, s);
+  else if (item === "main") bowl(ctx, x, y, s);
+  else chainItem(ctx, item, x, y, s, performance.now() / 1000);
+};
+
+/**
+ * ワーキングプラネットの作業場。
+ * 素材の採取場（takes なし）と、加工場（takes あり）で見た目を変える。
+ */
+const drawFireStation = (
+  ctx: CanvasRenderingContext2D,
+  stove: StoveSpec,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 12, 26, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const art = stove.art ?? "";
+  if (art === "tree" || stove.takes === undefined) {
+    // 木の実の木（採取場）
+    ctx.fillStyle = "#6b4a2b";
+    ctx.fillRect(x - 4, y - 18, 8, 24);
+    ctx.fillStyle = "#4f7a44";
+    ctx.beginPath();
+    ctx.arc(x, y - 26, 18, 0, Math.PI * 2);
+    ctx.arc(x - 14, y - 16, 12, 0, Math.PI * 2);
+    ctx.arc(x + 14, y - 16, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#8a5a2b";
+    for (const [dx, dy] of [[-8, -28], [6, -22], [-2, -14], [12, -30]]) {
+      ctx.beginPath();
+      ctx.arc(x + dx, y + dy, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // たき火・焼き石（加工場）
+    ctx.fillStyle = "#4a4038";
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i / 6) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.ellipse(x + Math.cos(a) * 18, y + 6 + Math.sin(a) * 6, 5, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#5a3a20";
+    ctx.fillRect(x - 12, y - 2, 24, 5);
+    ctx.fillRect(x - 3, y - 10, 6, 16);
+    for (const fx of [x - 6, x, x + 6]) {
+      const flame = 0.6 + Math.abs(Math.sin(time * 6 + fx)) * 0.4;
+      ctx.fillStyle = `rgba(255,${120 + flame * 80},50,${flame})`;
+      ctx.beginPath();
+      ctx.moveTo(fx, y - 6);
+      ctx.quadraticCurveTo(fx + 6, y - 18, fx, y - 26);
+      ctx.quadraticCurveTo(fx - 6, y - 18, fx, y - 6);
+      ctx.fill();
+    }
+  }
 };
 
 /** レストランのテーブル。皿が残っていると赤い合図が出る */
@@ -3042,9 +3145,10 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.textBaseline = "middle";
 
       const isPark = stage().id === "park";
+      const isFire = stage().id === "fire";
 
       /* --- 床 --- */
-      ctx.fillStyle = isPark ? "#101826" : "#191512";
+      ctx.fillStyle = isFire ? "#20160f" : isPark ? "#101826" : "#191512";
       ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
       for (const area of openAreas(state)) {
         const { rect, palette } = area;
@@ -3154,6 +3258,20 @@ export default function Shop({ onSample, paused }: Props) {
               ctx.fill();
             }
           }
+        } else if (isFire) {
+          ctx.fillStyle = area.price === 0 ? "#7a3b1f" : "#4a3524";
+          roundRect(ctx, x0 + 10, 4, x1 - x0 - 20, 30, 6);
+          ctx.fill();
+          ctx.fillStyle = "#f6d9a8";
+          ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+          ctx.fillText(
+            area.price === 0
+              ? "火 の は じ ま り"
+              : area.label.replace("をひらく", "").replace("へ下りる", ""),
+            mid,
+            20,
+          );
+          ctx.font = FONT;
         } else {
           ctx.fillStyle = area.price === 0 ? "#c2402f" : "#8a5a3c";
           roundRect(ctx, x0 + 10, 4, x1 - x0 - 20, 30, 6);
@@ -3170,10 +3288,36 @@ export default function Shop({ onSample, paused }: Props) {
       }
 
       /* --- 寸胴 --- */
+      // 直結の設備（樋・ベルト）: つないだ2点のあいだに線を描く
+      for (const item of stage().equipment) {
+        if (!item.link || !state.unlocked.includes(`equip-${item.id}`)) continue;
+        const a = stoveById.get(item.link.from);
+        const b = stoveById.get(item.link.to);
+        if (!a || !b) continue;
+        ctx.strokeStyle = "rgba(180,140,90,0.55)";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(a.pos.x, a.pos.y + 8);
+        ctx.lineTo(b.pos.x, b.pos.y - 8);
+        ctx.stroke();
+        // 流れている品
+        const t = (time * 0.7) % 1;
+        chainItem(
+          ctx,
+          stoveItem(a),
+          a.pos.x + (b.pos.x - a.pos.x) * t,
+          a.pos.y + 8 + (b.pos.y - 8 - (a.pos.y + 8)) * t,
+          0.8,
+          time,
+        );
+      }
+
       for (const stove of openStoves(state)) {
         const { x, y } = stove.pos;
         const made = stoveItem(stove);
-        if (made === "food") {
+        if (isFire) {
+          drawFireStation(ctx, stove, x, y, time);
+        } else if (made === "food") {
           // 厨房（レストラン）
           ctx.fillStyle = "#4d4038";
           roundRect(ctx, x - 30, y - 34, 60, 48, 6);
@@ -3262,14 +3406,26 @@ export default function Shop({ onSample, paused }: Props) {
 
         const ready = state.ready[stove.id] ?? 0;
         for (let i = 0; i < ready; i += 1) held(ctx, made, x, y + 22 - i * 5.5);
-        if (ready >= stoveCapacity(state)) {
+
+        // 工程の作業場: 受け口にたまっている材料と、詰まりの合図
+        if (isStation(stove)) {
+          const held0 = state.hold[stove.id] ?? 0;
+          for (let i = 0; i < held0; i += 1) {
+            held(ctx, stove.takes ?? null, x - 30, y + 16 - i * 5, 0.8);
+          }
+          if (held0 <= 0) {
+            ctx.fillStyle = "rgba(255,180,120,0.85)";
+            ctx.fillText("材料まち", x, y - 42);
+          }
+        }
+        if (ready >= holdCap(state, stove)) {
           ctx.fillStyle = "#ffd166";
           ctx.fillText("満杯", x, y + 36);
         }
       }
 
-      /* --- カウンター --- */
-      if (!isPark) {
+      /* --- カウンター（ラーメンだけ） --- */
+      if (!isPark && !isFire) {
         ctx.fillStyle = "#6b4a2f";
         roundRect(ctx, 16, 306, 328, 34, 10);
         ctx.fill();
@@ -3373,6 +3529,24 @@ export default function Shop({ onSample, paused }: Props) {
           const cost = seatCost(seat);
           ctx.fillText(cost > 1 ? `${seat.label}（${cost}枚）` : seat.label, x, y + 25);
           ctx.font = FONT;
+        } else if (isFire) {
+          // 丸太のベンチ
+          const bx = seat.pos.x;
+          const by = seat.pos.y + 4;
+          ctx.fillStyle = "rgba(0,0,0,0.25)";
+          ctx.beginPath();
+          ctx.ellipse(bx, by + 8, 26, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#5a3a20";
+          roundRect(ctx, bx - 26, by - 2, 52, 11, 5);
+          ctx.fill();
+          ctx.fillStyle = "#7a5230";
+          roundRect(ctx, bx - 26, by - 2, 52, 4, 3);
+          ctx.fill();
+          for (const lx of [bx - 18, bx + 18]) {
+            ctx.fillStyle = "#43301c";
+            ctx.fillRect(lx - 2, by + 8, 4, 6);
+          }
         } else if (seat.area === 0) {
           ctx.fillStyle = "#b0463a";
           ctx.beginPath();

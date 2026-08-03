@@ -24,8 +24,12 @@ export const SAVE_VERSION = 2;
 
 /* ---------- 設備の配置 ---------- */
 
-/** 運ぶものの種類。作る場所と受け取る場所が合っていないと渡せない */
-export type ItemKind = "main" | "food" | "goods";
+/**
+ * 運ぶものの種類。作る場所と受け取る場所が合っていないと渡せない。
+ * ラーメン・パークは "main"/"food"/"goods" の3種。
+ * ワーキングプラネットは工程ごとに別の種類（"nut"→"roast" など）を作る。
+ */
+export type ItemKind = string;
 
 export type StoveSpec = {
   id: string;
@@ -34,6 +38,15 @@ export type StoveSpec = {
   area: number;
   /** 何を作るか（省略時は main = 丼／チケット） */
   item?: ItemKind;
+  /**
+   * 作るのに、先に受け取っておくもの（工程の途中の作業場）。
+   * 省略すると素材（何もいらず、勝手にできる）。
+   */
+  takes?: ItemKind;
+  /** 受け口に積んでおける数。省略で STOVE_CAPACITY */
+  hold?: number;
+  /** 1つ作るのにかかる時間の倍率。省略で 1 */
+  work?: number;
   /** 見た目（kitchen = 厨房、stock = 倉庫） */
   art?: string;
   label?: string;
@@ -164,6 +177,11 @@ export type EquipSpec = {
   draw?: number;
   /** この区画が開くまで出てこない */
   unlockAfter?: string;
+  /**
+   * これを買うと、作業場どうしを直につなぐ（樋・ベルト）。
+   * from の出し口から to の受け口へ、運ばなくても流れる。
+   */
+  link?: { from: string; to: string };
 };
 
 export type UpgradeId = "carry" | "speed" | "cook" | "price" | "gate";
@@ -538,6 +556,8 @@ export type ShopState = Persisted & {
   pops: Pop[];
   ready: Record<string, number>;
   cooking: Record<string, number>;
+  /** 工程の作業場の受け口に、これから加工するものが積まれている数 */
+  hold: Record<string, number>;
   /** 棚に並んでいる商品の数 */
   shelf: Record<string, number>;
   /** 自動供給機の待ち時間 */
@@ -611,11 +631,30 @@ const makeStaff = (hire: HireSpec, id: number, at: Vec): Staff => ({
   target: null,
 });
 
+/** 最初から開いているもの。ステージが決める（省略で屋台の初期セット） */
+export const startUnlocked = (): string[] =>
+  currentStage.start ?? ["stove-1", "seat-0-1", "seat-0-2"];
+
+const startReady = (): Record<string, number> => {
+  const out: Record<string, number> = {};
+  for (const id of startUnlocked()) if (stoveById.has(id)) out[id] = 0;
+  return out;
+};
+
+const startHold = (): Record<string, number> => {
+  const out: Record<string, number> = {};
+  for (const id of startUnlocked()) {
+    const stove = stoveById.get(id);
+    if (stove && isStation(stove)) out[id] = 0;
+  }
+  return out;
+};
+
 export const createState = (): ShopState => ({
   version: SAVE_VERSION,
   stageId: currentStage.id,
   money: 0,
-  unlocked: ["stove-1", "seat-0-1", "seat-0-2"],
+  unlocked: [...startUnlocked()],
   padProgress: {},
   levels: { carry: 0, speed: 0, cook: 0, price: 0, gate: 0 },
   served: 0,
@@ -626,8 +665,9 @@ export const createState = (): ShopState => ({
   customers: [],
   coins: [],
   pops: [],
-  ready: { "stove-1": 0 },
-  cooking: { "stove-1": 0 },
+  ready: startReady(),
+  cooking: startReady(),
+  hold: startHold(),
   shelf: {},
   dirty: {},
   autoTimer: {},
@@ -713,6 +753,7 @@ export const fromPersisted = (input: unknown): ShopState => {
     if (state.unlocked.includes(stove.id)) {
       state.ready[stove.id] = 0;
       state.cooking[stove.id] = 0;
+      if (isStation(stove)) state.hold[stove.id] = 0;
     }
   }
   const ticket = state.unlocked.includes("equip-ticket");
@@ -748,6 +789,41 @@ export const seatCost = (seat: SeatSpec) => Math.max(1, seat.cost ?? 1);
 
 /** その作る場所が作るもの */
 export const stoveItem = (stove: StoveSpec): ItemKind => stove.item ?? "main";
+
+/** 工程の作業場か（受け取ってから作る＝手前の工程が要る） */
+export const isStation = (stove: StoveSpec) => stove.takes !== undefined;
+
+/** 受け口・出し口に積める数 */
+export const holdCap = (state: ShopState, stove: StoveSpec) =>
+  stove.hold ?? stoveCapacity(state);
+
+/** 受け口にたまっている数 */
+export const heldAt = (state: ShopState, stoveId: string) =>
+  state.hold[stoveId] ?? 0;
+
+/** このステージが工程（数珠つなぎ）を使うか */
+export const isChainStage = () => stoves.some((stove) => isStation(stove));
+
+/** この種類を受け取る、まだ空きのある作業場（近い順に呼び出し側でならべる） */
+const stationsWanting = (state: ShopState, item: ItemKind) =>
+  openStoves(state).filter(
+    (stove) =>
+      isStation(stove) &&
+      stove.takes === item &&
+      heldAt(state, stove.id) < holdCap(state, stove),
+  );
+
+/** この種類を、待っている客か作業場のどちらかが求めているか */
+const itemHasDemand = (state: ShopState, item: ItemKind) =>
+  stationsWanting(state, item).length > 0 ||
+  state.customers.some(
+    (customer) =>
+      customer.state === "waiting" &&
+      (() => {
+        const seat = seatById.get(customer.seatId);
+        return !!seat && seatMode(seat) !== "shelf" && seatNeeds(seat) === item;
+      })(),
+  );
 
 /** 棚に並べておける数 */
 export const SHELF_MAX = 4;
@@ -917,9 +993,11 @@ const unlock = (state: ShopState, padId: string) => {
   state.unlocked.push(padId);
   delete state.padProgress[padId];
 
-  if (stoveById.has(padId)) {
+  const stove = stoveById.get(padId);
+  if (stove) {
     state.ready[padId] = 0;
     state.cooking[padId] = 0;
+    if (isStation(stove)) state.hold[padId] = 0;
   }
   const hire = hireById.get(padId);
   if (hire) state.staff.push(makeStaff(hire, state.nextId++, hireHome(state, hire)));
@@ -1014,19 +1092,49 @@ const spawnCustomers = (state: ShopState, dt: number) => {
 
 const updateStoves = (state: ShopState, dt: number) => {
   const factor = cookSpeedFactor(state);
-  const capacity = stoveCapacity(state);
+  // 直結の設備（樋・ベルト）は、まず前の作業場から次へ流しておく
+  flowLinks(state, dt);
   for (const stove of openStoves(state)) {
     const ready = state.ready[stove.id] ?? 0;
-    if (ready >= capacity) continue;
+    const cap = holdCap(state, stove);
+    if (ready >= cap) continue;
+    // 工程の作業場は、受け口に材料がないと作れない
+    if (isStation(stove) && heldAt(state, stove.id) <= 0) {
+      state.cooking[stove.id] = 0;
+      continue;
+    }
     const boost = stoveHasCook(state, stove.id) ? COOK_BOOST : 1;
+    const work = stove.work ?? 1;
     const progress =
-      (state.cooking[stove.id] ?? 0) + (dt * boost) / (COOK_TIME * factor);
+      (state.cooking[stove.id] ?? 0) + (dt * boost) / (COOK_TIME * work * factor);
     if (progress >= 1) {
       state.ready[stove.id] = ready + 1;
       state.cooking[stove.id] = progress - 1;
+      // 1つ作ったら、受け口の材料を1つ使う
+      if (isStation(stove)) state.hold[stove.id] = heldAt(state, stove.id) - 1;
     } else {
       state.cooking[stove.id] = progress;
     }
+  }
+};
+
+/** 直結の設備で、出し口から次の受け口へ1つずつ流す */
+const flowLinks = (state: ShopState, dt: number) => {
+  for (const item of equipment) {
+    if (!item.link || !hasEquip(state, item.id)) continue;
+    const { from, to } = item.link;
+    if (!state.unlocked.includes(from) || !state.unlocked.includes(to)) continue;
+    const key = `link-${item.id}`;
+    state.autoTimer[key] = (state.autoTimer[key] ?? 0) + dt;
+    // だいたい 0.5 秒に1つ流す（速いはこび手より速い）
+    if (state.autoTimer[key] < 0.5) continue;
+    const toStove = stoveById.get(to);
+    if (!toStove) continue;
+    if ((state.ready[from] ?? 0) <= 0) continue;
+    if (heldAt(state, to) >= holdCap(state, toStove)) continue;
+    state.autoTimer[key] = 0;
+    state.ready[from] -= 1;
+    state.hold[to] = heldAt(state, to) + 1;
   }
 };
 
@@ -1243,6 +1351,32 @@ const pickUp = (
   return null;
 };
 
+/**
+ * 持っているものを、それを受け取る作業場の受け口に置く。
+ * 置けた数を返す（0 なら置けなかった）
+ */
+const dropAtStation = (
+  state: ShopState,
+  pos: Vec,
+  holding: ItemKind | null,
+  carry: number,
+) => {
+  if (!holding || carry <= 0) return 0;
+  for (const stove of openStoves(state)) {
+    if (!isStation(stove) || stove.takes !== holding) continue;
+    const cap = holdCap(state, stove);
+    if (heldAt(state, stove.id) >= cap) continue;
+    if (dist(pos, stove.pos) > SERVE_RADIUS) continue;
+    const room = cap - heldAt(state, stove.id);
+    const put = Math.min(room, carry);
+    state.hold[stove.id] = heldAt(state, stove.id) + put;
+    pop(state, { x: stove.pos.x, y: stove.pos.y - 12 }, "セット！");
+    state.sfx.push("serve");
+    return put;
+  }
+  return 0;
+};
+
 /** 皿を片づける。片づけたテーブルには次の客が来る */
 const clearTable = (state: ShopState, pos: Vec) => {
   for (const seat of openSeats(state)) {
@@ -1348,12 +1482,15 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
     player.carry += 1;
   }
   if (player.carry > 0) {
+    // 工程の作業場の受け口に置ける物なら、まずそこへ。
+    // 次に棚（お土産）、最後に待っている客へ渡す
     const used =
-      player.item === "goods"
+      dropAtStation(state, player.pos, player.item, player.carry) ||
+      (player.item === "goods"
         ? restock(state, player.pos)
           ? 1
           : 0
-        : serve(state, player.pos, player.item, player.carry);
+        : serve(state, player.pos, player.item, player.carry));
     if (used > 0) {
       player.carry -= used;
       if (player.carry === 0) player.item = null;
@@ -1526,6 +1663,100 @@ const spread = (state: ShopState, dt: number) => {
       b.pos.y += ny * push;
     }
   }
+};
+
+/**
+ * 工程のはこび手（人・ロボ）。
+ * 出し口から取って、それを求めている次の作業場か客へ運ぶ。
+ * 区間を決め打ちせず、いま運べる仕事のうち近いものを選ぶ。
+ */
+const updateHauler = (state: ShopState, worker: Staff, dt: number) => {
+  const speed = carrierSpeed(state, worker);
+  const limit = carrierLimit(state, worker);
+
+  // 何か持っている: それを受け取る「次の作業場」か「待っている客」へ届ける
+  if (worker.carry > 0 && worker.item) {
+    const item = worker.item;
+    type Target = { id: string; at: Vec; deliver: () => number };
+    const targets: Target[] = [];
+    for (const stove of stationsWanting(state, item)) {
+      if (claimedByOther(state, worker, stove.id)) continue;
+      targets.push({
+        id: stove.id,
+        at: stove.pos,
+        deliver: () => {
+          const room = holdCap(state, stove) - heldAt(state, stove.id);
+          const put = Math.min(room, worker.carry);
+          if (put <= 0) return 0;
+          state.hold[stove.id] = heldAt(state, stove.id) + put;
+          return put;
+        },
+      });
+    }
+    for (const customer of state.customers) {
+      if (customer.state !== "waiting") continue;
+      const seat = seatById.get(customer.seatId);
+      if (!seat || seatMode(seat) === "shelf" || hasAuto(state, seat)) continue;
+      if (seatNeeds(seat) !== item || seatCost(seat) > worker.carry) continue;
+      if (claimedByOther(state, worker, seat.id)) continue;
+      targets.push({
+        id: seat.id,
+        at: seat.serve,
+        deliver: () => serve(state, worker.pos, item, worker.carry),
+      });
+    }
+    if (targets.length === 0) {
+      // 行き先がない: 待つ
+      go(state, worker, idleSpot(state, worker), speed * 0.4, dt);
+      return;
+    }
+    // いま担当している行き先を続けて、目移りしない
+    const keep = targets.find((t) => t.id === worker.target);
+    const pick =
+      keep ??
+      targets.sort(
+        (a, b) => dist(worker.pos, a.at) - dist(worker.pos, b.at),
+      )[0];
+    worker.target = pick.id;
+    go(state, worker, approach(state, worker, pick.at), speed, dt);
+    if (dist(worker.pos, pick.at) <= SERVE_RADIUS) {
+      const used = pick.deliver();
+      if (used > 0) {
+        worker.carry -= used;
+        worker.target = null;
+        if (worker.carry === 0) worker.item = null;
+      }
+    }
+    return;
+  }
+
+  // 手ぶら: 下流で使い道のある出し口から取ってくる
+  const sources = openStoves(state)
+    .filter(
+      (stove) =>
+        (state.ready[stove.id] ?? 0) > 0 &&
+        itemHasDemand(state, stoveItem(stove)) &&
+        !claimedByOther(state, worker, stove.id),
+    )
+    .sort((a, b) => dist(worker.pos, a.pos) - dist(worker.pos, b.pos));
+  const source = sources[0];
+  if (!source) {
+    go(state, worker, idleSpot(state, worker), speed * 0.4, dt);
+    return;
+  }
+  worker.target = source.id;
+  go(state, worker, approach(state, worker, source.pos), speed, dt);
+  const item = stoveItem(source);
+  while (
+    worker.carry < limit &&
+    (state.ready[source.id] ?? 0) > 0 &&
+    dist(worker.pos, source.pos) <= PICK_RADIUS
+  ) {
+    state.ready[source.id] -= 1;
+    worker.item = item;
+    worker.carry += 1;
+  }
+  if (worker.carry > 0) worker.target = null;
 };
 
 /** 開いている作る場所から、その種類のものを取り出す */
@@ -1785,6 +2016,15 @@ const updateStaff = (state: ShopState, dt: number) => {
         worker.item = item;
         worker.carry += 1;
       }
+      continue;
+    }
+
+    // 工程のあるステージでは、はこび手は「作業場から作業場へ」も運ぶ
+    if (
+      isChainStage() &&
+      (worker.kind === "waiter" || worker.kind === "robot")
+    ) {
+      updateHauler(state, worker, dt);
       continue;
     }
 

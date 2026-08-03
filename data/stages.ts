@@ -15,7 +15,7 @@ import type {
   Upgrade,
 } from "@/lib/shop";
 
-export type StageId = "ramen" | "park";
+export type StageId = "ramen" | "park" | "fire";
 
 export type StageLabels = {
   /** 運ぶもの */
@@ -67,6 +67,10 @@ export type StageDef = {
   autoServer?: boolean;
   /** このステージを開けるのに必要な、前ステージの区画数 */
   requiresAreas: number;
+  /** 最初から開いているもの（省略で stove-1 / seat-0-1 / seat-0-2） */
+  start?: string[];
+  /** このステージが工程（数珠つなぎ）を使うか。トップの表示に使う */
+  chain?: boolean;
 };
 
 /**
@@ -565,6 +569,123 @@ const parkUpgrades: Upgrade[] = [
   { id: "gate", name: "入場券アップ", detail: (n) => `入場料 ${Math.round(40 * Math.pow(1.45, n))}円`, pos: { x: 100, y: 0 }, basePrice: 400, growth: 1.9, max: 20, outside: true, unlockAfter: "area-1" },
 ];
 
+/* ==================== ワーキングプラネット: 火のはじまり ==================== */
+
+/**
+ * ベンチ（仲間）の席。運んできた完成品を渡すと、貝がらを置いていく。
+ * つくりは乗り物の席と同じ（運んで渡す・そのまま帰る）。
+ */
+const benchRow = (
+  area: number,
+  xs: number[],
+  baseY: number,
+  prices: number[],
+  needs: string,
+  value: number,
+  label: string,
+): SeatSpec[] =>
+  xs.map((x, i) => ({
+    id: `seat-${area}-${i + 1}`,
+    pos: { x, y: baseY + 64 },
+    serve: { x, y: baseY },
+    tray: { x, y: baseY + 24 },
+    price: prices[i],
+    area,
+    label,
+    art: "bench",
+    needs,
+    value,
+    unlockAfter: i > 0 ? `seat-${area}-${i}` : undefined,
+  }));
+
+const fireAreas: AreaSpec[] = [
+  {
+    id: "area-0",
+    label: "たき火のまわり",
+    price: 0,
+    rect: { x0: 0, y0: 0, x1: 360, y1: 480 },
+    padPos: { x: 0, y: 0 },
+    palette: { floor: "#2a1c12", deep: "#1c130b", prop: "none" },
+  },
+  {
+    id: "area-1",
+    label: "木の実の林をひらく",
+    price: 900,
+    rect: { x0: 0, y0: 480, x1: 360, y1: 960 },
+    padPos: { x: 150, y: 452 },
+    palette: { floor: "#26301c", deep: "#182010", prop: "none" },
+    unlockAfter: "seat-0-3",
+  },
+  {
+    id: "area-2",
+    label: "川べりへ下りる",
+    price: 12000,
+    rect: { x0: 360, y0: 0, x1: 720, y1: 480 },
+    padPos: { x: 298, y: 250 },
+    palette: { floor: "#1c2a30", deep: "#122024", prop: "none" },
+  },
+];
+
+const fireStoves: StoveSpec[] = [
+  // area-0: 木の実 → 焼き木の実
+  { id: "stove-1", pos: { x: 70, y: 120 }, price: 0, area: 0, item: "nut", art: "tree", label: "木の実の木" },
+  { id: "stove-2", pos: { x: 250, y: 120 }, price: 240, area: 0, item: "nut", art: "tree", label: "木の実の木", unlockAfter: "stove-1" },
+  { id: "fire-1", pos: { x: 110, y: 215 }, price: 0, area: 0, item: "roast", takes: "nut", art: "fire", label: "たき火" },
+  { id: "fire-2", pos: { x: 250, y: 215 }, price: 900, area: 0, item: "roast", takes: "nut", art: "fire", label: "たき火", unlockAfter: "fire-1" },
+  // area-1: 林（採取・焼きの数を増やす）
+  { id: "stove-3", pos: { x: 80, y: 600 }, price: 3000, area: 1, item: "nut", art: "tree", label: "木の実の木" },
+  { id: "fire-3", pos: { x: 220, y: 700 }, price: 6000, area: 1, item: "roast", takes: "nut", art: "fire", label: "たき火" },
+  // area-2: 魚 → 切り身 → 焼き魚（工程が1つ増える）
+  { id: "trap-1", pos: { x: 430, y: 120 }, price: 12000, area: 2, item: "fish", art: "tree", label: "川の罠" },
+  { id: "cut-1", pos: { x: 560, y: 120 }, price: 26000, area: 2, item: "fillet", takes: "fish", art: "fire", label: "さばき台" },
+  { id: "grill-1", pos: { x: 640, y: 215 }, price: 60000, area: 2, item: "cooked", takes: "fillet", art: "fire", label: "焼き石" },
+];
+
+const fireSeats: SeatSpec[] = [
+  ...benchRow(0, [80, 180, 280], 300, [0, 200, 700], "roast", 1, "丸太のベンチ"),
+  ...benchRow(1, [80, 180, 280], 780, [4000, 9000, 18000], "roast", 1.4, "林のベンチ"),
+  ...benchRow(2, [470, 590], 300, [30000, 70000], "cooked", 3, "川べりの席"),
+];
+
+const fireHires: HireSpec[] = [
+  // area-0: はこび手 → 火の番 → 速いはこび手（犬ぞり）
+  { id: "waiter-1", kind: "waiter", pos: { x: 40, y: 330 }, price: 120, label: "はこび手", area: 0, unlockAfter: "seat-0-2" },
+  { id: "collector-1", kind: "collector", pos: { x: 300, y: 265 }, price: 400, label: "拾い手", area: 0, unlockAfter: "waiter-1" },
+  { id: "cook-1", kind: "cook", pos: { x: 110, y: 175 }, price: 800, label: "火の番", stoveId: "fire-1", area: 0, unlockAfter: "collector-1" },
+  { id: "waiter-2", kind: "waiter", pos: { x: 300, y: 330 }, price: 1600, label: "はこび手", area: 0, unlockAfter: "cook-1" },
+  { id: "robot-1", kind: "robot", pos: { x: 180, y: 330 }, price: 5000, label: "犬ぞり", area: 0, unlockAfter: "waiter-2" },
+  // area-1
+  { id: "cook-2", kind: "cook", pos: { x: 220, y: 660 }, price: 9000, label: "火の番", stoveId: "fire-3", area: 1 },
+  { id: "waiter-3", kind: "waiter", pos: { x: 40, y: 810 }, price: 7000, label: "はこび手", area: 1, unlockAfter: "robot-1" },
+  { id: "robot-2", kind: "robot", pos: { x: 300, y: 810 }, price: 30000, label: "犬ぞり", area: 1 },
+  // area-2
+  { id: "cook-3", kind: "cook", pos: { x: 560, y: 80 }, price: 40000, label: "さばき手", stoveId: "cut-1", area: 2 },
+  { id: "cook-4", kind: "cook", pos: { x: 640, y: 175 }, price: 80000, label: "焼き手", stoveId: "grill-1", area: 2 },
+  { id: "waiter-4", kind: "waiter", pos: { x: 470, y: 330 }, price: 50000, label: "はこび手", area: 2 },
+  { id: "robot-3", kind: "robot", pos: { x: 590, y: 330 }, price: 120000, label: "犬ぞり", area: 2 },
+];
+
+const fireEquipment: EquipSpec[] = [
+  // 直結の設備（区間を消す）
+  { id: "chute-1", name: "木のとい", detail: "木の実を、たき火へ転がして直接おくる", pos: { x: 90, y: 168 }, price: 9000, area: 0, link: { from: "stove-1", to: "fire-1" }, unlockAfter: "robot-1" },
+  { id: "chute-2", name: "焼き石のとい", detail: "切り身を、焼き石へ直接おくる", pos: { x: 600, y: 168 }, price: 260000, area: 2, link: { from: "cut-1", to: "grill-1" }, unlockAfter: "cook-4" },
+  // 道具の強化・集客
+  { id: "noodle", name: "石おの", detail: "すべての作業場が +30%速くなる", pos: { x: 300, y: 260 }, price: 20000, area: 1, unlockAfter: "area-1" },
+  { id: "fridge", name: "編みかご置き場", detail: "受け口・出し口に積める数 +4", pos: { x: 200, y: 260 }, price: 45000, area: 1, unlockAfter: "equip-noodle" },
+  { id: "ticket", name: "貝がら入れ", detail: "貝がらが自動でサイフに入る・拾い手は運びへ", pos: { x: 112, y: 0 }, price: 30000, area: 0, outside: true, unlockAfter: "area-1" },
+  { id: "sign", name: "物見やぐら", detail: "仲間が 1.5倍のはやさで来る", pos: { x: 240, y: 0 }, price: 60000, area: 0, outside: true, unlockAfter: "equip-ticket" },
+  { id: "flag", name: "けむりのろし", detail: "遠くの仲間を呼ぶ。集客 1.25倍", pos: { x: 40, y: 0 }, price: 900, area: 0, outside: true, row: 1, draw: 1.25, unlockAfter: "waiter-1" },
+  { id: "lantern", name: "たいこ", detail: "音で人を集める。集客 1.4倍", pos: { x: 176, y: 0 }, price: 26000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-1" },
+  { id: "queue", name: "かがり火", detail: "夜通し明るい。集客 1.6倍", pos: { x: 330, y: 0 }, price: 90000, area: 0, outside: true, row: 1, draw: 1.6, unlockAfter: "area-2" },
+];
+
+const fireUpgrades: Upgrade[] = [
+  { id: "carry", name: "編みかご", detail: (n) => `${3 + n}こまで持てる・仲間も ${3 + Math.floor(n / 2)}こ`, pos: { x: 46, y: 66 }, basePrice: 60, growth: 1.7, max: 9, unlockAfter: "stove-2" },
+  { id: "speed", name: "わらじ", detail: (n) => `足の速さ +${n * 10}%・仲間も +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 50, growth: 1.65, max: 12, unlockAfter: "waiter-1" },
+  { id: "cook", name: "火をあおぐ", detail: (n) => `作る速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 80, growth: 1.7, max: 14, unlockAfter: "fire-1" },
+  { id: "price", name: "味つけの石塩", detail: (n) => `ひとつ ${Math.round(8 * Math.pow(1.4, n))}貝`, pos: { x: 314, y: 66 }, basePrice: 120, growth: 1.75, max: 20, unlockAfter: "seat-0-2" },
+];
+
 /* ==================== 登録 ==================== */
 
 export const stageDefs: Record<StageId, StageDef> = {
@@ -659,6 +780,57 @@ export const stageDefs: Record<StageId, StageDef> = {
       outsideDetail: "自動改札と園内アナウンスはこの外に置く",
     },
   },
+  fire: {
+    id: "fire",
+    name: "火のはじまり",
+    subtitle: "原始の火からはじめる",
+    icon: "🔥",
+    itemIcon: "🌰",
+    frontRoom: { top: 38, bottom: 250 },
+    areas: fireAreas,
+    stoves: fireStoves,
+    seats: fireSeats,
+    hires: fireHires,
+    equipment: fireEquipment,
+    upgrades: fireUpgrades,
+    baseValue: 8,
+    requiresAreas: 0,
+    chain: true,
+    // たき火・木の実の木・最初のベンチだけ見えている
+    start: ["stove-1", "fire-1", "seat-0-1"],
+    labels: {
+      item: "しなもの",
+      producer: "作業場",
+      tray: "ベンチ",
+      guest: "仲間",
+      using: "食べている",
+      staff: {
+        waiter: "はこび手",
+        robot: "犬ぞり",
+        collector: "拾い手",
+        cook: "火の番",
+        master: "長老",
+        busser: "片づけ手",
+        stocker: "並べ手",
+        server: "はこび手",
+        seller: "受付",
+        gatekeeper: "門番",
+      },
+      objective: {
+        pickup: "出し口でしなものを受け取ろう",
+        serve: "次の作業場か、仲間まで運ぼう",
+        coin: "落ちた貝がらを拾おう",
+        waitItem: "できあがるまで待とう",
+        waitGuest: "仲間を待っています",
+      },
+      auto: "自動送り",
+      outside: "野原",
+      outsideDetail: "のろし・たいこはこの外に置く",
+    },
+  },
 };
 
 export const stageList: StageDef[] = [stageDefs.ramen, stageDefs.park];
+
+/** ワーキングプラネットの並び（トップページで別のかたまりに出す） */
+export const planetStages: StageDef[] = [stageDefs.fire];
