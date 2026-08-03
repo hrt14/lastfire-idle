@@ -69,6 +69,12 @@ export type StageDef = {
   requiresAreas: number;
 };
 
+/**
+ * 席は左から順に出す。ひとつ買うと、その隣が出てくる。
+ * （最初から全部見えていると、やることが多すぎて選べない）
+ */
+const chain = (id: string | undefined, i: number) => (i > 0 ? id : undefined);
+
 const seatRow = (
   area: number,
   xs: number[],
@@ -87,6 +93,7 @@ const seatRow = (
     label,
     cost,
     value: cost * 1.25,
+    unlockAfter: chain(`seat-${area}-${i}`, i),
   }));
 
 /** レストランのテーブル。料理を運び、食べ終わったら皿を片づける */
@@ -115,7 +122,7 @@ const tableRow = (
     mode: "table" as const,
     needs: "food" as const,
     value: 4,
-    unlockAfter: table.unlockAfter,
+    unlockAfter: table.unlockAfter ?? chain(`table-${area}-${i}`, i),
   }));
 
 /** お土産の棚。並べておくと客が自分で取り、レジでお金を払う */
@@ -146,7 +153,7 @@ const shelfRow = (
     needs: "goods" as const,
     value: 2.4,
     pay: till,
-    unlockAfter: shelf.unlockAfter,
+    unlockAfter: shelf.unlockAfter ?? chain(`shelf-${area}-${i}`, i),
   }));
 
 /* ==================== ステージ1: ラーメン屋 ==================== */
@@ -167,6 +174,8 @@ const ramenAreas: AreaSpec[] = [
     rect: { x0: 0, y0: 480, x1: 360, y1: 790 },
     padPos: { x: 150, y: 452 },
     palette: { floor: "#3a3128", deep: "#272018", prop: "none" },
+    // 屋台がひととおり埋まってから、はじめて外に広げる話が出てくる
+    unlockAfter: "seat-0-4",
   },
   {
     id: "area-2",
@@ -189,7 +198,7 @@ const ramenAreas: AreaSpec[] = [
 const ramenStoves: StoveSpec[] = [
   { id: "stove-1", pos: { x: 72, y: 176 }, price: 0, area: 0 },
   { id: "stove-2", pos: { x: 180, y: 176 }, price: 150, area: 0 },
-  { id: "stove-3", pos: { x: 288, y: 176 }, price: 700, area: 0 },
+  { id: "stove-3", pos: { x: 288, y: 176 }, price: 700, area: 0, unlockAfter: "cook-1" },
   { id: "stove-4", pos: { x: 470, y: 176 }, price: 26000, area: 2 },
   { id: "stove-5", pos: { x: 610, y: 176 }, price: 60000, area: 2 },
   // 宴会場まで開くと、製麺所に持ち帰りの倉庫が出せるようになる
@@ -216,10 +225,13 @@ const ramenSeats: SeatSpec[] = [
       label: "名物どんぶり棚",
       art: "limited",
       detail: "店のロゴ入りどんぶり",
-      unlockAfter: "area-3",
+      unlockAfter: "shelf-2-1",
     },
   ]),
 ];
+
+/** 調理人は、担当の寸胴を買ったあと、ひとりずつ出てくる */
+const ramenCookAfter = ["stove-2", "cook-1", "cook-2"];
 
 const ramenHires: HireSpec[] = [
   ...ramenStoves
@@ -232,18 +244,19 @@ const ramenHires: HireSpec[] = [
       label: "調理人",
       stoveId: stove.id,
       area: stove.area,
+      unlockAfter: ramenCookAfter[i],
     })),
   // 持ち帰りの倉庫番
   { id: "keeper-r1", kind: "cook", pos: { x: 340, y: 340 }, price: 2600000, label: "倉庫番", stoveId: "store-r1", area: 2, unlockAfter: "area-3" },
-  { id: "waiter-1", kind: "waiter", pos: { x: 50, y: 394 }, price: 280, label: "ホール店員", area: 0 },
-  { id: "waiter-2", kind: "waiter", pos: { x: 130, y: 394 }, price: 1500, label: "ホール店員", area: 0 },
-  { id: "collector-1", kind: "collector", pos: { x: 230, y: 394 }, price: 900, label: "レジ係", area: 0 },
-  { id: "robot-1", kind: "robot", pos: { x: 310, y: 394 }, price: 4000, label: "配膳ロボ", area: 0 },
+  { id: "waiter-1", kind: "waiter", pos: { x: 50, y: 394 }, price: 280, label: "ホール店員", area: 0, unlockAfter: "seat-0-3" },
+  { id: "waiter-2", kind: "waiter", pos: { x: 130, y: 394 }, price: 1500, label: "ホール店員", area: 0, unlockAfter: "seat-0-4" },
+  { id: "collector-1", kind: "collector", pos: { x: 230, y: 394 }, price: 900, label: "レジ係", area: 0, unlockAfter: "waiter-1" },
+  { id: "robot-1", kind: "robot", pos: { x: 310, y: 394 }, price: 4000, label: "配膳ロボ", area: 0, unlockAfter: "waiter-2" },
   { id: "waiter-3", kind: "waiter", pos: { x: 60, y: 700 }, price: 9000, label: "ホール店員", area: 1 },
-  { id: "collector-2", kind: "collector", pos: { x: 180, y: 704 }, price: 14000, label: "レジ係", area: 1 },
-  { id: "robot-2", kind: "robot", pos: { x: 300, y: 700 }, price: 26000, label: "配膳ロボ", area: 1 },
+  { id: "collector-2", kind: "collector", pos: { x: 180, y: 704 }, price: 14000, label: "レジ係", area: 1, unlockAfter: "waiter-3" },
+  { id: "robot-2", kind: "robot", pos: { x: 300, y: 700 }, price: 26000, label: "配膳ロボ", area: 1, unlockAfter: "waiter-3" },
   { id: "master-1", kind: "master", pos: { x: 430, y: 700 }, price: 180000, label: "板前", area: 3 },
-  { id: "robot-3", kind: "robot", pos: { x: 560, y: 700 }, price: 260000, label: "配膳ロボ", area: 3 },
+  { id: "robot-3", kind: "robot", pos: { x: 560, y: 700 }, price: 260000, label: "配膳ロボ", area: 3, unlockAfter: "waiter-4" },
   { id: "waiter-4", kind: "waiter", pos: { x: 680, y: 700 }, price: 90000, label: "ホール店員", area: 3 },
   // 持ち帰りコーナーができると、製麺所に品出しが立てられる
   { id: "stocker-r1", kind: "stocker", pos: { x: 450, y: 440 }, price: 1800000, label: "品出し", area: 2, unlockAfter: "area-3" },
@@ -251,22 +264,22 @@ const ramenHires: HireSpec[] = [
 
 const ramenEquipment: EquipSpec[] = [
   { id: "noodle", name: "製麺機", detail: "すべての寸胴の調理が +30%", pos: { x: 420, y: 300 }, price: 30000, area: 2 },
-  { id: "fridge", name: "大型冷蔵庫", detail: "寸胴に置ける数 +4杯", pos: { x: 520, y: 300 }, price: 45000, area: 2 },
-  { id: "ticket", name: "券売機", detail: "お金が自動で入る・レジ係はホールへ", pos: { x: 112, y: 0 }, price: 80000, area: 0, outside: true },
-  { id: "sign", name: "呼び込み看板", detail: "お客さんが 1.5倍のペースで来る", pos: { x: 240, y: 0 }, price: 120000, area: 0, outside: true, draw: 1.5 },
+  { id: "fridge", name: "大型冷蔵庫", detail: "寸胴に置ける数 +4杯", pos: { x: 520, y: 300 }, price: 45000, area: 2, unlockAfter: "equip-noodle" },
+  { id: "ticket", name: "券売機", detail: "お金が自動で入る・レジ係はホールへ", pos: { x: 112, y: 0 }, price: 80000, area: 0, outside: true, unlockAfter: "area-1" },
+  { id: "sign", name: "呼び込み看板", detail: "お客さんが 1.5倍のペースで来る", pos: { x: 240, y: 0 }, price: 120000, area: 0, outside: true, draw: 1.5, unlockAfter: "equip-ticket" },
   // 集客オブジェクト（掛け算で効く）
-  { id: "flag", name: "のぼり旗", detail: "通りから目立つ。集客 1.25倍", pos: { x: 40, y: 0 }, price: 9000, area: 0, outside: true, row: 1, draw: 1.25 },
-  { id: "lantern", name: "大提灯", detail: "夜の通りで光る。集客 1.35倍", pos: { x: 176, y: 0 }, price: 260000, area: 0, outside: true, row: 1, draw: 1.35 },
-  { id: "queue", name: "行列の整理棒", detail: "並ぶ人が見えて人を呼ぶ。集客 1.4倍", pos: { x: 330, y: 0 }, price: 900000, area: 0, outside: true, row: 1, draw: 1.4 },
+  { id: "flag", name: "のぼり旗", detail: "通りから目立つ。集客 1.25倍", pos: { x: 40, y: 0 }, price: 9000, area: 0, outside: true, row: 1, draw: 1.25, unlockAfter: "waiter-2" },
+  { id: "lantern", name: "大提灯", detail: "夜の通りで光る。集客 1.35倍", pos: { x: 176, y: 0 }, price: 260000, area: 0, outside: true, row: 1, draw: 1.35, unlockAfter: "area-2" },
+  { id: "queue", name: "行列の整理棒", detail: "並ぶ人が見えて人を呼ぶ。集客 1.4倍", pos: { x: 330, y: 0 }, price: 900000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-3" },
   { id: "screen", name: "街頭ビジョン", detail: "でかい映像で宣伝する。集客 1.6倍", pos: { x: 470, y: 0 }, price: 4000000, area: 2, outside: true, draw: 1.6, unlockAfter: "area-2" },
   { id: "truck", name: "宣伝トラック", detail: "町じゅうを回ってくる。集客 1.8倍", pos: { x: 620, y: 0 }, price: 18000000, area: 3, outside: true, draw: 1.8, unlockAfter: "area-3" },
 ];
 
 const ramenUpgrades: Upgrade[] = [
-  { id: "carry", name: "両手鍋", detail: (n) => `${3 + n}杯まで持てる・店員も ${3 + Math.floor(n / 2)}杯`, pos: { x: 46, y: 66 }, basePrice: 60, growth: 1.7, max: 9 },
-  { id: "speed", name: "厨房シューズ", detail: (n) => `足の速さ +${n * 10}%・店員も +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 50, growth: 1.65, max: 12 },
-  { id: "cook", name: "業務用寸胴", detail: (n) => `煮える速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 80, growth: 1.7, max: 14 },
-  { id: "price", name: "看板メニュー", detail: (n) => `一杯 ${Math.round(55 * Math.pow(1.4, n))}円`, pos: { x: 314, y: 66 }, basePrice: 120, growth: 1.75, max: 20 },
+  { id: "carry", name: "両手鍋", detail: (n) => `${3 + n}杯まで持てる・店員も ${3 + Math.floor(n / 2)}杯`, pos: { x: 46, y: 66 }, basePrice: 60, growth: 1.7, max: 9, unlockAfter: "stove-2" },
+  { id: "speed", name: "厨房シューズ", detail: (n) => `足の速さ +${n * 10}%・店員も +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 50, growth: 1.65, max: 12, unlockAfter: "waiter-1" },
+  { id: "cook", name: "業務用寸胴", detail: (n) => `煮える速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 80, growth: 1.7, max: 14, unlockAfter: "stove-3" },
+  { id: "price", name: "看板メニュー", detail: (n) => `一杯 ${Math.round(55 * Math.pow(1.4, n))}円`, pos: { x: 314, y: 66 }, basePrice: 120, growth: 1.75, max: 20, unlockAfter: "seat-0-3" },
 ];
 
 /* ==================== ステージ2: テーマパーク ==================== */
@@ -287,6 +300,8 @@ const parkAreas: AreaSpec[] = [
     rect: { x0: 360, y0: 0, x1: 720, y1: 480 },
     padPos: { x: 298, y: 250 },
     palette: { floor: "#6f5a86", deep: "#4b3c5c", prop: "castle" },
+    // 入口広場のアトラクションがそろってから、外へ広げる
+    unlockAfter: "seat-0-4",
   },
   {
     id: "area-2",
@@ -349,7 +364,7 @@ const parkAreas: AreaSpec[] = [
 const parkStoves: StoveSpec[] = [
   { id: "stove-1", pos: { x: 72, y: 176 }, price: 0, area: 0 },
   { id: "stove-2", pos: { x: 180, y: 176 }, price: 200, area: 0 },
-  { id: "stove-3", pos: { x: 288, y: 176 }, price: 900, area: 0 },
+  { id: "stove-3", pos: { x: 288, y: 176 }, price: 900, area: 0, unlockAfter: "cook-1" },
   { id: "stove-4", pos: { x: 180, y: 656 }, price: 34000, area: 2 },
   { id: "stove-5", pos: { x: 540, y: 1136 }, price: 900000, area: 5 },
   // レストラン街の厨房
@@ -390,6 +405,7 @@ const rideRow = (
     cost: ride.cost,
     // 枚数の多い乗り物は、そのぶん高く売れる
     value: ride.cost ? ride.cost * 1.25 : 1,
+    unlockAfter: chain(`seat-${area}-${i}`, i),
   }));
 
 const parkSeats: SeatSpec[] = [
@@ -467,6 +483,9 @@ const parkSeats: SeatSpec[] = [
   ]),
 ];
 
+/** 券売スタッフは、担当の券売所を買ったあと、ひとりずつ出てくる */
+const parkCookAfter = ["stove-2", "cook-1", "cook-2"];
+
 const parkHires: HireSpec[] = [
   ...parkStoves
     .filter((stove) => (stove.item ?? "main") === "main")
@@ -478,19 +497,20 @@ const parkHires: HireSpec[] = [
       label: "券売スタッフ",
       stoveId: stove.id,
       area: stove.area,
+      unlockAfter: parkCookAfter[i],
     })),
   // 広場のキッチンカーに付く料理人（あとから出る）
   { id: "cook-10", kind: "cook", pos: { x: 300, y: 300 }, price: 140000000, label: "料理人", stoveId: "kitchen-0", area: 0, unlockAfter: "area-7" },
   { id: "cook-11", kind: "cook", pos: { x: 620, y: 300 }, price: 480000000, label: "倉庫番", stoveId: "store-0", area: 1, unlockAfter: "area-8" },
-  { id: "waiter-1", kind: "waiter", pos: { x: 50, y: 434 }, price: 340, label: "案内係", area: 0 },
-  { id: "waiter-2", kind: "waiter", pos: { x: 130, y: 434 }, price: 1800, label: "案内係", area: 0 },
-  { id: "collector-1", kind: "collector", pos: { x: 230, y: 434 }, price: 1100, label: "集金係", area: 0 },
-  { id: "robot-1", kind: "robot", pos: { x: 310, y: 434 }, price: 5000, label: "案内ロボ", area: 0 },
+  { id: "waiter-1", kind: "waiter", pos: { x: 50, y: 434 }, price: 340, label: "案内係", area: 0, unlockAfter: "seat-0-3" },
+  { id: "waiter-2", kind: "waiter", pos: { x: 130, y: 434 }, price: 1800, label: "案内係", area: 0, unlockAfter: "seat-0-4" },
+  { id: "collector-1", kind: "collector", pos: { x: 230, y: 434 }, price: 1100, label: "集金係", area: 0, unlockAfter: "waiter-1" },
+  { id: "robot-1", kind: "robot", pos: { x: 310, y: 434 }, price: 5000, label: "案内ロボ", area: 0, unlockAfter: "waiter-2" },
   { id: "waiter-3", kind: "waiter", pos: { x: 470, y: 434 }, price: 12000, label: "案内係", area: 1 },
-  { id: "robot-2", kind: "robot", pos: { x: 620, y: 434 }, price: 40000, label: "案内ロボ", area: 1 },
+  { id: "robot-2", kind: "robot", pos: { x: 620, y: 434 }, price: 40000, label: "案内ロボ", area: 1, unlockAfter: "waiter-3" },
   { id: "waiter-4", kind: "waiter", pos: { x: 80, y: 912 }, price: 90000, label: "案内係", area: 2 },
-  { id: "collector-2", kind: "collector", pos: { x: 260, y: 912 }, price: 130000, label: "集金係", area: 2 },
-  { id: "robot-3", kind: "robot", pos: { x: 470, y: 912 }, price: 420000, label: "案内ロボ", area: 3 },
+  { id: "collector-2", kind: "collector", pos: { x: 260, y: 912 }, price: 130000, label: "集金係", area: 2, unlockAfter: "waiter-4" },
+  { id: "robot-3", kind: "robot", pos: { x: 470, y: 912 }, price: 420000, label: "案内ロボ", area: 3, unlockAfter: "waiter-5" },
   { id: "waiter-5", kind: "waiter", pos: { x: 630, y: 912 }, price: 260000, label: "案内係", area: 3 },
   { id: "robot-4", kind: "robot", pos: { x: 180, y: 1392 }, price: 2200000, label: "案内ロボ", area: 4 },
   { id: "master-1", kind: "master", pos: { x: 540, y: 1392 }, price: 9000000, label: "園長", area: 5 },
@@ -519,27 +539,27 @@ const parkHires: HireSpec[] = [
 
 const parkEquipment: EquipSpec[] = [
   { id: "noodle", name: "高速印刷機", detail: "すべての券売所が +30%", pos: { x: 470, y: 190 }, price: 40000, area: 1 },
-  { id: "fridge", name: "チケット倉庫", detail: "券売所に貯めておける数 +4枚", pos: { x: 610, y: 190 }, price: 60000, area: 1 },
-  { id: "ticket", name: "自動集金ボックス", detail: "お金が自動で入る・集金係は案内へ", pos: { x: 160, y: 0 }, price: 110000, area: 0, outside: true, row: 1 },
-  { id: "sign", name: "園内アナウンス", detail: "お客さんが 1.5倍のペースで来る", pos: { x: 280, y: 0 }, price: 160000, area: 0, outside: true, row: 1, draw: 1.5 },
+  { id: "fridge", name: "チケット倉庫", detail: "券売所に貯めておける数 +4枚", pos: { x: 610, y: 190 }, price: 60000, area: 1, unlockAfter: "equip-noodle" },
+  { id: "ticket", name: "自動集金ボックス", detail: "お金が自動で入る・集金係は案内へ", pos: { x: 160, y: 0 }, price: 110000, area: 0, outside: true, row: 1, unlockAfter: "area-1" },
+  { id: "sign", name: "園内アナウンス", detail: "お客さんが 1.5倍のペースで来る", pos: { x: 280, y: 0 }, price: 160000, area: 0, outside: true, row: 1, draw: 1.5, unlockAfter: "equip-ticket" },
   // 集客オブジェクト（掛け算で効く）
-  { id: "flag", name: "のぼり旗", detail: "並木道から目立つ。集客 1.25倍", pos: { x: 40, y: 0 }, price: 12000, area: 0, outside: true, row: 1, draw: 1.25 },
+  { id: "flag", name: "のぼり旗", detail: "並木道から目立つ。集客 1.25倍", pos: { x: 40, y: 0 }, price: 12000, area: 0, outside: true, row: 1, draw: 1.25, unlockAfter: "waiter-2" },
   { id: "balloon", name: "巨大バルーン", detail: "遠くからでも見える。集客 1.4倍", pos: { x: 430, y: 0 }, price: 700000, area: 1, outside: true, draw: 1.4, unlockAfter: "area-1" },
-  { id: "greet", name: "キャラクターグリーティング", detail: "着ぐるみが出迎える。集客 1.5倍", pos: { x: 520, y: 0 }, price: 6000000, area: 1, outside: true, draw: 1.5, unlockAfter: "area-1" },
+  { id: "greet", name: "キャラクターグリーティング", detail: "着ぐるみが出迎える。集客 1.5倍", pos: { x: 520, y: 0 }, price: 6000000, area: 1, outside: true, draw: 1.5, unlockAfter: "area-2" },
   { id: "parade", name: "パレードカー", detail: "毎日パレードが出る。集客 1.7倍", pos: { x: 660, y: 0 }, price: 40000000, area: 3, outside: true, draw: 1.7, unlockAfter: "area-3" },
   { id: "firework", name: "花火の打ち上げ台", detail: "夜空に花火が上がる。集客 2倍", pos: { x: 800, y: 0 }, price: 600000000, area: 5, outside: true, draw: 2, unlockAfter: "area-5" },
   // 入場まわりの自動化（最初は自分で売って、自分で通す）
-  { id: "vend", name: "自動入場券売機", detail: "入場券が自動で売れる", pos: { x: 222, y: 0 }, price: 900000, area: 0, outside: true },
-  { id: "turnstile", name: "自動改札機", detail: "お客さんが自動で入場する", pos: { x: 340, y: 0 }, price: 3600000, area: 0, outside: true },
+  { id: "vend", name: "自動入場券売機", detail: "入場券が自動で売れる", pos: { x: 222, y: 0 }, price: 900000, area: 0, outside: true, unlockAfter: "equip-sign" },
+  { id: "turnstile", name: "自動改札機", detail: "お客さんが自動で入場する", pos: { x: 340, y: 0 }, price: 3600000, area: 0, outside: true, unlockAfter: "equip-vend" },
 ];
 
 const parkUpgrades: Upgrade[] = [
-  { id: "carry", name: "チケットホルダー", detail: (n) => `${3 + n}枚まで持てる・スタッフも ${3 + Math.floor(n / 2)}枚`, pos: { x: 46, y: 66 }, basePrice: 80, growth: 1.7, max: 15 },
-  { id: "speed", name: "園内カート", detail: (n) => `足の速さ +${n * 10}%・スタッフも +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 70, growth: 1.65, max: 18 },
-  { id: "cook", name: "発券機の改良", detail: (n) => `発券の速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 100, growth: 1.7, max: 14 },
-  { id: "price", name: "乗り物券アップ", detail: (n) => `一回 ${Math.round(70 * Math.pow(1.4, n))}円`, pos: { x: 314, y: 66 }, basePrice: 150, growth: 1.72, max: 45 },
+  { id: "carry", name: "チケットホルダー", detail: (n) => `${3 + n}枚まで持てる・スタッフも ${3 + Math.floor(n / 2)}枚`, pos: { x: 46, y: 66 }, basePrice: 80, growth: 1.7, max: 9, unlockAfter: "stove-2" },
+  { id: "speed", name: "園内カート", detail: (n) => `足の速さ +${n * 10}%・スタッフも +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 70, growth: 1.65, max: 12, unlockAfter: "waiter-1" },
+  { id: "cook", name: "発券機の改良", detail: (n) => `発券の速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 100, growth: 1.7, max: 14, unlockAfter: "stove-3" },
+  { id: "price", name: "乗り物券アップ", detail: (n) => `一回 ${Math.round(70 * Math.pow(1.4, n))}円`, pos: { x: 314, y: 66 }, basePrice: 150, growth: 1.9, max: 20, unlockAfter: "seat-0-3" },
   // 入場券は入口で取る。乗らない人からももらえる
-  { id: "gate", name: "入場券アップ", detail: (n) => `入場料 ${Math.round(40 * Math.pow(1.45, n))}円`, pos: { x: 100, y: 0 }, basePrice: 400, growth: 1.7, max: 45, outside: true },
+  { id: "gate", name: "入場券アップ", detail: (n) => `入場料 ${Math.round(40 * Math.pow(1.45, n))}円`, pos: { x: 100, y: 0 }, basePrice: 400, growth: 1.9, max: 20, outside: true, unlockAfter: "area-1" },
 ];
 
 /* ==================== 登録 ==================== */

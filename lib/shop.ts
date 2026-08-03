@@ -133,6 +133,8 @@ export type AreaSpec = {
   /** 買う枠の位置（すでに開いている区画の中に置く） */
   padPos: Vec;
   palette: AreaPalette;
+  /** これを買うまで出てこない（順ぐりに増やしていくため） */
+  unlockAfter?: string;
 };
 
 /** 設備の名前。集客オブジェクトもここに並ぶ */
@@ -170,6 +172,8 @@ export type Upgrade = {
   outside?: boolean;
   /** 外の並び。0 は店より、1 は道より */
   row?: number;
+  /** これを買うまで出てこない（順ぐりに増やしていくため） */
+  unlockAfter?: string;
 };
 
 /* ---------- いま遊んでいるステージ ---------- */
@@ -668,10 +672,9 @@ export const fromPersisted = (input: unknown): ShopState => {
       const value = finite(stored[pad.id], 0);
       if (value <= 0) continue;
       if (pad.kind === "unlock" && pad.price !== undefined) {
-        // いまの（ならしたあとの）値段で見る
-        const price = softPrice(pad.price);
+        const price = pad.price;
         if (value >= price) {
-          // 値下げでもう払い終えているぶんは、開放しておく
+          // 値段を変えた結果、もう払い終えているぶんは開放しておく
           if (!state.unlocked.includes(pad.id)) state.unlocked.push(pad.id);
           continue;
         }
@@ -802,27 +805,19 @@ export const stoveHasCook = (state: ShopState, stoveId: string) =>
     (worker) => worker.kind === "cook" && worker.stoveId === stoveId,
   );
 
-/** ここを超えたら値上がりを緩やかにする */
-export const SOFT_CAP = 50_000_000;
-
-/**
- * 高くなりすぎた値段をならす。
- * 5000万を超えたぶんだけ、ゆるやかな伸びに置き換える
- */
-export const softPrice = (price: number) => {
-  if (!Number.isFinite(price) || price <= SOFT_CAP) return price;
-  return Math.round(SOFT_CAP * Math.pow(price / SOFT_CAP, 0.55));
-};
-
 export const padPrice = (state: ShopState, pad: Pad) => {
   if (pad.kind === "upgrade" && pad.upgradeId) {
-    return softPrice(upgradePrice(pad.upgradeId, state.levels[pad.upgradeId]));
+    return upgradePrice(pad.upgradeId, state.levels[pad.upgradeId]);
   }
-  return softPrice(pad.price ?? Infinity);
+  return pad.price ?? Infinity;
 };
 
 export const padLevel = (state: ShopState, pad: Pad) =>
   pad.kind === "upgrade" && pad.upgradeId ? state.levels[pad.upgradeId] : 0;
+
+/** 先に買っておくものが済んでいるか（順ぐりに出していくための条件） */
+const opened = (state: ShopState, needs: string | undefined) =>
+  !needs || state.unlocked.includes(needs);
 
 /** いま店内に出ている枠 */
 export const availablePads = (state: ShopState) =>
@@ -831,14 +826,19 @@ export const availablePads = (state: ShopState) =>
     if (pad.kind !== "upgrade" && !Number.isFinite(pad.price)) return false;
     if (pad.kind === "upgrade" && pad.upgradeId) {
       const upgrade = upgradeById.get(pad.upgradeId);
-      return !!upgrade && state.levels[pad.upgradeId] < upgrade.max;
+      if (!upgrade || !opened(state, upgrade.unlockAfter)) return false;
+      return state.levels[pad.upgradeId] < upgrade.max;
     }
     if (state.unlocked.includes(pad.id)) return false;
 
     // 調理人はその寸胴を買ってから
     const hire = hireById.get(pad.id);
     if (hire?.kind === "collector" && hasEquip(state, "ticket")) return false;
-    if (hire?.stoveId) return state.unlocked.includes(hire.stoveId);
+    if (hire?.stoveId) {
+      return (
+        state.unlocked.includes(hire.stoveId) && opened(state, hire.unlockAfter)
+      );
+    }
 
     // 自動供給機は、その場所を買ってから出す
     if (pad.id.startsWith("auto-")) {
@@ -847,30 +847,32 @@ export const availablePads = (state: ShopState) =>
     }
 
     // 席・店員・寸胴・設備は、その区画が開いてから出す。
-    // unlockAfter が付いているものは、あとの区画が開くと古い区画にも出てくる
+    // unlockAfter は「これを買ってから出す」の指定。ひとつ買うと次が出てくる
+    // 順ぐりの解放にも、あとの区画が開いたら古い区画に足すのにも使う
     const seat = seatById.get(pad.id);
     if (seat) {
-      if (seat.unlockAfter && !state.unlocked.includes(seat.unlockAfter)) return false;
+      if (!opened(state, seat.unlockAfter)) return false;
       return areaOpen(state, seat.area);
     }
     if (hire) {
-      if (hire.unlockAfter && !state.unlocked.includes(hire.unlockAfter)) return false;
+      if (!opened(state, hire.unlockAfter)) return false;
       return areaOpen(state, hire.area);
     }
     const stove = stoveById.get(pad.id);
     if (stove) {
-      if (stove.unlockAfter && !state.unlocked.includes(stove.unlockAfter)) return false;
+      if (!opened(state, stove.unlockAfter)) return false;
       return areaOpen(state, stove.area);
     }
     const equip = equipById.get(pad.id.replace("equip-", "") as EquipId);
     if (equip) {
-      if (equip.unlockAfter && !state.unlocked.includes(equip.unlockAfter)) return false;
+      if (!opened(state, equip.unlockAfter)) return false;
       return equip.outside || areaOpen(state, equip.area);
     }
 
     // 区画の枠は、ひとつ前の区画が開いてから出す
     const area = areaById.get(pad.id);
     if (area) {
+      if (!opened(state, area.unlockAfter)) return false;
       const index = areas.indexOf(area);
       return index <= 0 || areaOpen(state, index - 1);
     }
@@ -2102,9 +2104,12 @@ export const applyOffline = (
   const worth =
     open.reduce((sum, seat) => sum + (seat.value ?? 1), 0) /
     Math.max(1, open.length);
+  // 入場券は 1人につき1回。1人が何か所まわるかで割って、1回ぶんに直す
+  const variety = Math.min(9, Math.floor(open.length * 0.8));
+  const gate = admissionValue(state) / (1 + variety / 2);
   const perSecond = Math.min(cookRate, seatRate, carryRate);
   const earned = Math.floor(
-    perSecond * capped * coinValue(state.levels.price) * worth * 0.75,
+    perSecond * capped * (coinValue(state.levels.price) * worth + gate) * 0.75,
   );
   if (earned <= 0) return null;
 
