@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/apply-scrap-controls.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/apply-scrap-controls.mjs",
     "build": "next build",
     "start": "next start",
+    "prelint": "node scripts/apply-scrap-controls.mjs",
     "lint": "eslint ."
   },
   "dependencies": {
