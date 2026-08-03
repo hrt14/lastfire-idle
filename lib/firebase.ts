@@ -49,7 +49,7 @@ export const sameSiteAuth = () => {
 };
 
 /** 同じドメイン方式に切り替える（切り替えたら開き直す） */
-export const useSameSiteAuth = (on: boolean) => {
+export const setSameSiteAuth = (on: boolean) => {
   try {
     if (on) window.localStorage.setItem(SAME_KEY, "1");
     else window.localStorage.removeItem(SAME_KEY);

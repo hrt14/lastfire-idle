@@ -23,14 +23,14 @@ import {
   configMark,
   dbClient,
   sameSiteAuth,
-  useSameSiteAuth,
+  setSameSiteAuth,
 } from "@/lib/firebase";
 
 export { cloudReady, sameSiteAuth };
 
 /** ログインの受け口を切り替えて開き直す（スマホで戻ってこないとき用） */
 export const switchAuthRoute = (on: boolean) => {
-  useSameSiteAuth(on);
+  setSameSiteAuth(on);
   window.location.reload();
 };
 
