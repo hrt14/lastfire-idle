@@ -390,12 +390,11 @@ export const advanceScrap = (state: ScrapState, dtMs: number): ScrapState => {
       next.inputs[machine.id] -= 1;
       const made = Math.min(machineBatch(next, machine.id), limit - next.resources[machine.output]);
       next.resources[machine.output] += made;
-      next.credits += machine.reward * made;
       next.totalActions += made;
     }
   }
 
-  // Opening tutorial recovery: the first three sorted pieces always fund the crusher.
+  // Opening tutorial: the first three sorted pieces automatically build the crusher.
   // This also recovers saves that became stuck while holding output at the sorter.
   if (next.unlocked === 1 && next.credits < 45) {
     const carriedSorted = next.carry.kind === "sorted" ? next.carry.amount : 0;
@@ -411,8 +410,9 @@ export const advanceScrap = (state: ScrapState, dtMs: number): ScrapState => {
         remaining -= fromCarry;
         if (next.carry.amount <= 0) next.carry = { kind: null, amount: 0 };
       }
-      next.credits = 45;
+      next.credits = 0;
       next.totalSold = Math.max(next.totalSold, 3);
+      next.unlocked = Math.max(next.unlocked, 2);
     }
   }
 
