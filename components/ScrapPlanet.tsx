@@ -39,7 +39,6 @@ import { startCloud } from "@/lib/cloud";
 
 const FONT = `700 11px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
 const SMALL = `700 9px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
-const PLAYER_RADIUS = 14;
 const INTERACT_RADIUS = 34;
 
 const distance = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y);
