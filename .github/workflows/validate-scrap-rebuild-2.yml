@@ -1,3 +1,4 @@
+# Trigger final validation after the workflow exists on the branch.
 name: Revalidate Scrap Planet rebuild
 
 on:
