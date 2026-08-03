@@ -1,0 +1,52 @@
+install=0
+lint=0
+build=1
+
+--- lint tail ---
+
+> lastfire-idle@0.1.0 lint
+> eslint .
+
+
+/home/runner/work/lastfire-idle/lastfire-idle/components/ScrapPlanet.tsx
+  42:7  warning  'PLAYER_RADIUS' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 1 problem (0 errors, 1 warning)
+
+
+--- build tail ---
+
+> lastfire-idle@0.1.0 build
+> next build
+
+⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+▲ Next.js 16.2.12 (Turbopack)
+
+  Creating an optimized production build ...
+
+> Build error occurred
+Error: Turbopack build failed with 1 errors:
+./components/ScrapPlanet.module.css
+Transforming CSS failed
+Selector "*" is not pure. Pure selectors must contain at least one local class or id.
+
+Import traces:
+  Client Component Browser:
+    ./components/ScrapPlanet.module.css [Client Component Browser]
+    ./components/ScrapPlanet.tsx [Client Component Browser]
+    ./components/ScrapPlanet.tsx [Server Component]
+    ./app/scrap/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ScrapPlanet.module.css [Client Component SSR]
+    ./components/ScrapPlanet.tsx [Client Component SSR]
+    ./components/ScrapPlanet.tsx [Server Component]
+    ./app/scrap/page.tsx [Server Component]
+
+
+    at ignore-listed frames
