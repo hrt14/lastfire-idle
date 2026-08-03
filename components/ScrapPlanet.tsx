@@ -10,6 +10,8 @@ import {
   advanceScrap,
   bottleneck,
   carryCapacity,
+  carryTotal,
+  topCarry,
   createScrapState,
   deposit,
   isAutomated,
@@ -24,8 +26,7 @@ import {
   purchaseRemaining,
   purchases,
   resources,
-  saleValue,
-  sellCarried,
+  sellFinished,
   type MachineDef,
   type Purchase,
   type ResourceId,
@@ -73,7 +74,8 @@ const sourceFor = (machine: MachineDef): Vec => {
 
 const sample = (state: ScrapState) => ({
   credits: state.credits,
-  carry: state.carry,
+  carryTotal: carryTotal(state),
+  carryTop: topCarry(state),
   capacity: carryCapacity(state),
   unlocked: state.unlocked,
   automated: state.automated.length,
@@ -459,16 +461,19 @@ const drawPlayer = (
     ctx.ellipse(x, y - 28 + bob, 11, 5, 0, 0, Math.PI * 2);
     ctx.fill();
   }
-  if (state.carry.kind && state.carry.amount > 0) {
-    const item = resources[state.carry.kind];
-    for (let i = 0; i < Math.min(5, state.carry.amount); i += 1) {
+  // 手持ちを、種類ごとに積んで見せる（複数の種類を同時に持てる）
+  let stack = 0;
+  for (const [kind, count] of Object.entries(state.bag)) {
+    const item = resources[kind as ResourceId];
+    for (let i = 0; i < (count ?? 0) && stack < 6; i += 1) {
       ctx.fillStyle = "rgba(15,23,42,0.88)";
-      roundRect(ctx, x - 10, y - 45 - i * 12 + bob, 20, 11, 4);
+      roundRect(ctx, x - 10, y - 45 - stack * 12 + bob, 20, 11, 4);
       ctx.fill();
       ctx.font = `700 10px system-ui`;
       ctx.textAlign = "center";
       ctx.fillStyle = item.color;
-      ctx.fillText(item.icon, x, y - 36 - i * 12 + bob);
+      ctx.fillText(item.icon, x, y - 36 - stack * 12 + bob);
+      stack += 1;
     }
   }
 };
@@ -543,42 +548,35 @@ export default function ScrapPlanet() {
         0,
         machineCapacity(next, firstMachine.id) - next.inputs[firstMachine.id],
       );
+      // ゴミ拾い: 手がいっぱいでなく、選別機に入る余地があるあいだ拾う
       if (
-        !next.carry.kind &&
+        carryTotal(next) < carryCapacity(next) &&
         rawRoom > 0 &&
         distance(player, { x: SOURCE_POS.x, y: SOURCE_POS.y + 62 }) < 78
       ) {
-        next = pickup(next, "raw", Math.min(carryCapacity(next), rawRoom));
+        next = pickup(next, "raw", Math.min(carryCapacity(next) - carryTotal(next), rawRoom));
       }
       for (const machine of machines) {
         if (!machineUnlocked(next, machine.id)) continue;
         const nearMachine = distance(player, machine.pos) < 88;
         const nearInput = distance(player, inputPos(machine)) < INTERACT_RADIUS;
         const nearOutput = distance(player, outputPos(machine)) < INTERACT_RADIUS;
-        if (next.carry.kind === machine.input && (nearInput || nearMachine)) {
+        // 持っているうち、その機械が受け取る種類を投入する
+        if ((next.bag[machine.input] ?? 0) > 0 && (nearInput || nearMachine)) {
           next = deposit(next, machine.id, carryCapacity(next));
         }
+        // 完成品を受け取る（手に余りがあれば、別の種類も一緒に持てる）
         if (
-          (!next.carry.kind || next.carry.kind === machine.output) &&
+          carryTotal(next) < carryCapacity(next) &&
           next.resources[machine.output] > 0 &&
           (nearOutput || nearMachine)
         ) {
-          next = pickup(next, machine.output, carryCapacity(next));
+          next = pickup(next, machine.output, carryCapacity(next) - carryTotal(next));
         }
       }
-      // 取引所では売る。ただし、まだ加工できる素材（建てた機械が受け取れる物）は
-      // 売らずに運ばせる。売れるのは行き止まりの完成品だけ（誤爆防止）
-      const canProcess =
-        !!next.carry.kind &&
-        machines.some(
-          (machine) =>
-            machineUnlocked(next, machine.id) && machine.input === next.carry.kind,
-        );
-      if (
-        !canProcess &&
-        distance(player, { x: SHIP_POS.x, y: SHIP_POS.y + 40 }) < 60
-      ) {
-        next = sellCarried(next, carryCapacity(next));
+      // 取引所では、行き止まりの完成品だけ売る（まだ加工できる物は運ばせる）
+      if (distance(player, { x: SHIP_POS.x, y: SHIP_POS.y + 40 }) < 60) {
+        next = sellFinished(next);
       }
       return next;
     };
@@ -739,7 +737,7 @@ export default function ScrapPlanet() {
     setHud(sample(next));
   }, []);
 
-  const carry = hud.carry.kind ? resources[hud.carry.kind as ResourceId] : null;
+  const carry = hud.carryTop ? resources[hud.carryTop] : null;
 
   return (
     <main className={styles.app}>
@@ -775,7 +773,7 @@ export default function ScrapPlanet() {
       <footer className={styles.dock}>
         <div className={styles.carry}>
           <span>{carry?.icon ?? "📦"}</span>
-          <strong>{hud.carry.amount}<small> / {hud.capacity}</small></strong>
+          <strong>{hud.carryTotal}<small> / {hud.capacity}</small></strong>
           <small>{carry?.short ?? "手ぶら"}</small>
         </div>
         <div className={styles.progress}>

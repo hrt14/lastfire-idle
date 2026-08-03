@@ -200,7 +200,8 @@ export type ScrapState = {
   levels: Record<MachineId, number>;
   unlocked: number;
   automated: string[];
-  carry: { kind: ResourceId | null; amount: number };
+  /** 手持ち。種類ごとの数（複数の種類を同時に持てる） */
+  bag: Partial<Record<ResourceId, number>>;
   carryLevel: number;
   speedLevel: number;
   paid: Record<string, number>;
@@ -223,7 +224,7 @@ export const createScrapState = (): ScrapState => ({
   levels: machineRecord(),
   unlocked: 1,
   automated: [],
-  carry: { kind: null, amount: 0 },
+  bag: {},
   carryLevel: 0,
   speedLevel: 0,
   paid: {},
@@ -261,10 +262,21 @@ export const fromScrapPersisted = (saved: ScrapPersisted | undefined): ScrapStat
   const automated = Array.isArray(saved.automated)
     ? saved.automated.filter((id): id is string => typeof id === "string")
     : [];
-  const carryKind =
-    saved.carry?.kind && saved.carry.kind in resources
-      ? (saved.carry.kind as ResourceId)
-      : null;
+  // 手持ち: 新しい bag があればそれを、古い { kind, amount } なら移し替える
+  const bag: Partial<Record<ResourceId, number>> = {};
+  const savedBag = (saved as { bag?: unknown }).bag;
+  if (savedBag && typeof savedBag === "object") {
+    for (const id of Object.keys(resources) as ResourceId[]) {
+      const n = Math.max(0, Math.floor(finite((savedBag as Record<string, unknown>)[id], 0)));
+      if (n > 0) bag[id] = n;
+    }
+  } else {
+    const legacy = (saved as { carry?: { kind?: string; amount?: number } }).carry;
+    if (legacy?.kind && legacy.kind in resources) {
+      const n = Math.max(0, Math.floor(finite(legacy.amount, 0)));
+      if (n > 0) bag[legacy.kind as ResourceId] = n;
+    }
+  }
   return {
     ...base,
     credits: Math.max(0, finite(saved.credits, base.credits)),
@@ -278,10 +290,7 @@ export const fromScrapPersisted = (saved: ScrapPersisted | undefined): ScrapStat
     levels: safeMachineRecord(saved.levels),
     unlocked: Math.max(1, Math.min(machines.length, Math.floor(finite(saved.unlocked, 1)))),
     automated: Array.from(new Set(automated)),
-    carry: {
-      kind: carryKind,
-      amount: carryKind ? Math.max(0, Math.floor(finite(saved.carry?.amount, 0))) : 0,
-    },
+    bag,
     carryLevel: Math.max(0, Math.min(12, Math.floor(finite(saved.carryLevel, 0)))),
     speedLevel: Math.max(0, Math.min(12, Math.floor(finite(saved.speedLevel, 0)))),
     paid: saved.paid && typeof saved.paid === "object" ? { ...saved.paid } : {},
@@ -299,6 +308,26 @@ export const fromScrapPersisted = (saved: ScrapPersisted | undefined): ScrapStat
 export const toScrapPersisted = (state: ScrapState): ScrapPersisted => ({ ...state });
 
 export const carryCapacity = (state: ScrapState) => 3 + state.carryLevel;
+
+/** 手持ちの合計 */
+export const carryTotal = (state: ScrapState) =>
+  Object.values(state.bag).reduce((sum, n) => sum + (n ?? 0), 0);
+
+/** その種類を何個持っているか */
+export const carryOf = (state: ScrapState, kind: ResourceId) => state.bag[kind] ?? 0;
+
+/** 手持ちで、いちばん多い種類（HUD・見た目用） */
+export const topCarry = (state: ScrapState): ResourceId | null => {
+  let best: ResourceId | null = null;
+  let most = 0;
+  for (const [kind, n] of Object.entries(state.bag)) {
+    if ((n ?? 0) > most) {
+      most = n ?? 0;
+      best = kind as ResourceId;
+    }
+  }
+  return best;
+};
 export const moveSpeed = (state: ScrapState) => 128 * (1 + state.speedLevel * 0.1);
 export const machineCapacity = (state: ScrapState, id: MachineId) =>
   4 + state.levels[id] * 2;
@@ -332,7 +361,7 @@ const cloneState = (state: ScrapState): ScrapState => ({
   robotProgress: { ...state.robotProgress },
   levels: { ...state.levels },
   automated: [...state.automated],
-  carry: { ...state.carry },
+  bag: { ...state.bag },
   paid: { ...state.paid },
   player: { ...state.player },
 });
@@ -425,15 +454,13 @@ export const pickup = (
   amount = 1,
 ): ScrapState => {
   if (state.resources[kind] < 1) return state;
-  if (state.carry.kind && state.carry.kind !== kind) return state;
-  const room = carryCapacity(state) - state.carry.amount;
+  const room = carryCapacity(state) - carryTotal(state);
   if (room <= 0) return state;
   const moved = Math.min(amount, room, Math.floor(state.resources[kind]));
   if (moved <= 0) return state;
   const next = cloneState(state);
   next.resources[kind] -= moved;
-  next.carry.kind = kind;
-  next.carry.amount += moved;
+  next.bag[kind] = (next.bag[kind] ?? 0) + moved;
   next.totalActions += moved;
   return next;
 };
@@ -441,27 +468,58 @@ export const pickup = (
 export const deposit = (state: ScrapState, id: MachineId, amount = 1): ScrapState => {
   const machine = machineById.get(id)!;
   if (!machineUnlocked(state, id)) return state;
-  if (state.carry.kind !== machine.input || state.carry.amount <= 0) return state;
+  const have = state.bag[machine.input] ?? 0;
+  if (have <= 0) return state;
   const room = machineCapacity(state, id) - state.inputs[id];
-  const moved = Math.min(amount, room, state.carry.amount);
+  const moved = Math.min(amount, room, have);
   if (moved <= 0) return state;
   const next = cloneState(state);
   next.inputs[id] += moved;
-  next.carry.amount -= moved;
-  if (next.carry.amount <= 0) next.carry = { kind: null, amount: 0 };
+  next.bag[machine.input] = have - moved;
+  if ((next.bag[machine.input] ?? 0) <= 0) delete next.bag[machine.input];
   next.totalActions += moved;
   return next;
 };
 
-export const sellCarried = (state: ScrapState, amount = 1): ScrapState => {
-  const kind = state.carry.kind;
-  if (!kind || kind === "raw" || state.carry.amount <= 0) return state;
-  const price = saleValue(kind);
-  const sold = Math.min(amount, state.carry.amount);
+/**
+ * 手持ちのうち、行き止まりの完成品だけを売る。
+ * まだ建てた機械が受け取れる種類は、売らずに残す（まちがい売り防止）。
+ */
+export const sellFinished = (state: ScrapState): ScrapState => {
   const next = cloneState(state);
-  next.carry.amount -= sold;
-  if (next.carry.amount <= 0) next.carry = { kind: null, amount: 0 };
-  next.credits += sold * price;
+  let sold = 0;
+  for (const [kind, count] of Object.entries(next.bag) as [ResourceId, number][]) {
+    if (kind === "raw" || count <= 0) continue;
+    const downstream = machines.some(
+      (machine) => machineUnlocked(next, machine.id) && machine.input === kind,
+    );
+    if (downstream) continue;
+    delete next.bag[kind];
+    next.credits += count * saleValue(kind);
+    sold += count;
+  }
+  if (sold <= 0) return state;
+  next.totalSold += sold;
+  next.totalActions += sold;
+  return next;
+};
+
+/** 売れる種類（raw 以外）を、手持ちからまとめて売る */
+export const sellCarried = (state: ScrapState, amount = 1): ScrapState => {
+  const next = cloneState(state);
+  let sold = 0;
+  let budget = amount;
+  for (const [kind, count] of Object.entries(next.bag) as [ResourceId, number][]) {
+    if (budget <= 0) break;
+    if (kind === "raw" || count <= 0) continue;
+    const take = Math.min(budget, count);
+    next.bag[kind] = count - take;
+    if ((next.bag[kind] ?? 0) <= 0) delete next.bag[kind];
+    next.credits += take * saleValue(kind);
+    sold += take;
+    budget -= take;
+  }
+  if (sold <= 0) return state;
   next.totalSold += sold;
   next.totalActions += sold;
   return next;
@@ -591,17 +649,18 @@ export const purchaseRemaining = (state: ScrapState, purchase: Purchase) =>
   Math.max(0, purchase.cost - (state.paid[purchase.id] ?? 0));
 
 export const objective = (state: ScrapState): string => {
-  if (state.carry.kind) {
+  const top = topCarry(state);
+  if (top) {
     const machine = machines.find(
-      (item) => machineUnlocked(state, item.id) && item.input === state.carry.kind,
+      (item) => machineUnlocked(state, item.id) && item.input === top,
     );
     if (machine) {
       const room = machineCapacity(state, machine.id) - state.inputs[machine.id];
       if (room > 0) return `${machine.name}へ運ぼう`;
       return `${machine.name}が満杯。加工が進むまで少し待とう`;
     }
-    if (state.carry.kind !== "raw") {
-      return `再生資源取引所へ運ぼう（1個 ${saleValue(state.carry.kind).toLocaleString("ja-JP")} C）`;
+    if (top !== "raw") {
+      return `再生資源取引所へ運ぼう（1個 ${saleValue(top).toLocaleString("ja-JP")} C）`;
     }
     return "磁力選別機が満杯。手持ちのゴミが入るまで少し待とう";
   }
