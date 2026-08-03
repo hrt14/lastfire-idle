@@ -543,13 +543,44 @@ export type Staff = {
 
 export type Player = {
   pos: Vec;
-  carry: number;
-  /** いま手に持っているものの種類（違うものは同時に持てない） */
-  item: ItemKind | null;
+  /** いま持っているもの。種類ごとの数（複数の種類を同時に持てる） */
+  bag: Record<string, number>;
   moving: boolean;
   step: number;
   /** 次に渡せるまでの間（リズミカルに1つずつ渡すための待ち） */
   serveCd?: number;
+};
+
+/** いま持っている合計の数 */
+export const carryTotal = (player: Player) =>
+  Object.values(player.bag).reduce((sum, n) => sum + n, 0);
+
+/** その種類を何個持っているか */
+export const carryOf = (player: Player, kind: ItemKind) => player.bag[kind] ?? 0;
+
+/** 代表の種類（HUD やアイコン用。いちばん多いもの） */
+export const topKind = (player: Player): ItemKind | null => {
+  let best: ItemKind | null = null;
+  let most = 0;
+  for (const [kind, n] of Object.entries(player.bag)) {
+    if (n > most) {
+      most = n;
+      best = kind;
+    }
+  }
+  return best;
+};
+
+const addToBag = (player: Player, kind: ItemKind, n = 1) => {
+  player.bag[kind] = (player.bag[kind] ?? 0) + n;
+};
+
+const takeFromBag = (player: Player, kind: ItemKind, n: number) => {
+  const have = player.bag[kind] ?? 0;
+  const took = Math.min(have, n);
+  if (took >= have) delete player.bag[kind];
+  else player.bag[kind] = have - took;
+  return took;
 };
 
 export type Persisted = {
@@ -698,7 +729,7 @@ export const createState = (): ShopState => ({
   served: 0,
   playTime: 0,
   lastSeen: Date.now(),
-  player: { pos: { x: 180, y: 250 }, carry: 0, item: null, moving: false, step: 0, serveCd: 0 },
+  player: { pos: { x: 180, y: 250 }, bag: {}, moving: false, step: 0, serveCd: 0 },
   staff: [],
   customers: [],
   coins: [],
@@ -1572,6 +1603,39 @@ const serve = (
   return need;
 };
 
+/**
+ * プレイヤーが、持っているどれか1種類を、待っている客へ1人ぶん渡す。
+ * いちばん近い、渡せる相手を選ぶ。渡せたら true。
+ */
+const serveFromBag = (state: ShopState, player: Player): boolean => {
+  let best: Customer | null = null;
+  let bestSeat: SeatSpec | null = null;
+  let bestReach = Infinity;
+  for (const customer of state.customers) {
+    if (customer.state !== "waiting") continue;
+    const seat = seatById.get(customer.seatId);
+    if (!seat || seatMode(seat) === "shelf") continue;
+    const need = seatCost(seat);
+    if (carryOf(player, seatNeeds(seat)) < need) continue;
+    const reach = Math.min(
+      dist(player.pos, seat.serve),
+      dist(player.pos, seat.pos),
+    );
+    if (reach > SERVE_RADIUS || reach >= bestReach) continue;
+    best = customer;
+    bestSeat = seat;
+    bestReach = reach;
+  }
+  if (!best || !bestSeat) return false;
+  const need = seatCost(bestSeat);
+  takeFromBag(player, seatNeeds(bestSeat), need);
+  best.state = "eating";
+  best.timer = seatMode(bestSeat) === "table" ? EAT_TIME * 1.6 : EAT_TIME;
+  const at = trayPos(bestSeat);
+  pop(state, { x: at.x, y: at.y - 12 }, need > 1 ? `${need}つ どうぞ！` : "どうぞ！");
+  return true;
+};
+
 const collectCoin = (state: ShopState, coin: Coin) => {
   state.money += coin.value;
   coin.id = -1;
@@ -1615,24 +1679,32 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
   if (state.comboLeft <= 0) state.combo = 0;
   player.serveCd = Math.max(0, (player.serveCd ?? 0) - dt);
 
-  const got = pickUp(state, player.pos, player.carry, maxCarry(state), player.item);
-  if (got) {
-    player.item = got;
-    player.carry += 1;
+  // 近くの出し口から受け取る（複数の種類を同時に持てる）
+  if (carryTotal(player) < maxCarry(state)) {
+    const got = pickUp(state, player.pos, 0, 1, null);
+    if (got) addToBag(player, got, 1);
   }
-  if (player.carry > 0) {
-    // まず作業場の受け口・棚へ（まとめて）。爽快感の連鎖は客に渡すときだけ
-    const stocked =
-      dropAtStation(state, player.pos, player.item, player.carry) ||
-      (player.item === "goods" && restock(state, player.pos) ? 1 : 0);
-    if (stocked > 0) {
-      player.carry -= stocked;
-      if (player.carry === 0) player.item = null;
-    } else if ((player.serveCd ?? 0) <= 0 && player.item !== "goods") {
-      // 待っている客へ、1つずつリズミカルに渡す（連鎖でチャイムが上がる）
-      const served = serve(state, player.pos, player.item, player.carry, true);
-      if (served > 0) {
-        player.carry -= served;
+
+  if (carryTotal(player) > 0) {
+    // まず、持っている種類を作業場の受け口・棚へ（まとめて）
+    let stocked = false;
+    for (const kind of Object.keys(player.bag)) {
+      const put = dropAtStation(state, player.pos, kind, carryOf(player, kind));
+      if (put > 0) {
+        takeFromBag(player, kind, put);
+        stocked = true;
+        break;
+      }
+      if (kind === "goods" && restock(state, player.pos)) {
+        takeFromBag(player, kind, 1);
+        stocked = true;
+        break;
+      }
+    }
+    // 客へは、1つずつリズミカルに渡す（連鎖でチャイムが上がる）
+    if (!stocked && (player.serveCd ?? 0) <= 0) {
+      const served = serveFromBag(state, player);
+      if (served) {
         player.serveCd = SERVE_RHYTHM;
         state.combo += 1;
         state.comboLeft = COMBO_WINDOW;
@@ -1640,12 +1712,11 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
         if (state.combo >= 2) {
           pop(state, { x: player.pos.x, y: player.pos.y - 42 }, `${state.combo}れんさ！`);
         }
-        if (player.carry === 0) player.item = null;
       }
     }
   }
   // 手ぶらのときは、残った皿を片づける
-  if (player.carry === 0) clearTable(state, player.pos);
+  if (carryTotal(player) === 0) clearTable(state, player.pos);
 
   // 入場券を売る・改札を通す（近づくだけ）
   if (hasGate()) {
@@ -2407,8 +2478,9 @@ export const currentObjective = (state: ShopState): Objective => {
     }
   }
 
+  const total = carryTotal(player);
   // 商品を持っているときは、空いている棚へ
-  if (player.carry > 0 && player.item === "goods") {
+  if (carryOf(player, "goods") > 0) {
     const shelf = openSeats(state)
       .filter(
         (seat) => seatMode(seat) === "shelf" && shelfStock(state, seat.id) < SHELF_MAX,
@@ -2419,20 +2491,20 @@ export const currentObjective = (state: ShopState): Objective => {
     }
   }
 
-  if (player.carry > 0 && waiting.length > 0) {
+  if (total > 0 && waiting.length > 0) {
     const seat = waiting
       .map((customer) => seatById.get(customer.seatId))
       .find(
         (item): item is SeatSpec =>
-          !!item && seatMode(item) !== "shelf" && seatNeeds(item) === player.item,
+          !!item && seatMode(item) !== "shelf" && carryOf(player, seatNeeds(item)) > 0,
       );
     if (seat) {
       const need = seatCost(seat);
-      if (need > player.carry) {
+      if (need > carryOf(player, seatNeeds(seat))) {
         return {
           kind: "pickup",
           pos: null,
-          label: `${seat.label}には ${need}つ必要（いま ${player.carry}）`,
+          label: `${seat.label}には ${need}つ必要（いま ${carryOf(player, seatNeeds(seat))}）`,
         };
       }
       return {
@@ -2449,7 +2521,7 @@ export const currentObjective = (state: ShopState): Objective => {
   }
 
   // 手ぶらのときは、皿の残ったテーブルを片づける
-  if (player.carry === 0) {
+  if (total === 0) {
     const table = openSeats(state)
       .filter((seat) => seatMode(seat) === "table" && isDirty(state, seat.id))
       .sort((a, b) => dist(player.pos, a.serve) - dist(player.pos, b.serve))[0];
@@ -2459,7 +2531,7 @@ export const currentObjective = (state: ShopState): Objective => {
   }
 
   // 空いている棚があれば、倉庫から商品を取りに行く
-  if (player.carry === 0) {
+  if (total === 0) {
     const shelf = openSeats(state).find(
       (seat) => seatMode(seat) === "shelf" && shelfStock(state, seat.id) < SHELF_MAX,
     );
@@ -2475,13 +2547,9 @@ export const currentObjective = (state: ShopState): Objective => {
     }
   }
 
-  if (player.carry < maxCarry(state)) {
+  if (total < maxCarry(state)) {
     const stove = openStoves(state)
-      .filter(
-        (item) =>
-          (state.ready[item.id] ?? 0) > 0 &&
-          (!player.item || stoveItem(item) === player.item),
-      )
+      .filter((item) => (state.ready[item.id] ?? 0) > 0)
       .sort((a, b) => dist(player.pos, a.pos) - dist(player.pos, b.pos))[0];
     if (stove) {
       return {
@@ -2851,7 +2919,7 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
   consider(state.player.pos, 24, () => ({
     title: "あなた",
     lines: [
-      `運べる数 ${state.player.carry} / ${maxCarry(state)}`,
+      `運べる数 ${carryTotal(state.player)} / ${maxCarry(state)}`,
       `足の速さ +${state.levels.speed * 10}%（スタッフにも +${
         state.levels.speed * 5
       }%）`,

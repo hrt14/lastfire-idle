@@ -19,6 +19,8 @@ import {
   hasAuto,
   openSeats,
   openStoves,
+  carryTotal,
+  topKind,
   seatCost,
   seatMode,
   isDirty,
@@ -4438,8 +4440,13 @@ export default function Shop({ onSample, paused }: Props) {
             );
           }
           ctx.restore();
-          for (let i = 0; i < player.carry; i += 1) {
-            held(ctx, player.item, player.pos.x, player.pos.y - 34 - i * 6);
+          // 持っているものを、種類ごとに積んで見せる（複数種類を同時に持てる）
+          let stackIndex = 0;
+          for (const [kind, count] of Object.entries(player.bag)) {
+            for (let i = 0; i < count; i += 1) {
+              held(ctx, kind, player.pos.x, player.pos.y - 34 - stackIndex * 6);
+              stackIndex += 1;
+            }
           }
         },
       });
@@ -4754,9 +4761,9 @@ export default function Shop({ onSample, paused }: Props) {
         sampleAt = now;
         sampleRef.current({
           money: state.money,
-          carry: state.player.carry,
+          carry: carryTotal(state.player),
           maxCarry: maxCarry(state),
-          item: state.player.item,
+          item: topKind(state.player),
           served: state.served,
           staff: state.staff.length,
           levels: { ...state.levels },
