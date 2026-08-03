@@ -1,0 +1,162 @@
+name: Fix Scrap Planet controls
+
+on:
+  push:
+    branches:
+      - agent/fix-scrap-controls
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-scrap-controls
+
+      - name: Align controls with existing stages
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          component = Path('components/ScrapPlanet.tsx')
+          text = component.read_text()
+
+          def replace_once(old: str, new: str, label: str):
+              global text
+              if old not in text:
+                  raise SystemExit(f'{label} anchor not found')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              'const INTERACT_RADIUS = 34;',
+              'const INTERACT_RADIUS = 46;',
+              'interaction radius',
+          )
+          replace_once(
+              '  const interactionRef = useRef(0);\n',
+              '',
+              'interaction timer ref',
+          )
+          replace_once(
+              '    let raf = 0;\n    let last = performance.now();',
+              '    let raf = 0;\n    let last = performance.now();\n    const camera = { x: 0, y: 0 };',
+              'camera state',
+          )
+          replace_once(
+              '        next = pickup(next, "raw");',
+              '        next = pickup(next, "raw", carryCapacity(next));',
+              'source pickup',
+          )
+          replace_once(
+              '        if (distance(player, inputPos(machine)) < INTERACT_RADIUS) next = deposit(next, machine.id);',
+              '        if (distance(player, inputPos(machine)) < INTERACT_RADIUS) {\n          next = deposit(next, machine.id, carryCapacity(next));\n        }',
+              'machine deposit',
+          )
+          replace_once(
+              '        if (distance(player, outputPos(machine)) < INTERACT_RADIUS) next = pickup(next, machine.output);',
+              '        if (distance(player, outputPos(machine)) < INTERACT_RADIUS) {\n          next = pickup(next, machine.output, carryCapacity(next));\n        }',
+              'machine pickup',
+          )
+          replace_once(
+              '        next = sellCarriedRobots(next);',
+              '        next = sellCarriedRobots(next, carryCapacity(next));',
+              'shipping',
+          )
+          replace_once(
+              '''      interactionRef.current += dt;
+      if (interactionRef.current >= 170) {
+        interactionRef.current = 0;
+        state = interact(state);
+      }''',
+              '      state = interact(state);',
+              'per-frame interaction',
+          )
+          replace_once(
+              '''        const camera = {
+          x: clamp(state.player.x - width / 2, 0, Math.max(0, SCRAP_WORLD.w - width)),
+          y: clamp(state.player.y - height / 2, 0, Math.max(0, SCRAP_WORLD.h - height)),
+        };''',
+              '''        const targetCamera = {
+          x: clamp(state.player.x - width / 2, 0, Math.max(0, SCRAP_WORLD.w - width)),
+          y: clamp(state.player.y - height / 2, 0, Math.max(0, SCRAP_WORLD.h - height)),
+        };
+        const follow = Math.min(1, (dt / 1000) * 6);
+        camera.x += (targetCamera.x - camera.x) * follow;
+        camera.y += (targetCamera.y - camera.y) * follow;''',
+              'smooth camera',
+          )
+          replace_once(
+              '''  const pointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();''',
+              '''  const pointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();''',
+              'pointer down',
+          )
+          replace_once(
+              '''  const pointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const joy = joystickRef.current;''',
+              '''  const pointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    const joy = joystickRef.current;''',
+              'pointer move',
+          )
+          replace_once(
+              '''    const length = Math.hypot(rawX, rawY);
+    const max = 38;
+    const scale = length > max ? max / length : 1;
+    joystickRef.current = {
+      ...joy,
+      x: joy.startX + rawX * scale,
+      y: joy.startY + rawY * scale,
+      dx: clamp(rawX / max, -1, 1),
+      dy: clamp(rawY / max, -1, 1),
+    };''',
+              '''    const length = Math.hypot(rawX, rawY);
+    const maxVisual = 42;
+    const visualScale = length > maxVisual ? maxVisual / length : 1;
+    const deadZone = 4;
+    const strength = length <= deadZone ? 0 : Math.min(1, (length - deadZone) / 30);
+    const nx = length > 0 ? rawX / length : 0;
+    const ny = length > 0 ? rawY / length : 0;
+    joystickRef.current = {
+      ...joy,
+      x: joy.startX + rawX * visualScale,
+      y: joy.startY + rawY * visualScale,
+      dx: nx * strength,
+      dy: ny * strength,
+    };''',
+              'joystick response',
+          )
+
+          component.write_text(text)
+
+          engine = Path('lib/scrap.ts')
+          source = engine.read_text()
+          old = 'export const moveSpeed = (state: ScrapState) => 118 * (1 + state.speedLevel * 0.075);'
+          new = 'export const moveSpeed = (state: ScrapState) => 128 * (1 + state.speedLevel * 0.1);'
+          if old not in source:
+              raise SystemExit('move speed anchor not found')
+          engine.write_text(source.replace(old, new, 1))
+          PY
+
+      - name: Validate
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/fix-scrap-controls.yml
+
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/ScrapPlanet.tsx lib/scrap.ts .github/workflows/fix-scrap-controls.yml
+          git commit -m "Improve Scrap Planet controls"
+          git push origin HEAD:agent/fix-scrap-controls
