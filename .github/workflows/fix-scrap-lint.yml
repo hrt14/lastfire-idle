@@ -1,0 +1,49 @@
+name: Fix Scrap Planet lint
+
+on:
+  push:
+    branches:
+      - agent/scrap-planet
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/scrap-planet
+      - name: Patch lint issues
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('components/ScrapPlanet.tsx')
+          text = path.read_text()
+          import_anchor = 'import { useEffect, useMemo, useRef, useState } from "react";\n'
+          if 'import Link from "next/link";' not in text:
+              text = text.replace(import_anchor, import_anchor + 'import Link from "next/link";\n', 1)
+
+          old_effect = '''  useEffect(() => {\n    startCloud();\n    const loaded = loadScrap();\n    stateRef.current = loaded;\n    setState(loaded);\n    setMounted(true);\n  }, []);\n'''
+          new_effect = '''  useEffect(() => {\n    startCloud();\n    const frame = window.requestAnimationFrame(() => {\n      const loaded = loadScrap();\n      stateRef.current = loaded;\n      setState(loaded);\n      setMounted(true);\n    });\n    return () => window.cancelAnimationFrame(frame);\n  }, []);\n'''
+          if old_effect in text:
+              text = text.replace(old_effect, new_effect, 1)
+
+          text = text.replace(
+              '<a className={styles.back} href="/">\n          ← シリーズ選択\n        </a>',
+              '<Link className={styles.back} href="/">\n          ← シリーズ選択\n        </Link>',
+              1,
+          )
+          path.write_text(text)
+          PY
+          rm -f SCRAP_BUILD_STATUS.txt
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm .github/workflows/fix-scrap-lint.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/ScrapPlanet.tsx SCRAP_BUILD_STATUS.txt .github/workflows/fix-scrap-lint.yml
+          git commit -m "Fix Scrap Planet lint issues"
+          git push origin HEAD:agent/scrap-planet
