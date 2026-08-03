@@ -18,7 +18,7 @@ jobs:
           ref: agent/rebuild-scrap-game-loop
           fetch-depth: 0
 
-      - name: Fix generated template escaping
+      - name: Finalize gameplay patch
         shell: bash
         run: |
           python - <<'PY'
@@ -29,6 +29,18 @@ jobs:
               r'\`${machine.name}の投入口へ運ぼう\`',
               r'\`\${machine.name}の投入口へ運ぼう\`',
           )
+          source = source.replace(
+              'to: `  saleValue,\n  sellCarried,\n  type MachineDef,`',
+              'to: `  sellCarried,\n  type MachineDef,`',
+          )
+          marker = 'patch("lib/scrap.ts", [\n'
+          version_edits = '''patch("lib/scrap.ts", [
+  [/  version: 2;/, "  version: 3;", "state version type"],
+  [/  version: 2,/, "  version: 3,", "state version value"],
+  [/saved\\.version !== 2/, "saved.version !== 3", "saved version"],
+'''
+          if 'state version type' not in source:
+              source = source.replace(marker, version_edits)
           path.write_text(source)
           PY
 
@@ -72,6 +84,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add scripts/apply-scrap-controls.mjs SCRAP_LOOP_STATUS.txt
-          git commit -m "Fix and validate Scrap Planet loop" || true
+          git commit -m "Finalize and validate Scrap Planet loop" || true
           git push origin HEAD:agent/rebuild-scrap-game-loop
           exit "$exit_code"
