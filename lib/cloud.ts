@@ -22,17 +22,10 @@ import {
   cloudReady,
   configMark,
   dbClient,
-  sameSiteAuth,
-  setSameSiteAuth,
+  redirectLogin,
 } from "@/lib/firebase";
 
-export { cloudReady, sameSiteAuth };
-
-/** ログインの受け口を切り替えて開き直す（スマホで戻ってこないとき用） */
-export const switchAuthRoute = (on: boolean) => {
-  setSameSiteAuth(on);
-  window.location.reload();
-};
+export { cloudReady };
 
 export type Account = {
   uid: string;
@@ -205,19 +198,13 @@ export const startCloud = () => {
   });
 };
 
-/** スマホのブラウザはポップアップが閉じられるので、ページ移動でログインする */
-const preferRedirect = () =>
-  typeof window !== "undefined" &&
-  (window.matchMedia?.("(pointer: coarse)").matches ||
-    (navigator.maxTouchPoints ?? 0) > 0);
-
 export const signIn = async () => {
   const auth = authClient();
   if (!auth) return;
   const provider = new GoogleAuthProvider();
   setState({ status: "syncing", note: "ログインしています…" });
 
-  if (preferRedirect()) {
+  if (redirectLogin()) {
     try {
       await signInWithRedirect(auth, provider);
       return;

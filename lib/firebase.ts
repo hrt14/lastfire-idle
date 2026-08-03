@@ -23,43 +23,24 @@ const config = {
 /**
  * ログインの受け口。
  *
- * 既定は Firebase の受け口（*.firebaseapp.com）。
- * スマホの Safari はこの往復を遮ることがあるので、その場合だけ
- * 同じドメインで受ける方式に切り替えられるようにしてある
- * （?auth=same を付けて開くか、ログイン欄のリンクから。設定は端末に残る）。
+ * スマホのブラウザは「別ドメインへ飛んで戻る」ログインを遮るので、
+ * 公開ドメインでは受け口を同じドメインに置く（next.config.ts で中継）。
+ * パソコンはポップアップで完結するため、Firebase の受け口のままでよい。
  */
-const SAME_KEY = "working-planet-auth-same";
-
 const sameSiteHost = () =>
   typeof window !== "undefined" &&
   window.location.hostname === "working-planet.hitobito.jp";
 
-/** 同じドメインで受ける方式にするか */
-export const sameSiteAuth = () => {
-  if (typeof window === "undefined" || !sameSiteHost()) return false;
-  try {
-    if (new URLSearchParams(window.location.search).get("auth") === "same") {
-      window.localStorage.setItem(SAME_KEY, "1");
-      return true;
-    }
-    return window.localStorage.getItem(SAME_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
+const onPhone = () =>
+  typeof window !== "undefined" &&
+  (window.matchMedia?.("(pointer: coarse)").matches ||
+    (navigator.maxTouchPoints ?? 0) > 0);
 
-/** 同じドメイン方式に切り替える（切り替えたら開き直す） */
-export const setSameSiteAuth = (on: boolean) => {
-  try {
-    if (on) window.localStorage.setItem(SAME_KEY, "1");
-    else window.localStorage.removeItem(SAME_KEY);
-  } catch {
-    // 保存できない環境では何もしない
-  }
-};
+/** ページ移動でログインするか（スマホ） */
+export const redirectLogin = () => onPhone();
 
 const authDomain = () =>
-  sameSiteAuth() ? window.location.hostname : config.authDomain;
+  sameSiteHost() && onPhone() ? window.location.hostname : config.authDomain;
 
 /** いま使っている設定の目印（どのビルドが動いているかの確認用） */
 export const configMark = () =>

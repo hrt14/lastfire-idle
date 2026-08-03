@@ -895,18 +895,6 @@ button {
   color: var(--muted);
 }
 
-.account-swap {
-  display: block;
-  margin: -0.5rem 0 0.9rem;
-  padding: 0.2rem 0;
-  border: none;
-  background: none;
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-decoration: underline;
-}
-
 /* ---------- シリーズの見出し ---------- */
 
 .series-head {
