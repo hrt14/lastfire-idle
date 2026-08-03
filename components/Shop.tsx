@@ -3879,6 +3879,8 @@ export default function Shop({ onSample, paused }: Props) {
         busser: "#4f9e83",
         stocker: "#b5763f",
         server: "#c2402f",
+        seller: "#3f7fbf",
+        gatekeeper: "#2f6f5a",
       };
 
       for (const customer of state.customers) {
@@ -4051,6 +4053,51 @@ export default function Shop({ onSample, paused }: Props) {
                   ctx.fillStyle = "rgba(220,245,255,0.5)";
                   ctx.font = SMALL;
                   ctx.fillText("ふきふき", wx, wy - 34);
+                  ctx.font = FONT;
+                }
+              }
+              if (worker.kind === "seller") {
+                // 制帽と、手元の券つづり
+                ctx.fillStyle = "#26456b";
+                roundRect(ctx, wx - 8, wy - 31, 16, 6, 2);
+                ctx.fill();
+                ctx.fillStyle = "#1b3350";
+                roundRect(ctx, wx - 10, wy - 26, 20, 3, 1.5);
+                ctx.fill();
+                ctx.fillStyle = "#ffd166";
+                roundRect(ctx, wx + 8, wy - 12, 9, 7, 1.5);
+                ctx.fill();
+                ctx.fillStyle = "#c9962b";
+                roundRect(ctx, wx + 10, wy - 10, 5, 1.5, 0.75);
+                ctx.fill();
+                if (worker.charge > 0) {
+                  ctx.fillStyle = "rgba(255,225,150,0.75)";
+                  ctx.font = SMALL;
+                  ctx.fillText("1枚どうぞ", wx, wy - 36);
+                  ctx.font = FONT;
+                }
+              }
+              if (worker.kind === "gatekeeper") {
+                // 制帽と、改札ばさみ
+                ctx.fillStyle = "#1f4a3c";
+                roundRect(ctx, wx - 8, wy - 31, 16, 6, 2);
+                ctx.fill();
+                ctx.fillStyle = "#14342a";
+                roundRect(ctx, wx - 10, wy - 26, 20, 3, 1.5);
+                ctx.fill();
+                const snip = worker.charge > 0 ? Math.sin(time * 18) * 2 : 0;
+                ctx.strokeStyle = "#c8d4dd";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(wx + 8, wy - 12);
+                ctx.lineTo(wx + 15, wy - 15 - snip);
+                ctx.moveTo(wx + 8, wy - 12);
+                ctx.lineTo(wx + 15, wy - 9 + snip);
+                ctx.stroke();
+                if (worker.charge > 0) {
+                  ctx.fillStyle = "rgba(200,235,220,0.75)";
+                  ctx.font = SMALL;
+                  ctx.fillText("どうぞ", wx, wy - 36);
                   ctx.font = FONT;
                 }
               }

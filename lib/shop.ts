@@ -87,7 +87,11 @@ export type StaffKind =
   /** お土産屋の品出し係 */
   | "stocker"
   /** レストランの料理を運ぶ係 */
-  | "server";
+  | "server"
+  /** 入口で入場券を売る係 */
+  | "seller"
+  /** 改札でお客さんを通す係 */
+  | "gatekeeper";
 
 export type HireSpec = {
   id: string;
@@ -101,6 +105,10 @@ export type HireSpec = {
   area: number;
   /** この区画（area-N）が開くまで出てこない */
   unlockAfter?: string;
+  /** 店の外（歩道・並木道）に置く枠。入口の係など */
+  outside?: boolean;
+  /** 外の並び。0 は店より、1 は道より */
+  row?: number;
 };
 
 import { stageDefs, type StageDef, type StageId } from "@/data/stages";
@@ -259,6 +267,8 @@ const hireSub: Record<StaffKind, string> = {
   busser: "テーブルの皿を片づける",
   stocker: "倉庫から棚へ商品を並べる",
   server: "厨房の料理をテーブルへ運ぶ",
+  seller: "入口で入場券を売ってくれる",
+  gatekeeper: "改札でお客さんを通してくれる",
 };
 
 const buildPads = (): Pad[] => [
@@ -320,6 +330,8 @@ const buildPads = (): Pad[] => [
     price: hire.price,
     label: hire.label,
     sub: hireSub[hire.kind],
+    outside: hire.outside,
+    row: hire.row,
   })),
   ...upgrades.map((upgrade): Pad => ({
     id: `up-${upgrade.id}`,
@@ -580,14 +592,18 @@ const moveToward = (pos: Vec, target: Vec, speed: number, dt: number) => {
 };
 
 
-const makeStaff = (hire: HireSpec, id: number): Staff => ({
+/** 雇った場所。外の係は歩道の座標に置き直す */
+const hireHome = (state: ShopState, hire: HireSpec): Vec =>
+  hire.outside ? outsidePos(state, hire.pos.x, hire.row) : hire.pos;
+
+const makeStaff = (hire: HireSpec, id: number, at: Vec): Staff => ({
   id,
   kind: hire.kind,
-  pos: { ...hire.pos },
+  pos: { ...at },
   carry: 0,
   item: null,
   stoveId: hire.stoveId ?? null,
-  home: { ...hire.pos },
+  home: { ...at },
   area: hire.area,
   trips: 0,
   charge: 0,
@@ -703,7 +719,7 @@ export const fromPersisted = (input: unknown): ShopState => {
   state.staff = hires
     .filter((hire) => state.unlocked.includes(hire.id))
     .map((hire, index) => {
-      const worker = makeStaff(hire, index + 1);
+      const worker = makeStaff(hire, index + 1, hireHome(state, hire));
       // 券売機があるあいだ、レジ係はホール店員として働く
       if (ticket && worker.kind === "collector") worker.kind = "waiter";
       return worker;
@@ -906,7 +922,7 @@ const unlock = (state: ShopState, padId: string) => {
     state.cooking[padId] = 0;
   }
   const hire = hireById.get(padId);
-  if (hire) state.staff.push(makeStaff(hire, state.nextId++));
+  if (hire) state.staff.push(makeStaff(hire, state.nextId++, hireHome(state, hire)));
 
 
   const area = areaById.get(padId);
@@ -1194,6 +1210,17 @@ const atGate = (state: ShopState) =>
   state.customers.filter(
     (customer) => customer.state === "entering" && customer.timer >= 1,
   );
+
+const hasStaff = (state: ShopState, kind: StaffKind) =>
+  state.staff.some((worker) => worker.kind === kind);
+
+/** 入場券を、自分以外の誰か（係か機械）が売ってくれるか */
+export const sellsTickets = (state: ShopState) =>
+  hasEquip(state, "vend") || hasStaff(state, "seller");
+
+/** 改札を、自分以外の誰か（係か機械）が通してくれるか */
+export const opensGate = (state: ShopState) =>
+  hasEquip(state, "turnstile") || hasStaff(state, "gatekeeper");
 
 const pickUp = (
   state: ShopState,
@@ -1593,6 +1620,30 @@ const updateStaff = (state: ShopState, dt: number) => {
       continue;
     }
 
+    if (worker.kind === "seller" || worker.kind === "gatekeeper") {
+      // 入場券係・改札係: 持ち場に立って、並んだ人を1人ずつさばく
+      if (worker.charge > 0) {
+        worker.charge -= dt;
+        continue;
+      }
+      const selling = worker.kind === "seller";
+      const post = selling ? boothPos(state) : turnstilePos(state);
+      // 同じ持ち場に2人いても重ならないように、少しずらして立つ
+      const slot = state.staff
+        .filter((item) => item.kind === worker.kind)
+        .indexOf(worker);
+      const stand = { x: post.x + (slot % 2 === 0 ? -16 : 16), y: post.y - 14 };
+      const there = go(state, worker, stand, staffSpeed(state), dt);
+      if (!there) continue;
+      const guest = (selling ? atBooth(state) : atGate(state))[0];
+      if (!guest) continue;
+      if (selling) sellTicket(state, guest);
+      else letIn(state, guest);
+      worker.charge = AUTO_TIME * (selling ? 0.6 : 0.5);
+      worker.trips += 1;
+      continue;
+    }
+
     if (worker.kind === "collector") {
       // 集金係は高いお金から拾う。急ぐので少し速い
       let best: Coin | null = null;
@@ -1946,16 +1997,16 @@ export const currentObjective = (state: ShopState): Objective => {
   const waiting = state.customers.filter((c) => c.state === "waiting");
   const player = state.player;
 
-  // 入口の仕事が先（自動化するまでは自分でやる）
+  // 入口の仕事が先（係を雇うか機械を入れるまでは自分でやる）
   if (hasGate()) {
-    if (!hasEquip(state, "vend") && atBooth(state).length > 0) {
+    if (!sellsTickets(state) && atBooth(state).length > 0) {
       return {
         kind: "serve",
         pos: boothPos(state),
         label: `入場券を売ろう（${atBooth(state).length}人 待ち）`,
       };
     }
-    if (!hasEquip(state, "turnstile") && atGate(state).length > 0) {
+    if (!opensGate(state) && atGate(state).length > 0) {
       return {
         kind: "serve",
         pos: turnstilePos(state),
@@ -2104,9 +2155,11 @@ export const applyOffline = (
   const worth =
     open.reduce((sum, seat) => sum + (seat.value ?? 1), 0) /
     Math.max(1, open.length);
-  // 入場券は 1人につき1回。1人が何か所まわるかで割って、1回ぶんに直す
+  // 入場券は 1人につき1回。1人が何か所まわるかで割って、1回ぶんに直す。
+  // 留守のあいだ入口に立てるのは、係か機械がいるときだけ
   const variety = Math.min(9, Math.floor(open.length * 0.8));
-  const gate = admissionValue(state) / (1 + variety / 2);
+  const manned = sellsTickets(state) && opensGate(state);
+  const gate = manned ? admissionValue(state) / (1 + variety / 2) : 0;
   const perSecond = Math.min(cookRate, seatRate, carryRate);
   const earned = Math.floor(
     perSecond * capped * (coinValue(state.levels.price) * worth + gate) * 0.75,
@@ -2201,7 +2254,9 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
         `入場券は 1人 ${yen(admissionValue(state))}`,
         hasEquip(state, "vend")
           ? "自動入場券売機が売ってくれる"
-          : "近づくと売れる（自動入場券売機で自動になる）",
+          : hasStaff(state, "seller")
+            ? "入場券係が売ってくれる"
+            : "近づくと売れる（入場券係か自動入場券売機で自動になる）",
         `いま ${atBooth(state).length}人 待っている`,
       ],
       pos: boothPos(state),
@@ -2212,7 +2267,9 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
         "入場券を買った人がここから入る",
         hasEquip(state, "turnstile")
           ? "自動改札機が通してくれる"
-          : "近づくと通せる（自動改札機で自動になる）",
+          : hasStaff(state, "gatekeeper")
+            ? "入場ゲート係が通してくれる"
+            : "近づくと通せる（入場ゲート係か自動改札機で自動になる）",
         `いま ${atGate(state).length}人 待っている`,
       ],
       pos: turnstilePos(state),
@@ -2325,6 +2382,16 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
         lines.push("全体を仕切り、すべての作る場所を1.4倍速にする");
       } else if (worker.kind === "collector") {
         lines.push("落ちたお金を拾ってくれる");
+      } else if (worker.kind === "seller") {
+        lines.push(
+          "入口に立って、入場券を売ってくれる",
+          `1人 ${yen(admissionValue(state))}・いま ${atBooth(state).length}人 待っている`,
+        );
+      } else if (worker.kind === "gatekeeper") {
+        lines.push(
+          "改札に立って、お客さんを通してくれる",
+          `いま ${atGate(state).length}人 待っている`,
+        );
       } else {
         lines.push(
           `${stageLabels().item}を受け取って、待っている相手へ運ぶ`,
@@ -2341,7 +2408,12 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
             : `待っている ${ROBOT_PICKS}人のなかから、くじで選んで運ぶ`,
         );
       }
-      if (worker.kind !== "cook" && worker.kind !== "master") {
+      if (
+        worker.kind !== "cook" &&
+        worker.kind !== "master" &&
+        worker.kind !== "seller" &&
+        worker.kind !== "gatekeeper"
+      ) {
         const zone = areaById.get(`area-${worker.area}`);
         lines.push(
           worker.kind === "server"
