@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useSyncExternalStore } from "react";
 import Shop, { type Sample } from "@/components/Shop";
+import Feedback from "@/components/Feedback";
 import { OFFLINE_CAP_HOURS, type OfflineReport } from "@/lib/shop";
 import {
   equipSkin,
@@ -140,6 +141,7 @@ export default function Page() {
             : "";
     return (
       <main className="top">
+        <Feedback where="トップ" />
         <header className="top-head">
           <a className="portal-link" href="https://hitobito.jp">
             ← ひとびと
@@ -342,6 +344,7 @@ export default function Page() {
           <small>円</small>
         </div>
         <div className="hud-right">
+          <Feedback where={stageDefs[stageId].name} />
           <button
             type="button"
             className="chip-button"

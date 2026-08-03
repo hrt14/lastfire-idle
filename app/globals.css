@@ -147,6 +147,130 @@ button {
   color: var(--muted);
 }
 
+/* ---------- 要望・フィードバック ---------- */
+
+.fb-button {
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 209, 102, 0.4);
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* トップページでは右上に浮かせる */
+.top {
+  position: relative;
+}
+.top > .fb-button {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 5;
+}
+
+.fb-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.fb-sheet {
+  width: min(30rem, 100%);
+  max-height: 82vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: var(--radius);
+  background: #16181f;
+  border: 1px solid rgba(255, 209, 102, 0.35);
+}
+.fb-sheet h3 {
+  margin: 0;
+  color: var(--gold);
+  font-size: 1.05rem;
+}
+.fb-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.fb-text {
+  width: 100%;
+  resize: vertical;
+  padding: 0.6rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.35);
+  color: #f4f1ea;
+  font: inherit;
+}
+.fb-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.fb-send {
+  flex: 1;
+  padding: 0.6rem;
+  border-radius: 0.6rem;
+  border: none;
+  font-weight: 800;
+  color: #1a1206;
+  background: var(--gold);
+  cursor: pointer;
+}
+.fb-copy,
+.fb-close {
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--muted);
+  cursor: pointer;
+}
+.fb-close {
+  margin-top: 0.2rem;
+}
+.fb-sub {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.fb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 34vh;
+  overflow-y: auto;
+}
+.fb-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.85rem;
+}
+.fb-list li small {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 /* ---------- 店（キャンバス） ---------- */
 
 .stage {
