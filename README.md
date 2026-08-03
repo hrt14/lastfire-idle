@@ -8,7 +8,10 @@
 
 ### ドメイン
 1. Vercel のプロジェクト → Settings → Domains に `working-planet.hitobito.jp` を追加
+   （<https://vercel.com/dashboard> → lastfire-idle → Settings → Domains）
 2. `hitobito.jp` の DNS に **CNAME `working-planet` → `cname.vercel-dns.com`** を足す
+   - Vercel で DNS を持っている場合: <https://vercel.com/dashboard/domains>
+   - Cloudflare の場合: <https://dash.cloudflare.com/> （プロキシは切って DNS only に）
 3. 証明書が発行されるまで数分待つ（Vercel の画面が Valid になれば完了）
 
 ### Google ログインとクラウドセーブ（Firebase）
@@ -16,9 +19,12 @@
 
 1. [Firebase コンソール](https://console.firebase.google.com/) でプロジェクトを作る
 2. **Authentication → Sign-in method → Google** を有効にする
+   <https://console.firebase.google.com/project/_/authentication/providers>
 3. **Authentication → Settings → 承認済みドメイン** に
    `working-planet.hitobito.jp` と Vercel のプレビュー用ドメインを足す
+   <https://console.firebase.google.com/project/_/authentication/settings>
 4. **Firestore Database** を作る（本番モード）。ルールはこれだけでよい:
+   <https://console.firebase.google.com/project/_/firestore/rules>
 
    ```
    rules_version = '2';
@@ -33,6 +39,10 @@
 
 5. プロジェクトの設定 → マイアプリ（ウェブ）の値を、Vercel の環境変数に入れる
    （`.env.example` と同じ名前。ローカルでは `.env.local` に置く）
+   - 値の取得: <https://console.firebase.google.com/project/_/settings/general>
+   - 貼り付け先: Vercel → Settings → Environment Variables
+     （<https://vercel.com/dashboard> → lastfire-idle → Settings → Environment Variables）
+   - 入れ替えたあとは **Redeploy** が必要
 
 セーブは `saves/{uid}` に丸ごと1件で入ります。ログインすると、端末とクラウドの
 **新しい方**を正として合わせ、そのあとは保存のたびに数秒おきに送ります。
