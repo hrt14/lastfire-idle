@@ -394,28 +394,6 @@ export const advanceScrap = (state: ScrapState, dtMs: number): ScrapState => {
     }
   }
 
-  // Opening tutorial: the first three sorted pieces automatically build the crusher.
-  // This also recovers saves that became stuck while holding output at the sorter.
-  if (next.unlocked === 1 && next.credits < 45) {
-    const carriedSorted = next.carry.kind === "sorted" ? next.carry.amount : 0;
-    const tutorialProgress = next.totalSold + Math.floor(next.resources.sorted) + carriedSorted;
-    if (tutorialProgress >= 3) {
-      let remaining = Math.max(0, 3 - next.totalSold);
-      const fromStock = Math.min(remaining, Math.floor(next.resources.sorted));
-      next.resources.sorted -= fromStock;
-      remaining -= fromStock;
-      if (remaining > 0 && next.carry.kind === "sorted") {
-        const fromCarry = Math.min(remaining, next.carry.amount);
-        next.carry.amount -= fromCarry;
-        remaining -= fromCarry;
-        if (next.carry.amount <= 0) next.carry = { kind: null, amount: 0 };
-      }
-      next.credits = 0;
-      next.totalSold = Math.max(next.totalSold, 3);
-      next.unlocked = Math.max(next.unlocked, 2);
-    }
-  }
-
   if (isAutomated(next, "ship")) {
     next.robotProgress.ship += dt;
     while (next.robotProgress.ship >= 1250 && next.resources.robots >= 1) {

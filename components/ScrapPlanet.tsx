@@ -546,13 +546,13 @@ export default function ScrapPlanet() {
       if (
         !next.carry.kind &&
         rawRoom > 0 &&
-        distance(player, { x: SOURCE_POS.x, y: SOURCE_POS.y + 62 }) < INTERACT_RADIUS
+        distance(player, { x: SOURCE_POS.x, y: SOURCE_POS.y + 62 }) < 78
       ) {
         next = pickup(next, "raw", Math.min(carryCapacity(next), rawRoom));
       }
       for (const machine of machines) {
         if (!machineUnlocked(next, machine.id)) continue;
-        const nearMachine = distance(player, machine.pos) < 80;
+        const nearMachine = distance(player, machine.pos) < 88;
         const nearInput = distance(player, inputPos(machine)) < INTERACT_RADIUS;
         const nearOutput = distance(player, outputPos(machine)) < INTERACT_RADIUS;
         if (next.carry.kind === machine.input && (nearInput || nearMachine)) {
@@ -566,7 +566,18 @@ export default function ScrapPlanet() {
           next = pickup(next, machine.output, carryCapacity(next));
         }
       }
-      if (distance(player, { x: SHIP_POS.x, y: SHIP_POS.y + 40 }) < 52) {
+      // 取引所では売る。ただし、まだ加工できる素材（建てた機械が受け取れる物）は
+      // 売らずに運ばせる。売れるのは行き止まりの完成品だけ（誤爆防止）
+      const canProcess =
+        !!next.carry.kind &&
+        machines.some(
+          (machine) =>
+            machineUnlocked(next, machine.id) && machine.input === next.carry.kind,
+        );
+      if (
+        !canProcess &&
+        distance(player, { x: SHIP_POS.x, y: SHIP_POS.y + 40 }) < 60
+      ) {
         next = sellCarried(next, carryCapacity(next));
       }
       return next;
