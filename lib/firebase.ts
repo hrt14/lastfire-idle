@@ -20,6 +20,10 @@ const config = {
   appId: "1:299273365543:web:f5ce35b6bc35bb83140602",
 };
 
+/** いま使っている設定の目印（どのビルドが動いているかの確認用） */
+export const configMark = () =>
+  `${config.projectId}/…${config.apiKey.slice(-6)}`;
+
 /** ログイン機能を出してよいか（設定がそろっているか） */
 export const cloudReady = () =>
   !!config.apiKey && !!config.authDomain && !!config.projectId && !!config.appId;

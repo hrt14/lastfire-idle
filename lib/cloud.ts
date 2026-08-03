@@ -17,7 +17,7 @@ import {
   type User,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { authClient, cloudReady, dbClient } from "@/lib/firebase";
+import { authClient, cloudReady, configMark, dbClient } from "@/lib/firebase";
 
 export { cloudReady };
 
@@ -140,6 +140,9 @@ const reason = (error: unknown): string => {
     typeof error === "object" && error && "code" in error
       ? String((error as { code: unknown }).code)
       : "";
+  if (code.includes("api-key-not-valid")) {
+    return `キーが受け付けられません（${configMark()}）`;
+  }
   if (code.includes("unauthorized-domain")) {
     return "このドメインが Firebase に登録されていません（承認済みドメインに追加してください）";
   }
