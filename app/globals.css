@@ -205,6 +205,40 @@ button {
   font-size: 0.82rem;
   color: var(--muted);
 }
+.fb-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.fb-scope-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.fb-scope-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.fb-chip {
+  flex: 1 1 auto;
+  padding: 0.45rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.fb-chip.is-on {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255, 209, 102, 0.14);
+}
+.fb-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .fb-text {
   width: 100%;
   resize: vertical;

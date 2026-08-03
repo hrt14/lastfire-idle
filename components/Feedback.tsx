@@ -3,12 +3,24 @@
 /**
  * どのページの右上にも出す、要望・フィードバックの受け口。
  * 書いてもらったものは端末にためておき、あとでまとめて開発に反映する。
- * 「ぜんぶコピー」で全部の要望をコピーできる（開発へまとめて渡すため）。
+ *
+ * だいじなのは「このステージについて」なのか「システム全体について」なのかの区別。
+ * それと、どのステージから送られたか（where）も一緒に記録する。
+ * 「ぜんぶコピー」で、区別つきで全部コピーできる（開発へまとめて渡すため）。
  */
 
 import { useState } from "react";
 
-type Item = { at: number; text: string; where?: string };
+type Scope = "stage" | "system";
+
+type Item = {
+  at: number;
+  text: string;
+  /** ステージについてか、システム全体についてか */
+  scope: Scope;
+  /** どのステージから送られたか（トップなら「トップ」） */
+  where?: string;
+};
 
 const KEY = "wp-feedback";
 
@@ -16,7 +28,12 @@ const read = (): Item[] => {
   try {
     const raw = localStorage.getItem(KEY);
     const list = raw ? (JSON.parse(raw) as Item[]) : [];
-    return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    // 古い記録（scope なし）は、ステージ名があればステージ、なければ全体とみなす
+    return list.map((it) => ({
+      ...it,
+      scope: it.scope ?? (it.where && it.where !== "トップ" ? "stage" : "system"),
+    }));
   } catch {
     return [];
   }
@@ -30,22 +47,29 @@ const write = (list: Item[]) => {
   }
 };
 
+const label = (it: Item) =>
+  it.scope === "stage" && it.where ? `${it.where}について` : "システム全体について";
+
 export default function Feedback({ where }: { where?: string }) {
+  const onStage = !!where && where !== "トップ";
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [scope, setScope] = useState<Scope>(onStage ? "stage" : "system");
   const [items, setItems] = useState<Item[]>([]);
   const [sent, setSent] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const openSheet = () => {
     setItems(read());
+    setScope(onStage ? "stage" : "system");
     setOpen(true);
   };
 
   const submit = () => {
     const body = text.trim();
     if (!body) return;
-    const list = [{ at: Date.now(), text: body, where }, ...read()].slice(0, 100);
+    const item: Item = { at: Date.now(), text: body, scope, where };
+    const list = [item, ...read()].slice(0, 100);
     write(list);
     setItems(list);
     setText("");
@@ -54,14 +78,29 @@ export default function Feedback({ where }: { where?: string }) {
   };
 
   const copyAll = async () => {
-    const all = read()
-      .map((it) => {
-        const day = new Date(it.at).toLocaleDateString("ja-JP");
-        return `- ${it.text}${it.where ? `（${it.where}）` : ""} [${day}]`;
-      })
-      .join("\n");
+    // ステージ別・システム全体でまとめてコピーする
+    const list = read();
+    const system = list.filter((it) => it.scope === "system");
+    const byStage = new Map<string, Item[]>();
+    for (const it of list.filter((it) => it.scope === "stage")) {
+      const key = it.where ?? "（不明なステージ）";
+      byStage.set(key, [...(byStage.get(key) ?? []), it]);
+    }
+    const block = (title: string, rows: Item[]) =>
+      rows.length
+        ? `【${title}】\n` +
+          rows
+            .map(
+              (it) => `- ${it.text} [${new Date(it.at).toLocaleDateString("ja-JP")}]`,
+            )
+            .join("\n")
+        : "";
+    const parts = [
+      block("システム全体", system),
+      ...[...byStage.entries()].map(([stage, rows]) => block(stage, rows)),
+    ].filter(Boolean);
     try {
-      await navigator.clipboard.writeText(all);
+      await navigator.clipboard.writeText(parts.join("\n\n"));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -92,6 +131,26 @@ export default function Feedback({ where }: { where?: string }) {
             <p className="fb-note">
               気づいたこと・ほしい機能をどうぞ。まとめて開発に反映します。
             </p>
+            <div className="fb-scope">
+              <span className="fb-scope-label">どれについて？</span>
+              <div className="fb-scope-row">
+                <button
+                  type="button"
+                  className={`fb-chip${scope === "stage" ? " is-on" : ""}`}
+                  onClick={() => setScope("stage")}
+                  disabled={!onStage}
+                >
+                  {onStage ? `${where}について` : "このステージについて"}
+                </button>
+                <button
+                  type="button"
+                  className={`fb-chip${scope === "system" ? " is-on" : ""}`}
+                  onClick={() => setScope("system")}
+                >
+                  システム全体について
+                </button>
+              </div>
+            </div>
             <textarea
               className="fb-text"
               value={text}
@@ -116,7 +175,7 @@ export default function Feedback({ where }: { where?: string }) {
                   {items.map((it, index) => (
                     <li key={index}>
                       <span>{it.text}</span>
-                      {it.where ? <small>{it.where}</small> : null}
+                      <small>{label(it)}</small>
                     </li>
                   ))}
                 </ul>
