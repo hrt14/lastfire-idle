@@ -1,6 +1,30 @@
-# スマホ（iOS Safari）で Google ログインが完了しない — 現状まとめ
+# スマホ（iOS Safari）で Google ログインが完了しない — 解決ずみ
 
-外部の相談用にまとめた資料。2026-08-03 時点。
+2026-08-03 に解決。以下は経緯と、最終的な構成の記録。
+
+## 結論
+
+- 原因は iOS Safari の cross-site storage 制限。`authDomain` が `*.firebaseapp.com`
+  のままだと、戻ってきてもセッションを保存できず、無言で未ログインになる
+- 対策は **認証の受け口を自ドメインに置くこと**。
+  `/__/auth/*` を Firebase の受け口へ中継し、`authDomain` を `working-planet.hitobito.jp` にする
+- あわせて Google Cloud の OAuth クライアントに、この2件を登録しておく必要がある
+  （登録直後は反映待ちで `redirect_uri_mismatch` が出続けることがある）
+  - JavaScript 生成元: `https://working-planet.hitobito.jp`
+  - リダイレクト URI: `https://working-planet.hitobito.jp/__/auth/handler`
+- Cookie・CORS の追加設定、Firebase Hosting、Blaze プランは不要。Spark + Vercel のままでよい
+
+## いまの構成
+
+- 公開ドメインでは、**端末を問わず** `authDomain` は `working-planet.hitobito.jp`
+- ログイン方法は、スマホ＝ページ移動（redirect）、パソコン＝ポップアップ
+- 旧アドレス `lastfire-idle.vercel.app` は公開ドメインへ転送する
+  （`?stay=1` を付けて開いたときだけ、旧アドレスのまま残る。端末内の古いセーブを
+  クラウドへ上げたいときに使う）
+
+---
+
+以下は相談時点の記録。
 
 ## 何を作っているか
 

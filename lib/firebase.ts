@@ -23,24 +23,24 @@ const config = {
 /**
  * ログインの受け口。
  *
- * スマホのブラウザは「別ドメインへ飛んで戻る」ログインを遮るので、
- * 公開ドメインでは受け口を同じドメインに置く（next.config.ts で中継）。
- * パソコンはポップアップで完結するため、Firebase の受け口のままでよい。
+ * 公開ドメインでは、端末を問わず受け口を同じドメインに置く
+ * （next.config.ts で /__/auth/* を Firebase の受け口へ中継している）。
+ * スマホのブラウザは「別ドメインへ飛んで戻る」ログインを遮るため。
  */
-const sameSiteHost = () =>
-  typeof window !== "undefined" &&
-  window.location.hostname === "working-planet.hitobito.jp";
+const SITE = "working-planet.hitobito.jp";
+
+const onSite = () =>
+  typeof window !== "undefined" && window.location.hostname === SITE;
 
 const onPhone = () =>
   typeof window !== "undefined" &&
   (window.matchMedia?.("(pointer: coarse)").matches ||
     (navigator.maxTouchPoints ?? 0) > 0);
 
-/** ページ移動でログインするか（スマホ） */
+/** ページ移動でログインするか（スマホ。パソコンはポップアップ） */
 export const redirectLogin = () => onPhone();
 
-const authDomain = () =>
-  sameSiteHost() && onPhone() ? window.location.hostname : config.authDomain;
+const authDomain = () => (onSite() ? SITE : config.authDomain);
 
 /** いま使っている設定の目印（どのビルドが動いているかの確認用） */
 export const configMark = () =>
