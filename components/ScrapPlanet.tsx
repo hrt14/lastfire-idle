@@ -22,6 +22,7 @@ import {
 import { loadScrap, resetScrap, saveScrap } from "@/lib/scrapStore";
 import { equippedSkin } from "@/lib/shopStore";
 import { formatNumber } from "@/lib/format";
+import { startCloud } from "@/lib/cloud";
 
 const hats: Record<string, string> = {
   chef: "👨‍🍳",
@@ -51,6 +52,7 @@ export default function ScrapPlanet() {
   const stateRef = useRef(state);
 
   useEffect(() => {
+    startCloud();
     const loaded = loadScrap();
     stateRef.current = loaded;
     setState(loaded);
