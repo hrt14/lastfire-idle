@@ -47,7 +47,12 @@ const useMounted = () =>
   );
 
 const cloudSnapshot = () => cloudState();
-const cloudServer = () => ({ account: null, status: "off" as const, at: 0 });
+const cloudServer = () => ({
+  account: null,
+  status: "off" as const,
+  note: "",
+  at: 0,
+});
 
 export default function Page() {
   const mounted = useMounted();
@@ -125,11 +130,11 @@ export default function Page() {
     if (mounted) startCloud();
     const syncNote =
       cloud.status === "syncing"
-        ? "同期中…"
+        ? cloud.note || "同期中…"
         : cloud.status === "ok"
           ? "同期ずみ"
           : cloud.status === "error"
-            ? "同期できませんでした"
+            ? cloud.note || "同期できませんでした"
             : "";
     return (
       <main className="top">
@@ -181,7 +186,9 @@ export default function Page() {
                 </span>
                 <div className="account-body">
                   <strong>記録を端末の外に残す</strong>
-                  <small>ログインすると、別の端末でも続きから遊べます</small>
+                  <small className={cloud.status === "error" ? "is-bad" : undefined}>
+                    {syncNote || "ログインすると、別の端末でも続きから遊べます"}
+                  </small>
                 </div>
                 <button
                   type="button"

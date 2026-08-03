@@ -9,8 +9,10 @@
 
 import {
   GoogleAuthProvider,
+  getRedirectResult,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   type User,
 } from "firebase/auth";
@@ -29,12 +31,15 @@ export type CloudState = {
   account: Account | null;
   /** "off" 未設定 / "out" 未ログイン / "syncing" 同期中 / "ok" 同期ずみ / "error" 失敗 */
   status: "off" | "out" | "syncing" | "ok" | "error";
+  /** うまくいかなかったときの理由（画面に出す） */
+  note: string;
   at: number;
 };
 
 let state: CloudState = {
   account: null,
   status: cloudReady() ? "out" : "off",
+  note: "",
   at: 0,
 };
 
@@ -108,8 +113,8 @@ const merge = async (uid: string) => {
       await pushVault(uid, local);
     }
     setState({ status: "ok" });
-  } catch {
-    setState({ status: "error" });
+  } catch (error) {
+    setState({ status: "error", note: reason(error) });
   }
 };
 
@@ -124,9 +129,33 @@ export const syncVault = (vault: Bag) => {
     timer = null;
     setState({ status: "syncing" });
     pushVault(uid, vault)
-      .then(() => setState({ status: "ok" }))
-      .catch(() => setState({ status: "error" }));
+      .then(() => setState({ status: "ok", note: "" }))
+      .catch((error) => setState({ status: "error", note: reason(error) }));
   }, 4000);
+};
+
+/** エラーを、そのまま画面に出せる短い文にする */
+const reason = (error: unknown): string => {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code: unknown }).code)
+      : "";
+  if (code.includes("unauthorized-domain")) {
+    return "このドメインが Firebase に登録されていません（承認済みドメインに追加してください）";
+  }
+  if (code.includes("popup-blocked") || code.includes("popup-closed")) {
+    return "ポップアップが閉じられました。もう一度お試しください";
+  }
+  if (code.includes("operation-not-allowed")) {
+    return "Google ログインが有効になっていません";
+  }
+  if (code.includes("permission-denied")) {
+    return "保存できませんでした（Firestore のルールを確認してください）";
+  }
+  if (code.includes("unavailable") || code.includes("not-found")) {
+    return "保存先が見つかりません（Firestore を作成してください）";
+  }
+  return code || "うまくいきませんでした";
 };
 
 let started = false;
@@ -137,6 +166,11 @@ export const startCloud = () => {
   started = true;
   const auth = authClient();
   if (!auth) return;
+  // リダイレクトから戻ってきたときの結果を拾う（失敗の理由もここで分かる）
+  getRedirectResult(auth).catch((error) => {
+    setState({ status: "error", note: reason(error) });
+  });
+
   onAuthStateChanged(auth, (user: User | null) => {
     if (!user) {
       setState({ account: null, status: "out" });
@@ -149,18 +183,56 @@ export const startCloud = () => {
         photo: user.photoURL ?? null,
       },
       status: "syncing",
+      note: "",
     });
     void merge(user.uid);
   });
 };
 
+/** スマホのブラウザはポップアップが閉じられるので、ページ移動でログインする */
+const preferRedirect = () =>
+  typeof window !== "undefined" &&
+  (window.matchMedia?.("(pointer: coarse)").matches ||
+    (navigator.maxTouchPoints ?? 0) > 0);
+
 export const signIn = async () => {
   const auth = authClient();
   if (!auth) return;
+  const provider = new GoogleAuthProvider();
+  setState({ status: "syncing", note: "ログインしています…" });
+
+  if (preferRedirect()) {
+    try {
+      await signInWithRedirect(auth, provider);
+      return;
+    } catch (error) {
+      setState({ status: "error", note: reason(error) });
+      return;
+    }
+  }
+
   try {
-    await signInWithPopup(auth, new GoogleAuthProvider());
-  } catch {
-    setState({ status: "error" });
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    const code =
+      typeof error === "object" && error && "code" in error
+        ? String((error as { code: unknown }).code)
+        : "";
+    // ポップアップが使えない端末（スマホの Safari など）はページ移動でログインする
+    if (
+      code.includes("popup") ||
+      code.includes("operation-not-supported") ||
+      code.includes("cancelled")
+    ) {
+      try {
+        await signInWithRedirect(auth, provider);
+        return;
+      } catch (redirectError) {
+        setState({ status: "error", note: reason(redirectError) });
+        return;
+      }
+    }
+    setState({ status: "error", note: reason(error) });
   }
 };
 
