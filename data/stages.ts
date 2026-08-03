@@ -660,7 +660,7 @@ const fireSeats: SeatSpec[] = [
 
 const fireHires: HireSpec[] = [
   // area-0: 狩人・まき割りは最初から選べる拡張。はこび手・火の番・犬ぞりも
-  { id: "hunter-1", kind: "cook", pos: { x: 70, y: 76 }, price: 300, label: "狩人", stoveId: "hunt-1", area: 0 },
+  { id: "hunter-1", kind: "hunter", pos: { x: 70, y: 76 }, price: 300, label: "狩人", stoveId: "hunt-1", area: 0 },
   { id: "wooder-1", kind: "cook", pos: { x: 250, y: 76 }, price: 300, label: "まき割り", stoveId: "wood-1", area: 0 },
   { id: "waiter-1", kind: "waiter", pos: { x: 40, y: 330 }, price: 150, label: "はこび手", area: 0 },
   { id: "collector-1", kind: "collector", pos: { x: 320, y: 300 }, price: 500, label: "拾い手", area: 0, unlockAfter: "waiter-1" },
@@ -668,13 +668,13 @@ const fireHires: HireSpec[] = [
   { id: "waiter-2", kind: "waiter", pos: { x: 320, y: 330 }, price: 1800, label: "はこび手", area: 0, unlockAfter: "collector-1" },
   { id: "robot-1", kind: "robot", pos: { x: 180, y: 360 }, price: 5000, label: "犬ぞり", area: 0, unlockAfter: "waiter-2" },
   // area-1
-  { id: "hunter-2", kind: "cook", pos: { x: 70, y: 558 }, price: 4000, label: "狩人", stoveId: "hunt-2", area: 1 },
+  { id: "hunter-2", kind: "hunter", pos: { x: 70, y: 558 }, price: 4000, label: "狩人", stoveId: "hunt-2", area: 1 },
   { id: "wooder-2", kind: "cook", pos: { x: 250, y: 558 }, price: 4000, label: "まき割り", stoveId: "wood-2", area: 1 },
   { id: "fireman-2", kind: "cook", pos: { x: 160, y: 658 }, price: 9000, label: "火の番", stoveId: "fire-3", area: 1 },
   { id: "waiter-3", kind: "waiter", pos: { x: 40, y: 810 }, price: 7000, label: "はこび手", area: 1, unlockAfter: "robot-1" },
   { id: "robot-2", kind: "robot", pos: { x: 300, y: 810 }, price: 30000, label: "犬ぞり", area: 1 },
   // area-2
-  { id: "hunter-3", kind: "cook", pos: { x: 430, y: 76 }, price: 30000, label: "狩人", stoveId: "hunt-3", area: 2 },
+  { id: "hunter-3", kind: "hunter", pos: { x: 430, y: 76 }, price: 30000, label: "狩人", stoveId: "hunt-3", area: 2 },
   { id: "wooder-3", kind: "cook", pos: { x: 660, y: 76 }, price: 40000, label: "まき割り", stoveId: "wood-3", area: 2 },
   { id: "butcher-1c", kind: "cook", pos: { x: 500, y: 76 }, price: 50000, label: "さばき手", stoveId: "butcher-1", area: 2 },
   { id: "fireman-3", kind: "cook", pos: { x: 600, y: 178 }, price: 80000, label: "火の番", stoveId: "grill-1", area: 2 },
@@ -739,6 +739,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         server: "配膳係",
         seller: "券売係",
         gatekeeper: "入口係",
+        hunter: "狩人",
       },
       objective: {
         pickup: "厨房で丼を受け取ろう",
@@ -785,6 +786,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         server: "料理係",
         seller: "入場券係",
         gatekeeper: "入場ゲート係",
+        hunter: "狩人",
       },
       objective: {
         pickup: "券売所でチケットを受け取ろう",
@@ -834,6 +836,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         server: "はこび手",
         seller: "受付",
         gatekeeper: "門番",
+        hunter: "狩人",
       },
       objective: {
         pickup: "出し口でしなものを受け取ろう",

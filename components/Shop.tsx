@@ -29,6 +29,7 @@ import {
   stoveItem,
   isStation,
   holdCap,
+  huntZone,
   stoveById,
   type ItemKind,
   type StoveSpec,
@@ -963,6 +964,59 @@ const held = (
   else chainItem(ctx, item, x, y, s, performance.now() / 1000);
 };
 
+/** 狩り場をうろつく動物 */
+const drawPrey = (
+  ctx: CanvasRenderingContext2D,
+  kind: string,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  const bob = Math.sin(time * 8 + x) * 1.2;
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 6, 10, 3.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const body =
+    kind === "boar" ? "#5a4433" : kind === "deer" ? "#b98a58" : "#c9c2b6";
+  // 胴
+  ctx.fillStyle = body;
+  roundRect(ctx, x - 9, y - 8 + bob, 18, 10, 5);
+  ctx.fill();
+  // 足
+  ctx.strokeStyle = body;
+  ctx.lineWidth = 2;
+  for (const lx of [x - 6, x + 6]) {
+    ctx.beginPath();
+    ctx.moveTo(lx, y + 1 + bob);
+    ctx.lineTo(lx, y + 6);
+    ctx.stroke();
+  }
+  // 頭
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(x + 9, y - 7 + bob, 4.5, 0, Math.PI * 2);
+  ctx.fill();
+  if (kind === "boar") {
+    ctx.fillStyle = "#f4f1ea";
+    ctx.fillRect(x + 12, y - 6 + bob, 3, 1.4);
+  } else if (kind === "deer") {
+    ctx.strokeStyle = "#8a6a44";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x + 9, y - 11 + bob);
+    ctx.lineTo(x + 7, y - 16 + bob);
+    ctx.moveTo(x + 10, y - 11 + bob);
+    ctx.lineTo(x + 13, y - 16 + bob);
+    ctx.stroke();
+  } else {
+    // うさぎの耳
+    ctx.fillStyle = body;
+    ctx.fillRect(x + 8, y - 15 + bob, 1.6, 6);
+    ctx.fillRect(x + 11, y - 15 + bob, 1.6, 6);
+  }
+};
+
 /**
  * ワーキングプラネットの作業場。
  * 素材の採取場（takes なし）と、加工場（takes あり）で見た目を変える。
@@ -982,37 +1036,33 @@ const drawFireStation = (
 
   const art = stove.art ?? "";
   if (art === "hunt") {
-    // 狩り場: 草むらと、立てかけた槍
+    // 狩り場: 草の生えた囲い（この中を動物がうろつく）
+    const zone = huntZone(state, stove);
+    ctx.fillStyle = "rgba(70,100,55,0.28)";
+    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 10);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(160,140,90,0.5)";
+    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 2;
+    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 草
     ctx.fillStyle = "#3f5a34";
-    for (const gx of [-16, -6, 5, 15]) {
+    for (let i = 0; i < 7; i += 1) {
+      const gx = zone.x0 + 8 + ((i * 13) % (zone.x1 - zone.x0 - 16));
+      const gy = zone.y1 - 6 - (i % 2) * 8;
       ctx.beginPath();
-      ctx.moveTo(x + gx, y + 6);
-      ctx.lineTo(x + gx - 3, y - 8);
-      ctx.lineTo(x + gx + 3, y - 8);
+      ctx.moveTo(gx, gy);
+      ctx.lineTo(gx - 3, gy - 10);
+      ctx.lineTo(gx + 3, gy - 10);
       ctx.closePath();
       ctx.fill();
     }
-    // 槍
-    ctx.strokeStyle = "#8a6a44";
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(x + 6, y + 6);
-    ctx.lineTo(x - 4, y - 28);
-    ctx.stroke();
-    ctx.fillStyle = "#d8d2c4";
-    ctx.beginPath();
-    ctx.moveTo(x - 4, y - 28);
-    ctx.lineTo(x - 8, y - 20);
-    ctx.lineTo(x, y - 22);
-    ctx.closePath();
+    // 肉を置く小さな台（出し口）
+    ctx.fillStyle = "#5a3a20";
+    roundRect(ctx, x - 10, y + 2, 20, 6, 2);
     ctx.fill();
-    // 足あと
-    ctx.fillStyle = "rgba(255,255,255,0.12)";
-    for (const [dx, dy] of [[10, -6], [16, -14], [12, -20]]) {
-      ctx.beginPath();
-      ctx.ellipse(x + dx, y + dy, 2.2, 3, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
   } else if (art === "logs") {
     // まき集め: 積んだ丸太
     for (let r = 0; r < 2; r += 1) {
@@ -4152,7 +4202,16 @@ export default function Shop({ onSample, paused }: Props) {
         server: "#c2402f",
         seller: "#3f7fbf",
         gatekeeper: "#2f6f5a",
+        hunter: "#6b4a2b",
       };
+
+      // 狩り場の動物（人と一緒に前後で並べる）
+      for (const animal of state.prey) {
+        actors.push({
+          y: animal.pos.y,
+          render: () => drawPrey(ctx, animal.kind, animal.pos.x, animal.pos.y, time),
+        });
+      }
 
       for (const customer of state.customers) {
         actors.push({
@@ -4249,7 +4308,9 @@ export default function Shop({ onSample, paused }: Props) {
                       ? 95
                       : worker.kind === "stocker"
                         ? 130
-                        : 110;
+                        : worker.kind === "hunter"
+                          ? 80
+                          : 110;
               person(
                 ctx,
                 worker.pos.x,
@@ -4264,6 +4325,22 @@ export default function Shop({ onSample, paused }: Props) {
                 // コック帽
                 ctx.fillStyle = "#fbf7ef";
                 roundRect(ctx, wx - 7, wy - 32, 14, 9, 4);
+                ctx.fill();
+              }
+              if (worker.kind === "hunter") {
+                // 手にした槍
+                ctx.strokeStyle = "#8a6a44";
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(wx + 9, wy + 4);
+                ctx.lineTo(wx + 14, wy - 26);
+                ctx.stroke();
+                ctx.fillStyle = "#d8d2c4";
+                ctx.beginPath();
+                ctx.moveTo(wx + 14, wy - 26);
+                ctx.lineTo(wx + 10, wy - 20);
+                ctx.lineTo(wx + 17, wy - 21);
+                ctx.closePath();
                 ctx.fill();
               }
               if (worker.kind === "master") {

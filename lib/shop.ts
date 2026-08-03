@@ -106,7 +106,9 @@ export type StaffKind =
   /** 入口で入場券を売る係 */
   | "seller"
   /** 改札でお客さんを通す係 */
-  | "gatekeeper";
+  | "gatekeeper"
+  /** 狩り場で動物を狩る係 */
+  | "hunter";
 
 export type HireSpec = {
   id: string;
@@ -289,6 +291,7 @@ const hireSub: Record<StaffKind, string> = {
   server: "厨房の料理をテーブルへ運ぶ",
   seller: "入場券を売ってくれる（1人ずつ）",
   gatekeeper: "改札で通してくれる（1人ずつ）",
+  hunter: "狩り場の動物を狩ってくれる",
 };
 
 const buildPads = (): Pad[] => [
@@ -515,6 +518,20 @@ export type Customer = {
 
 export type Coin = { id: number; pos: Vec; value: number; age: number };
 
+/** 狩り場をうろつく動物。狩ると、その狩り場の出し口に肉がたまる */
+export type Prey = {
+  id: number;
+  /** どの狩り場のものか */
+  stoveId: string;
+  pos: Vec;
+  /** うろつく先 */
+  target: Vec;
+  /** 見た目（いのしし・しか・うさぎ） */
+  kind: string;
+  /** 逃げているあいだの残り（狩り手が近いと少し逃げる） */
+  flee: number;
+};
+
 export type Pop = { id: number; pos: Vec; text: string; age: number };
 
 export type Staff = {
@@ -601,6 +618,8 @@ export type ShopState = Persisted & {
   staff: Staff[];
   customers: Customer[];
   coins: Coin[];
+  /** 狩り場の動物 */
+  prey: Prey[];
   pops: Pop[];
   ready: Record<string, number>;
   cooking: Record<string, number>;
@@ -654,6 +673,11 @@ export const SERVE_RHYTHM = 0.13;
 export const COMBO_WINDOW = 0.7;
 /** 行列にならべる最大人数（工程ステージ） */
 export const MAX_LINE = 6;
+/** 狩り場に動物が湧く間隔（秒）と、同時にいられる数 */
+export const HUNT_SPAWN = 2.4;
+export const HUNT_CAP = 4;
+/** 動物を狩れる距離 */
+export const CATCH_RADIUS = 30;
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -733,6 +757,7 @@ export const createState = (): ShopState => ({
   staff: [],
   customers: [],
   coins: [],
+  prey: [],
   pops: [],
   ready: startReady(),
   cooking: startReady(),
@@ -1234,6 +1259,8 @@ const updateStoves = (state: ShopState, dt: number) => {
   // 直結の設備（樋・ベルト）は、まず前の作業場から次へ流しておく
   flowLinks(state, dt);
   for (const stove of openStoves(state)) {
+    // 狩り場は勝手に作らない。動物を狩ると肉がたまる（updateHunt を見よ）
+    if (isHunt(stove)) continue;
     const ready = state.ready[stove.id] ?? 0;
     const cap = holdCap(state, stove);
     if (ready >= cap) continue;
@@ -1284,6 +1311,102 @@ const flowLinks = (state: ShopState, dt: number) => {
     state.ready[from] -= 1;
     buffer[to] = (buffer[to] ?? 0) + 1;
   }
+};
+
+/* ---------- 狩り場 ---------- */
+
+/** 狩り場か（動物を狩って肉にする場所） */
+export const isHunt = (stove: StoveSpec) => stove.art === "hunt";
+
+/** 狩り場のうろつく範囲（作業場のまわり） */
+export const huntZone = (state: ShopState, stove: StoveSpec): Rect => {
+  const top = outsideTop(state);
+  return {
+    x0: stove.pos.x - 46,
+    y0: Math.max(KITCHEN.top + 6, stove.pos.y - 26),
+    x1: stove.pos.x + 46,
+    y1: Math.min(top - 8, stove.pos.y + 96),
+  };
+};
+
+const PREY_KINDS = ["boar", "deer", "rabbit"];
+
+const spotIn = (rect: Rect): Vec => ({
+  x: rect.x0 + Math.random() * (rect.x1 - rect.x0),
+  y: rect.y0 + Math.random() * (rect.y1 - rect.y0),
+});
+
+const preyOf = (state: ShopState, stoveId: string) =>
+  state.prey.filter((animal) => animal.stoveId === stoveId);
+
+/** 狩り場に動物を湧かせ、うろつかせる */
+const updateHunt = (state: ShopState, dt: number) => {
+  const grounds = openStoves(state).filter(isHunt);
+  // いなくなった狩り場の動物は消す
+  if (grounds.length === 0) {
+    if (state.prey.length) state.prey = [];
+    return;
+  }
+  const alive = new Set(grounds.map((stove) => stove.id));
+  state.prey = state.prey.filter((animal) => alive.has(animal.stoveId));
+
+  for (const stove of grounds) {
+    const key = `hunt-${stove.id}`;
+    state.autoTimer[key] = (state.autoTimer[key] ?? 0) + dt;
+    if (
+      state.autoTimer[key] >= HUNT_SPAWN &&
+      preyOf(state, stove.id).length < HUNT_CAP
+    ) {
+      state.autoTimer[key] = 0;
+      const zone = huntZone(state, stove);
+      const at = spotIn(zone);
+      state.prey.push({
+        id: state.nextId++,
+        stoveId: stove.id,
+        pos: at,
+        target: spotIn(zone),
+        kind: PREY_KINDS[Math.floor(Math.random() * PREY_KINDS.length)],
+        flee: 0,
+      });
+    }
+  }
+
+  // うろつき（狩り手が近いと少し逃げる）
+  for (const animal of state.prey) {
+    const stove = stoveById.get(animal.stoveId);
+    if (!stove) continue;
+    const zone = huntZone(state, stove);
+    animal.flee = Math.max(0, animal.flee - dt);
+    if (moveToward(animal.pos, animal.target, animal.flee > 0 ? 70 : 28, dt)) {
+      animal.target = spotIn(zone);
+    }
+  }
+};
+
+/**
+ * その場所の近くにいる動物を1匹狩る。狩り場の出し口に肉が1つたまる。
+ * 出し口がいっぱいなら狩れない。狩れたら true。
+ */
+const catchPrey = (state: ShopState, pos: Vec): boolean => {
+  let best: Prey | null = null;
+  let bestDist = CATCH_RADIUS;
+  for (const animal of state.prey) {
+    const stove = stoveById.get(animal.stoveId);
+    if (!stove) continue;
+    if ((state.ready[stove.id] ?? 0) >= holdCap(state, stove)) continue;
+    const d = dist(pos, animal.pos);
+    if (d < bestDist) {
+      best = animal;
+      bestDist = d;
+    }
+  }
+  if (!best) return false;
+  state.ready[best.stoveId] = (state.ready[best.stoveId] ?? 0) + 1;
+  pop(state, { x: best.pos.x, y: best.pos.y - 12 }, "しとめた！");
+  state.sfx.push("serve");
+  const id = best.id;
+  state.prey = state.prey.filter((animal) => animal.id !== id);
+  return true;
 };
 
 const payOut = (state: ShopState, seat: SeatSpec, at: Vec) => {
@@ -1679,6 +1802,9 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
   if (state.comboLeft <= 0) state.combo = 0;
   player.serveCd = Math.max(0, (player.serveCd ?? 0) - dt);
 
+  // 狩り場の動物に近づいたら、自分で狩る
+  catchPrey(state, player.pos);
+
   // 近くの出し口から受け取る（複数の種類を同時に持てる）
   if (carryTotal(player) < maxCarry(state)) {
     const got = pickUp(state, player.pos, 0, 1, null);
@@ -2048,6 +2174,36 @@ const updateStaff = (state: ShopState, dt: number) => {
   for (const worker of state.staff) {
     if (worker.kind === "cook") {
       go(state, worker, cookPost(worker), staffSpeed(state), dt);
+      continue;
+    }
+
+    if (worker.kind === "hunter") {
+      // 狩人: 担当の狩り場で、いちばん近い動物を追って狩る
+      const ground = worker.stoveId ? stoveById.get(worker.stoveId) : null;
+      const zone = ground ? huntZone(state, ground) : null;
+      const speed = staffSpeed(state);
+      const targets = worker.stoveId ? preyOf(state, worker.stoveId) : [];
+      const animal = targets
+        .slice()
+        .sort((a, b) => dist(worker.pos, a.pos) - dist(worker.pos, b.pos))[0];
+      if (animal) {
+        animal.flee = 0.4; // 追われると少し逃げる
+        go(state, worker, animal.pos, speed * 1.1, dt);
+        catchPrey(state, worker.pos);
+      } else if (zone) {
+        // 獲物がいなければ、狩り場のなかを見回る
+        const t = state.playTime * 0.4 + worker.id;
+        go(
+          state,
+          worker,
+          {
+            x: (zone.x0 + zone.x1) / 2 + Math.cos(t) * (zone.x1 - zone.x0) * 0.3,
+            y: (zone.y0 + zone.y1) / 2 + Math.sin(t * 1.3) * (zone.y1 - zone.y0) * 0.3,
+          },
+          speed * 0.6,
+          dt,
+        );
+      }
       continue;
     }
 
@@ -2436,6 +2592,7 @@ const updateStaff = (state: ShopState, dt: number) => {
 export const update = (state: ShopState, input: Input, dt: number) => {
   state.playTime += dt;
   updateStoves(state, dt);
+  updateHunt(state, dt);
   spawnCustomers(state, dt);
   updateCustomers(state, dt);
   updatePlayer(state, input, dt);
@@ -2520,6 +2677,22 @@ export const currentObjective = (state: ShopState): Objective => {
     }
   }
 
+  // 狩り場に動物がいて、まだ肉が足りていなければ、狩りに行く
+  if (total < maxCarry(state) && state.prey.length > 0) {
+    const grounds = openStoves(state).filter(
+      (stove) => isHunt(stove) && !hasStaff(state, "hunter"),
+    );
+    const short = grounds.some((stove) => (state.ready[stove.id] ?? 0) <= 0);
+    if (short) {
+      const animal = state.prey
+        .slice()
+        .sort((a, b) => dist(player.pos, a.pos) - dist(player.pos, b.pos))[0];
+      if (animal) {
+        return { kind: "pickup", pos: animal.pos, label: "動物を追いかけて狩ろう" };
+      }
+    }
+  }
+
   // 手ぶらのときは、皿の残ったテーブルを片づける
   if (total === 0) {
     const table = openSeats(state)
@@ -2599,12 +2772,17 @@ export const applyOffline = (
   const capped = Math.min(elapsed, OFFLINE_CAP_HOURS * 3600);
   const factor = cookSpeedFactor(state);
 
-  const cookRate = openStoves(state).reduce(
-    (sum, stove) =>
-      sum +
-      (stoveHasCook(state, stove.id) ? COOK_BOOST : 1) / (COOK_TIME * factor),
-    0,
-  );
+  const hasHunter = (stoveId: string) =>
+    state.staff.some((w) => w.kind === "hunter" && w.stoveId === stoveId);
+  const cookRate = openStoves(state).reduce((sum, stove) => {
+    // 狩り場は、狩人がいるあいだだけ肉がとれる（留守は本人が狩れない）
+    if (isHunt(stove)) {
+      return sum + (hasHunter(stove.id) ? 1 / HUNT_SPAWN : 0);
+    }
+    return (
+      sum + (stoveHasCook(state, stove.id) ? COOK_BOOST : 1) / (COOK_TIME * factor)
+    );
+  }, 0);
   const open = openSeats(state);
   const seatRate = open.length / (EAT_TIME + 2.2);
   const carryRate = carriers.reduce(
@@ -2842,6 +3020,11 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
         lines.push("全体を仕切り、すべての作る場所を1.4倍速にする");
       } else if (worker.kind === "collector") {
         lines.push("落ちたお金を拾ってくれる");
+      } else if (worker.kind === "hunter") {
+        lines.push(
+          "狩り場をまわって動物を狩ってくれる",
+          "狩ると、この狩り場に肉がたまる",
+        );
       } else if (worker.kind === "seller") {
         lines.push(
           "入口に立って、入場券を売ってくれる",
@@ -2874,7 +3057,8 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
         worker.kind !== "cook" &&
         worker.kind !== "master" &&
         worker.kind !== "seller" &&
-        worker.kind !== "gatekeeper"
+        worker.kind !== "gatekeeper" &&
+        worker.kind !== "hunter"
       ) {
         const zone = areaById.get(`area-${worker.area}`);
         lines.push(
