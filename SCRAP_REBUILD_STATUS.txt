@@ -1,17 +1,11 @@
 install=0
 lint=0
-build=1
+build=0
 
 --- lint tail ---
 
 > lastfire-idle@0.1.0 lint
 > eslint .
-
-
-/home/runner/work/lastfire-idle/lastfire-idle/components/ScrapPlanet.tsx
-  42:7  warning  'PLAYER_RADIUS' is assigned a value but never used  @typescript-eslint/no-unused-vars
-
-✖ 1 problem (0 errors, 1 warning)
 
 
 --- build tail ---
@@ -28,25 +22,24 @@ https://nextjs.org/telemetry
 ▲ Next.js 16.2.12 (Turbopack)
 
   Creating an optimized production build ...
+✓ Compiled successfully in 4.7s
+  Running TypeScript ...
+  Finished TypeScript in 3.3s ...
+  Collecting page data using 3 workers ...
+  Generating static pages using 3 workers (0/6) ...
+  Generating static pages using 3 workers (1/6) 
+  Generating static pages using 3 workers (2/6) 
+  Generating static pages using 3 workers (4/6) 
+✓ Generating static pages using 3 workers (6/6) in 343ms
+  Finalizing page optimization ...
 
-> Build error occurred
-Error: Turbopack build failed with 1 errors:
-./components/ScrapPlanet.module.css
-Transforming CSS failed
-Selector "*" is not pure. Pure selectors must contain at least one local class or id.
-
-Import traces:
-  Client Component Browser:
-    ./components/ScrapPlanet.module.css [Client Component Browser]
-    ./components/ScrapPlanet.tsx [Client Component Browser]
-    ./components/ScrapPlanet.tsx [Server Component]
-    ./app/scrap/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/ScrapPlanet.module.css [Client Component SSR]
-    ./components/ScrapPlanet.tsx [Client Component SSR]
-    ./components/ScrapPlanet.tsx [Server Component]
-    ./app/scrap/page.tsx [Server Component]
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /icon.svg
+├ ○ /manifest.webmanifest
+└ ○ /scrap
 
 
-    at ignore-listed frames
+○  (Static)  prerendered as static content
+
