@@ -1,5 +1,5 @@
-export type ScrapResource =
-  | "scrap"
+export type ResourceId =
+  | "raw"
   | "sorted"
   | "crushed"
   | "washed"
@@ -9,156 +9,155 @@ export type ScrapResource =
   | "robots";
 
 export type MachineId =
-  | "collector"
-  | "sorter"
-  | "crusher"
-  | "washer"
-  | "furnace"
-  | "refinery"
-  | "fabricator"
-  | "assembler"
-  | "shipping";
+  | "sort"
+  | "crush"
+  | "wash"
+  | "melt"
+  | "refine"
+  | "parts"
+  | "robot";
 
-export type ScrapState = {
-  version: 1;
-  credits: number;
-  resources: Record<ScrapResource, number>;
-  levels: Record<MachineId, number>;
-  automated: MachineId[];
-  unlocked: number;
-  totalActions: number;
-  lastRun: Record<MachineId, number>;
-  lastSeen: number;
-};
-
-export type ScrapPersisted = Omit<ScrapState, "lastRun"> & {
-  lastRun?: Partial<Record<MachineId, number>>;
-};
+export type Vec = { x: number; y: number };
 
 export type MachineDef = {
   id: MachineId;
   name: string;
   short: string;
   icon: string;
-  input?: ScrapResource;
-  output?: ScrapResource;
-  baseCycle: number;
-  autoCredits: number;
-  autoParts?: number;
-  autoRobots?: number;
+  input: ResourceId;
+  output: ResourceId;
+  pos: Vec;
+  cycleMs: number;
+  reward: number;
+  unlockCost: number;
+  autoCost: number;
+  art: "sort" | "crusher" | "washer" | "furnace" | "refinery" | "press" | "assembly";
+};
+
+export const SCRAP_WORLD = { w: 1180, h: 820 };
+export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
+export const SHIP_POS: Vec = { x: 260, y: 600 };
+export const SOURCE_POS: Vec = { x: 85, y: 250 };
+
+export const resources: Record<
+  ResourceId,
+  { name: string; short: string; icon: string; color: string }
+> = {
+  raw: { name: "宇宙ゴミ", short: "ゴミ", icon: "🗑️", color: "#9ca3af" },
+  sorted: { name: "選別材", short: "選別", icon: "🧲", color: "#7dd3fc" },
+  crushed: { name: "破砕材", short: "破砕", icon: "🪨", color: "#a3a3a3" },
+  washed: { name: "洗浄材", short: "洗浄", icon: "💧", color: "#67e8f9" },
+  molten: { name: "溶融金属", short: "溶融", icon: "🔥", color: "#fb923c" },
+  ingot: { name: "再生インゴット", short: "鋼材", icon: "🧱", color: "#cbd5e1" },
+  parts: { name: "機械部品", short: "部品", icon: "⚙️", color: "#fde68a" },
+  robots: { name: "作業ロボット", short: "ロボ", icon: "🤖", color: "#c4b5fd" },
 };
 
 export const machines: MachineDef[] = [
   {
-    id: "collector",
-    name: "スクラップ回収",
-    short: "回収ドローン",
+    id: "sort",
+    name: "磁力選別機",
+    short: "選別",
     icon: "🧲",
-    output: "scrap",
-    baseCycle: 2400,
-    autoCredits: 60,
-  },
-  {
-    id: "sorter",
-    name: "素材選別",
-    short: "自動選別機",
-    icon: "🗂️",
-    input: "scrap",
+    input: "raw",
     output: "sorted",
-    baseCycle: 2800,
-    autoCredits: 120,
+    pos: { x: 285, y: 250 },
+    cycleMs: 2200,
+    reward: 4,
+    unlockCost: 0,
+    autoCost: 180,
+    art: "sort",
   },
   {
-    id: "crusher",
-    name: "破砕",
-    short: "油圧クラッシャー",
-    icon: "⚙️",
+    id: "crush",
+    name: "油圧破砕機",
+    short: "破砕",
+    icon: "⚒️",
     input: "sorted",
     output: "crushed",
-    baseCycle: 3200,
-    autoCredits: 240,
+    pos: { x: 510, y: 250 },
+    cycleMs: 2600,
+    reward: 10,
+    unlockCost: 45,
+    autoCost: 520,
+    art: "crusher",
   },
   {
-    id: "washer",
-    name: "高圧洗浄",
-    short: "洗浄ライン",
-    icon: "💦",
+    id: "wash",
+    name: "高圧洗浄槽",
+    short: "洗浄",
+    icon: "🚿",
     input: "crushed",
     output: "washed",
-    baseCycle: 3600,
-    autoCredits: 480,
+    pos: { x: 735, y: 250 },
+    cycleMs: 3000,
+    reward: 25,
+    unlockCost: 160,
+    autoCost: 1500,
+    art: "washer",
   },
   {
-    id: "furnace",
-    name: "溶解",
-    short: "電気溶鉱炉",
+    id: "melt",
+    name: "電気溶解炉",
+    short: "溶解",
     icon: "🔥",
     input: "washed",
     output: "molten",
-    baseCycle: 4200,
-    autoCredits: 900,
-    autoParts: 4,
+    pos: { x: 960, y: 250 },
+    cycleMs: 3600,
+    reward: 65,
+    unlockCost: 520,
+    autoCost: 4200,
+    art: "furnace",
   },
   {
-    id: "refinery",
-    name: "精錬・鋳造",
-    short: "精錬プレス",
-    icon: "🏭",
+    id: "refine",
+    name: "真空精錬炉",
+    short: "精錬",
+    icon: "🧪",
     input: "molten",
     output: "ingot",
-    baseCycle: 4800,
-    autoCredits: 1800,
-    autoParts: 8,
+    pos: { x: 960, y: 600 },
+    cycleMs: 4200,
+    reward: 160,
+    unlockCost: 1700,
+    autoCost: 12000,
+    art: "refinery",
   },
   {
-    id: "fabricator",
-    name: "部品加工",
-    short: "多軸加工機",
-    icon: "🔩",
+    id: "parts",
+    name: "部品プレス機",
+    short: "部品化",
+    icon: "⚙️",
     input: "ingot",
     output: "parts",
-    baseCycle: 5400,
-    autoCredits: 3600,
-    autoParts: 15,
+    pos: { x: 735, y: 600 },
+    cycleMs: 4600,
+    reward: 420,
+    unlockCost: 5600,
+    autoCost: 35000,
+    art: "press",
   },
   {
-    id: "assembler",
-    name: "ロボット組立",
-    short: "組立アーム",
+    id: "robot",
+    name: "ロボット組立台",
+    short: "組立",
     icon: "🤖",
     input: "parts",
     output: "robots",
-    baseCycle: 6500,
-    autoCredits: 7200,
-    autoRobots: 2,
-  },
-  {
-    id: "shipping",
-    name: "出荷・再投資",
-    short: "自動出荷ゲート",
-    icon: "🚀",
-    input: "robots",
-    baseCycle: 7200,
-    autoCredits: 14000,
-    autoRobots: 5,
+    pos: { x: 510, y: 600 },
+    cycleMs: 5400,
+    reward: 1100,
+    unlockCost: 18500,
+    autoCost: 100000,
+    art: "assembly",
   },
 ];
 
-export const resourceLabels: Record<ScrapResource, { name: string; icon: string }> = {
-  scrap: { name: "宇宙ゴミ", icon: "🪨" },
-  sorted: { name: "選別材", icon: "🧱" },
-  crushed: { name: "破砕材", icon: "🔸" },
-  washed: { name: "洗浄材", icon: "💠" },
-  molten: { name: "溶融金属", icon: "🟠" },
-  ingot: { name: "インゴット", icon: "▰" },
-  parts: { name: "機械部品", icon: "⚙️" },
-  robots: { name: "作業ロボ", icon: "🤖" },
-};
+const machineById = new Map(machines.map((machine) => [machine.id, machine]));
 
-const machineIds = machines.map((machine) => machine.id);
-
-const emptyResources = (): Record<ScrapResource, number> => ({
-  scrap: 0,
+const resourceRecord = (): Record<ResourceId, number> => ({
+  raw: 5,
   sorted: 0,
   crushed: 0,
   washed: 0,
@@ -168,169 +167,440 @@ const emptyResources = (): Record<ScrapResource, number> => ({
   robots: 0,
 });
 
-const emptyLevels = (): Record<MachineId, number> =>
-  Object.fromEntries(machineIds.map((id) => [id, 0])) as Record<MachineId, number>;
+const machineRecord = (value = 0): Record<MachineId, number> => ({
+  sort: value,
+  crush: value,
+  wash: value,
+  melt: value,
+  refine: value,
+  parts: value,
+  robot: value,
+});
 
-const emptyTimers = (now: number): Record<MachineId, number> =>
-  Object.fromEntries(machineIds.map((id) => [id, now])) as Record<MachineId, number>;
+export type ScrapState = {
+  version: 2;
+  credits: number;
+  resources: Record<ResourceId, number>;
+  inputs: Record<MachineId, number>;
+  progress: Record<MachineId, number>;
+  robotProgress: Record<MachineId, number> & { ship: number };
+  levels: Record<MachineId, number>;
+  unlocked: number;
+  automated: string[];
+  carry: { kind: ResourceId | null; amount: number };
+  carryLevel: number;
+  speedLevel: number;
+  paid: Record<string, number>;
+  player: Vec;
+  sourceProgress: number;
+  totalActions: number;
+  totalSold: number;
+  lastSeen: number;
+};
 
-export const createScrapState = (now = Date.now()): ScrapState => ({
-  version: 1,
-  credits: 35,
-  resources: emptyResources(),
-  levels: emptyLevels(),
-  automated: [],
+export type ScrapPersisted = Partial<ScrapState> & { version?: number };
+
+export const createScrapState = (): ScrapState => ({
+  version: 2,
+  credits: 25,
+  resources: resourceRecord(),
+  inputs: machineRecord(),
+  progress: machineRecord(),
+  robotProgress: { ...machineRecord(), ship: 0 },
+  levels: machineRecord(),
   unlocked: 1,
+  automated: [],
+  carry: { kind: null, amount: 0 },
+  carryLevel: 0,
+  speedLevel: 0,
+  paid: {},
+  player: { x: 150, y: 360 },
+  sourceProgress: 0,
   totalActions: 0,
-  lastRun: emptyTimers(now),
-  lastSeen: now,
+  totalSold: 0,
+  lastSeen: Date.now(),
 });
 
 const finite = (value: unknown, fallback = 0) =>
-  typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : fallback;
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
-export const fromScrapPersisted = (raw: unknown, now = Date.now()): ScrapState => {
-  if (!raw || typeof raw !== "object") return createScrapState(now);
-  const value = raw as Partial<ScrapPersisted>;
-  const state = createScrapState(now);
-  state.credits = finite(value.credits, 35);
-  for (const key of Object.keys(state.resources) as ScrapResource[]) {
-    state.resources[key] = finite(value.resources?.[key]);
+const safeResourceRecord = (value: unknown): Record<ResourceId, number> => {
+  const base = resourceRecord();
+  if (!value || typeof value !== "object") return base;
+  for (const id of Object.keys(base) as ResourceId[]) {
+    base[id] = Math.max(0, finite((value as Record<string, unknown>)[id], base[id]));
   }
-  for (const id of machineIds) {
-    state.levels[id] = Math.min(30, Math.floor(finite(value.levels?.[id])));
-    state.lastRun[id] = finite(value.lastRun?.[id], finite(value.lastSeen, now));
-  }
-  state.automated = Array.isArray(value.automated)
-    ? value.automated.filter((id): id is MachineId => machineIds.includes(id as MachineId))
-    : [];
-  state.unlocked = Math.max(1, Math.min(machines.length, Math.floor(finite(value.unlocked, 1))));
-  state.totalActions = Math.floor(finite(value.totalActions));
-  state.lastSeen = finite(value.lastSeen, now);
-  return state;
+  return base;
 };
 
-export const toScrapPersisted = (state: ScrapState): ScrapPersisted => ({
-  version: 1,
-  credits: state.credits,
-  resources: { ...state.resources },
-  levels: { ...state.levels },
-  automated: [...state.automated],
-  unlocked: state.unlocked,
-  totalActions: state.totalActions,
-  lastRun: { ...state.lastRun },
-  lastSeen: state.lastSeen,
-});
+const safeMachineRecord = (value: unknown): Record<MachineId, number> => {
+  const base = machineRecord();
+  if (!value || typeof value !== "object") return base;
+  for (const id of Object.keys(base) as MachineId[]) {
+    base[id] = Math.max(0, finite((value as Record<string, unknown>)[id], 0));
+  }
+  return base;
+};
 
-export const cloneScrap = (state: ScrapState): ScrapState => ({
+export const fromScrapPersisted = (saved: ScrapPersisted | undefined): ScrapState => {
+  const base = createScrapState();
+  if (!saved || saved.version !== 2) return base;
+  const automated = Array.isArray(saved.automated)
+    ? saved.automated.filter((id): id is string => typeof id === "string")
+    : [];
+  const carryKind =
+    saved.carry?.kind && saved.carry.kind in resources
+      ? (saved.carry.kind as ResourceId)
+      : null;
+  return {
+    ...base,
+    credits: Math.max(0, finite(saved.credits, base.credits)),
+    resources: safeResourceRecord(saved.resources),
+    inputs: safeMachineRecord(saved.inputs),
+    progress: safeMachineRecord(saved.progress),
+    robotProgress: {
+      ...safeMachineRecord(saved.robotProgress),
+      ship: Math.max(0, finite(saved.robotProgress?.ship, 0)),
+    },
+    levels: safeMachineRecord(saved.levels),
+    unlocked: Math.max(1, Math.min(machines.length, Math.floor(finite(saved.unlocked, 1)))),
+    automated: Array.from(new Set(automated)),
+    carry: {
+      kind: carryKind,
+      amount: carryKind ? Math.max(0, Math.floor(finite(saved.carry?.amount, 0))) : 0,
+    },
+    carryLevel: Math.max(0, Math.min(12, Math.floor(finite(saved.carryLevel, 0)))),
+    speedLevel: Math.max(0, Math.min(12, Math.floor(finite(saved.speedLevel, 0)))),
+    paid: saved.paid && typeof saved.paid === "object" ? { ...saved.paid } : {},
+    player: {
+      x: Math.max(30, Math.min(SCRAP_WORLD.w - 30, finite(saved.player?.x, base.player.x))),
+      y: Math.max(80, Math.min(SCRAP_WORLD.h - 30, finite(saved.player?.y, base.player.y))),
+    },
+    sourceProgress: Math.max(0, finite(saved.sourceProgress, 0)),
+    totalActions: Math.max(0, Math.floor(finite(saved.totalActions, 0))),
+    totalSold: Math.max(0, Math.floor(finite(saved.totalSold, 0))),
+    lastSeen: Math.max(0, finite(saved.lastSeen, Date.now())),
+  };
+};
+
+export const toScrapPersisted = (state: ScrapState): ScrapPersisted => ({ ...state });
+
+export const carryCapacity = (state: ScrapState) => 3 + state.carryLevel;
+export const moveSpeed = (state: ScrapState) => 118 * (1 + state.speedLevel * 0.075);
+export const machineCapacity = (state: ScrapState, id: MachineId) =>
+  4 + state.levels[id] * 2;
+export const machineCycle = (state: ScrapState, id: MachineId) => {
+  const machine = machineById.get(id)!;
+  return machine.cycleMs / (1 + state.levels[id] * 0.16);
+};
+export const machineBatch = (state: ScrapState, id: MachineId) =>
+  1 + Math.floor(state.levels[id] / 4);
+export const machineUnlocked = (state: ScrapState, id: MachineId) =>
+  machines.findIndex((machine) => machine.id === id) < state.unlocked;
+export const isAutomated = (state: ScrapState, id: MachineId | "ship") =>
+  state.automated.includes(id);
+
+export const upgradeCost = (state: ScrapState, id: MachineId) => {
+  const index = machines.findIndex((machine) => machine.id === id);
+  return Math.ceil((65 + index * 85) * Math.pow(1.72, state.levels[id]));
+};
+
+export const carryUpgradeCost = (state: ScrapState) =>
+  Math.ceil(90 * Math.pow(1.78, state.carryLevel));
+export const speedUpgradeCost = (state: ScrapState) =>
+  Math.ceil(75 * Math.pow(1.74, state.speedLevel));
+export const shipAutoCost = () => 240000;
+
+const cloneState = (state: ScrapState): ScrapState => ({
   ...state,
   resources: { ...state.resources },
+  inputs: { ...state.inputs },
+  progress: { ...state.progress },
+  robotProgress: { ...state.robotProgress },
   levels: { ...state.levels },
   automated: [...state.automated],
-  lastRun: { ...state.lastRun },
+  carry: { ...state.carry },
+  paid: { ...state.paid },
+  player: { ...state.player },
 });
 
-export const batchSize = (state: ScrapState, id: MachineId) =>
-  1 + Math.floor(state.levels[id] * 0.65);
+const outputLimit = (state: ScrapState, id: MachineId) =>
+  8 + state.levels[id] * 3;
 
-export const cycleMs = (state: ScrapState, machine: MachineDef) =>
-  Math.max(650, machine.baseCycle / (1 + state.levels[machine.id] * 0.16));
-
-export const upgradeCost = (state: ScrapState, machine: MachineDef) =>
-  Math.ceil(22 * (machines.indexOf(machine) + 1) * Math.pow(1.72, state.levels[machine.id]));
-
-const availableCycles = (state: ScrapState, machine: MachineDef, requested: number) => {
-  if (!machine.input) return requested;
-  return Math.min(requested, Math.floor(state.resources[machine.input] / batchSize(state, machine.id)));
+const transportOne = (next: ScrapState, machine: MachineDef) => {
+  if (!machineUnlocked(next, machine.id)) return;
+  const available = next.resources[machine.input];
+  const room = machineCapacity(next, machine.id) - next.inputs[machine.id];
+  if (available < 1 || room < 1) return;
+  next.resources[machine.input] -= 1;
+  next.inputs[machine.id] += 1;
 };
 
-const process = (state: ScrapState, machine: MachineDef, requestedCycles: number) => {
-  const cycles = availableCycles(state, machine, requestedCycles);
-  if (cycles <= 0) return 0;
-  const amount = batchSize(state, machine.id) * cycles;
-  if (machine.input) state.resources[machine.input] -= amount;
-  if (machine.output) {
-    state.resources[machine.output] += amount;
-  } else {
-    state.credits += amount * 650;
+export const advanceScrap = (state: ScrapState, dtMs: number): ScrapState => {
+  if (dtMs <= 0) return state;
+  const next = cloneState(state);
+  const dt = Math.min(dtMs, OFFLINE_CAP_MS);
+
+  next.sourceProgress += dt;
+  const sourceEvery = 1800;
+  while (next.sourceProgress >= sourceEvery && next.resources.raw < 30) {
+    next.sourceProgress -= sourceEvery;
+    next.resources.raw += 1;
   }
-  if (machine.id === "collector") state.credits += cycles;
-  state.totalActions += cycles;
-  const index = machines.indexOf(machine);
-  if (index + 1 < machines.length && state.unlocked < index + 2) {
-    state.unlocked = index + 2;
-  }
-  return cycles;
-};
+  if (next.resources.raw >= 30) next.sourceProgress = Math.min(next.sourceProgress, sourceEvery);
 
-export const runManual = (current: ScrapState, id: MachineId): ScrapState => {
-  const state = cloneScrap(current);
-  const machine = machines.find((item) => item.id === id);
-  if (!machine || machines.indexOf(machine) >= state.unlocked) return state;
-  process(state, machine, 1);
-  state.lastSeen = Date.now();
-  return state;
-};
-
-export const canAutomate = (state: ScrapState, machine: MachineDef) =>
-  state.credits >= machine.autoCredits &&
-  state.resources.parts >= (machine.autoParts ?? 0) &&
-  state.resources.robots >= (machine.autoRobots ?? 0);
-
-export const buyAutomation = (current: ScrapState, id: MachineId): ScrapState => {
-  if (current.automated.includes(id)) return current;
-  const machine = machines.find((item) => item.id === id);
-  if (!machine || !canAutomate(current, machine)) return current;
-  const state = cloneScrap(current);
-  state.credits -= machine.autoCredits;
-  state.resources.parts -= machine.autoParts ?? 0;
-  state.resources.robots -= machine.autoRobots ?? 0;
-  state.automated.push(id);
-  state.lastRun[id] = Date.now();
-  state.lastSeen = Date.now();
-  return state;
-};
-
-export const buyUpgrade = (current: ScrapState, id: MachineId): ScrapState => {
-  const machine = machines.find((item) => item.id === id);
-  if (!machine) return current;
-  const cost = upgradeCost(current, machine);
-  if (current.credits < cost || current.levels[id] >= 30) return current;
-  const state = cloneScrap(current);
-  state.credits -= cost;
-  state.levels[id] += 1;
-  state.lastSeen = Date.now();
-  return state;
-};
-
-export const tickScrap = (current: ScrapState, now = Date.now()): ScrapState => {
-  const state = cloneScrap(current);
   for (const machine of machines) {
-    if (!state.automated.includes(machine.id)) {
-      state.lastRun[machine.id] = now;
+    if (!isAutomated(next, machine.id) || !machineUnlocked(next, machine.id)) continue;
+    next.robotProgress[machine.id] += dt;
+    const interval = Math.max(520, 1700 - next.levels[machine.id] * 80);
+    while (next.robotProgress[machine.id] >= interval) {
+      next.robotProgress[machine.id] -= interval;
+      transportOne(next, machine);
+    }
+  }
+
+  for (const machine of machines) {
+    if (!machineUnlocked(next, machine.id)) continue;
+    const limit = outputLimit(next, machine.id);
+    if (next.inputs[machine.id] <= 0 || next.resources[machine.output] >= limit) {
+      next.progress[machine.id] = Math.min(next.progress[machine.id], machineCycle(next, machine.id));
       continue;
     }
-    const elapsed = Math.max(0, Math.min(8 * 60 * 60 * 1000, now - state.lastRun[machine.id]));
-    const cycles = Math.min(10000, Math.floor(elapsed / cycleMs(state, machine)));
-    if (cycles <= 0) continue;
-    process(state, machine, cycles);
-    state.lastRun[machine.id] = now;
-  }
-  state.lastSeen = now;
-  return state;
-};
-
-export const completedLines = (state: ScrapState) => state.automated.length;
-
-export const bottleneck = (state: ScrapState): string => {
-  const open = machines.slice(0, state.unlocked);
-  for (let i = open.length - 1; i >= 1; i -= 1) {
-    const machine = open[i];
-    if (machine.input && state.resources[machine.input] <= 0) {
-      return `${open[i - 1].name}が追いついていません`;
+    next.progress[machine.id] += dt;
+    const cycle = machineCycle(next, machine.id);
+    while (
+      next.progress[machine.id] >= cycle &&
+      next.inputs[machine.id] > 0 &&
+      next.resources[machine.output] < limit
+    ) {
+      next.progress[machine.id] -= cycle;
+      next.inputs[machine.id] -= 1;
+      const made = Math.min(machineBatch(next, machine.id), limit - next.resources[machine.output]);
+      next.resources[machine.output] += made;
+      next.credits += machine.reward * made;
+      next.totalActions += made;
     }
   }
-  const manual = open.find((machine) => !state.automated.includes(machine.id));
-  if (manual) return `${manual.name}を自動化するとラインが伸びます`;
-  return "ラインは順調に稼働中です";
+
+  if (isAutomated(next, "ship")) {
+    next.robotProgress.ship += dt;
+    while (next.robotProgress.ship >= 1250 && next.resources.robots >= 1) {
+      next.robotProgress.ship -= 1250;
+      next.resources.robots -= 1;
+      next.credits += 2600;
+      next.totalSold += 1;
+    }
+  }
+
+  next.lastSeen = Date.now();
+  return next;
+};
+
+export const tickScrap = (state: ScrapState, now = Date.now()): ScrapState => {
+  const elapsed = Math.max(0, Math.min(OFFLINE_CAP_MS, now - state.lastSeen));
+  if (elapsed < 300) return { ...state, lastSeen: now };
+  const steps = Math.max(1, Math.min(720, Math.ceil(elapsed / 1500)));
+  const step = elapsed / steps;
+  let next = state;
+  for (let i = 0; i < steps; i += 1) next = advanceScrap(next, step);
+  next.lastSeen = now;
+  return next;
+};
+
+export const pickup = (
+  state: ScrapState,
+  kind: ResourceId,
+  amount = 1,
+): ScrapState => {
+  if (state.resources[kind] < 1) return state;
+  if (state.carry.kind && state.carry.kind !== kind) return state;
+  const room = carryCapacity(state) - state.carry.amount;
+  if (room <= 0) return state;
+  const moved = Math.min(amount, room, Math.floor(state.resources[kind]));
+  if (moved <= 0) return state;
+  const next = cloneState(state);
+  next.resources[kind] -= moved;
+  next.carry.kind = kind;
+  next.carry.amount += moved;
+  next.totalActions += moved;
+  return next;
+};
+
+export const deposit = (state: ScrapState, id: MachineId, amount = 1): ScrapState => {
+  const machine = machineById.get(id)!;
+  if (!machineUnlocked(state, id)) return state;
+  if (state.carry.kind !== machine.input || state.carry.amount <= 0) return state;
+  const room = machineCapacity(state, id) - state.inputs[id];
+  const moved = Math.min(amount, room, state.carry.amount);
+  if (moved <= 0) return state;
+  const next = cloneState(state);
+  next.inputs[id] += moved;
+  next.carry.amount -= moved;
+  if (next.carry.amount <= 0) next.carry = { kind: null, amount: 0 };
+  next.totalActions += moved;
+  return next;
+};
+
+export const sellCarriedRobots = (state: ScrapState, amount = 1): ScrapState => {
+  if (state.carry.kind !== "robots" || state.carry.amount <= 0) return state;
+  const sold = Math.min(amount, state.carry.amount);
+  const next = cloneState(state);
+  next.carry.amount -= sold;
+  if (next.carry.amount <= 0) next.carry = { kind: null, amount: 0 };
+  next.credits += sold * 2600;
+  next.totalSold += sold;
+  next.totalActions += sold;
+  return next;
+};
+
+export type Purchase = {
+  id: string;
+  label: string;
+  detail: string;
+  cost: number;
+  pos: Vec;
+  kind: "unlock" | "auto" | "upgrade" | "carry" | "speed" | "ship";
+  machine?: MachineId;
+};
+
+export const purchases = (state: ScrapState): Purchase[] => {
+  const list: Purchase[] = [];
+  const nextMachine = machines[state.unlocked];
+  if (nextMachine) {
+    list.push({
+      id: `unlock-${nextMachine.id}`,
+      label: `${nextMachine.short}ライン`,
+      detail: `${nextMachine.name}を建設`,
+      cost: nextMachine.unlockCost,
+      pos: { x: nextMachine.pos.x, y: nextMachine.pos.y + 112 },
+      kind: "unlock",
+      machine: nextMachine.id,
+    });
+  }
+  for (const machine of machines.slice(0, state.unlocked)) {
+    if (!isAutomated(state, machine.id)) {
+      list.push({
+        id: `auto-${machine.id}`,
+        label: "作業ロボ",
+        detail: `${resources[machine.input].short}を自動搬送`,
+        cost: machine.autoCost,
+        pos: { x: machine.pos.x - 48, y: machine.pos.y + 102 },
+        kind: "auto",
+        machine: machine.id,
+      });
+    }
+    if (state.levels[machine.id] < 10) {
+      list.push({
+        id: `upgrade-${machine.id}`,
+        label: `${machine.short}強化`,
+        detail: "速度・容量・生産数アップ",
+        cost: upgradeCost(state, machine.id),
+        pos: { x: machine.pos.x + 48, y: machine.pos.y + 102 },
+        kind: "upgrade",
+        machine: machine.id,
+      });
+    }
+  }
+  if (state.carryLevel < 12) {
+    list.push({
+      id: "carry",
+      label: "大型コンテナ",
+      detail: `運べる数 ${carryCapacity(state)} → ${carryCapacity(state) + 1}`,
+      cost: carryUpgradeCost(state),
+      pos: { x: 118, y: 470 },
+      kind: "carry",
+    });
+  }
+  if (state.speedLevel < 12) {
+    list.push({
+      id: "speed",
+      label: "磁気ブーツ",
+      detail: `移動速度 +${Math.round((state.speedLevel + 1) * 7.5)}%`,
+      cost: speedUpgradeCost(state),
+      pos: { x: 190, y: 470 },
+      kind: "speed",
+    });
+  }
+  if (state.unlocked >= machines.length && !isAutomated(state, "ship")) {
+    list.push({
+      id: "auto-ship",
+      label: "出荷ドローン",
+      detail: "完成ロボットを自動出荷",
+      cost: shipAutoCost(),
+      pos: { x: SHIP_POS.x, y: SHIP_POS.y + 105 },
+      kind: "ship",
+    });
+  }
+  return list;
+};
+
+const applyPurchase = (state: ScrapState, purchase: Purchase): ScrapState => {
+  const next = cloneState(state);
+  delete next.paid[purchase.id];
+  if (purchase.kind === "unlock" && purchase.machine) {
+    const index = machines.findIndex((machine) => machine.id === purchase.machine);
+    next.unlocked = Math.max(next.unlocked, index + 1);
+  } else if (purchase.kind === "auto" && purchase.machine) {
+    next.automated = Array.from(new Set([...next.automated, purchase.machine]));
+  } else if (purchase.kind === "upgrade" && purchase.machine) {
+    next.levels[purchase.machine] = Math.min(10, next.levels[purchase.machine] + 1);
+  } else if (purchase.kind === "carry") {
+    next.carryLevel = Math.min(12, next.carryLevel + 1);
+  } else if (purchase.kind === "speed") {
+    next.speedLevel = Math.min(12, next.speedLevel + 1);
+  } else if (purchase.kind === "ship") {
+    next.automated = Array.from(new Set([...next.automated, "ship"]));
+  }
+  next.totalActions += 1;
+  return next;
+};
+
+export const payPurchase = (
+  state: ScrapState,
+  purchase: Purchase,
+  dtMs: number,
+): ScrapState => {
+  const already = state.paid[purchase.id] ?? 0;
+  if (already >= purchase.cost) return applyPurchase(state, purchase);
+  if (state.credits <= 0) return state;
+  const rate = Math.max(28, purchase.cost / 2.4);
+  const amount = Math.min(state.credits, purchase.cost - already, (rate * dtMs) / 1000);
+  if (amount <= 0) return state;
+  const next = cloneState(state);
+  next.credits -= amount;
+  next.paid[purchase.id] = already + amount;
+  if (next.paid[purchase.id] + 0.001 >= purchase.cost) return applyPurchase(next, purchase);
+  return next;
+};
+
+export const purchaseRemaining = (state: ScrapState, purchase: Purchase) =>
+  Math.max(0, purchase.cost - (state.paid[purchase.id] ?? 0));
+
+export const objective = (state: ScrapState): string => {
+  if (state.carry.amount === 0 && state.resources.raw > 0) return "宇宙ゴミ置き場へ行って、素材を拾おう";
+  if (state.carry.kind) {
+    const machine = machines.find(
+      (item) => machineUnlocked(state, item.id) && item.input === state.carry.kind,
+    );
+    if (machine) return `${machine.name}の投入口へ運ぼう`;
+    if (state.carry.kind === "robots") return "出荷ポートへ完成ロボットを運ぼう";
+  }
+  const ready = machines.find(
+    (machine) => machineUnlocked(state, machine.id) && state.resources[machine.output] > 0,
+  );
+  if (ready) return `${ready.name}の完成品を受け取ろう`;
+  if (state.unlocked < machines.length) return "緑の建設枠に立って、次の加工ラインを開こう";
+  return "作業ロボを増やして、工場を完全自動化しよう";
+};
+
+export const bottleneck = (state: ScrapState): string => {
+  for (const machine of machines.slice(0, state.unlocked)) {
+    if (state.inputs[machine.id] <= 0 && state.resources[machine.input] > 0) {
+      return `${machine.short}への搬送が止まっています`;
+    }
+    if (state.resources[machine.output] >= outputLimit(state, machine.id)) {
+      return `${machine.short}の完成品が詰まっています`;
+    }
+  }
+  return "ラインは順調に流れています";
 };
