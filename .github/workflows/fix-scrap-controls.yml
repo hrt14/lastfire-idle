@@ -1,3 +1,4 @@
+# Trigger one-shot control alignment.
 name: Fix Scrap Planet controls
 
 on:
@@ -31,26 +32,14 @@ jobs:
                   raise SystemExit(f'{label} anchor not found')
               text = text.replace(old, new, 1)
 
-          replace_once(
-              'const INTERACT_RADIUS = 34;',
-              'const INTERACT_RADIUS = 46;',
-              'interaction radius',
-          )
-          replace_once(
-              '  const interactionRef = useRef(0);\n',
-              '',
-              'interaction timer ref',
-          )
+          replace_once('const INTERACT_RADIUS = 34;', 'const INTERACT_RADIUS = 46;', 'interaction radius')
+          replace_once('  const interactionRef = useRef(0);\n', '', 'interaction timer ref')
           replace_once(
               '    let raf = 0;\n    let last = performance.now();',
               '    let raf = 0;\n    let last = performance.now();\n    const camera = { x: 0, y: 0 };',
               'camera state',
           )
-          replace_once(
-              '        next = pickup(next, "raw");',
-              '        next = pickup(next, "raw", carryCapacity(next));',
-              'source pickup',
-          )
+          replace_once('        next = pickup(next, "raw");', '        next = pickup(next, "raw", carryCapacity(next));', 'source pickup')
           replace_once(
               '        if (distance(player, inputPos(machine)) < INTERACT_RADIUS) next = deposit(next, machine.id);',
               '        if (distance(player, inputPos(machine)) < INTERACT_RADIUS) {\n          next = deposit(next, machine.id, carryCapacity(next));\n        }',
@@ -61,11 +50,7 @@ jobs:
               '        if (distance(player, outputPos(machine)) < INTERACT_RADIUS) {\n          next = pickup(next, machine.output, carryCapacity(next));\n        }',
               'machine pickup',
           )
-          replace_once(
-              '        next = sellCarriedRobots(next);',
-              '        next = sellCarriedRobots(next, carryCapacity(next));',
-              'shipping',
-          )
+          replace_once('        next = sellCarriedRobots(next);', '        next = sellCarriedRobots(next, carryCapacity(next));', 'shipping')
           replace_once(
               '''      interactionRef.current += dt;
       if (interactionRef.current >= 170) {
@@ -132,7 +117,6 @@ jobs:
     };''',
               'joystick response',
           )
-
           component.write_text(text)
 
           engine = Path('lib/scrap.ts')
