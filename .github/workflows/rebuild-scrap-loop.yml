@@ -18,6 +18,20 @@ jobs:
           ref: agent/rebuild-scrap-game-loop
           fetch-depth: 0
 
+      - name: Fix generated template escaping
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-scrap-controls.mjs')
+          source = path.read_text()
+          source = source.replace(
+              r'\`${machine.name}の投入口へ運ぼう\`',
+              r'\`\${machine.name}の投入口へ運ぼう\`',
+          )
+          path.write_text(source)
+          PY
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -57,7 +71,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add SCRAP_LOOP_STATUS.txt
-          git commit -m "Record Scrap Planet loop validation" || true
+          git add scripts/apply-scrap-controls.mjs SCRAP_LOOP_STATUS.txt
+          git commit -m "Fix and validate Scrap Planet loop" || true
           git push origin HEAD:agent/rebuild-scrap-game-loop
           exit "$exit_code"
