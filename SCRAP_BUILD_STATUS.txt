@@ -1,0 +1,81 @@
+install=0
+lint=1
+build=0
+
+--- install tail ---
+
+added 427 packages, and audited 428 packages in 16s
+
+145 packages are looking for funding
+  run `npm fund` for details
+
+3 high severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+--- lint tail ---
+
+> lastfire-idle@0.1.0 lint
+> eslint .
+
+
+/home/runner/work/lastfire-idle/lastfire-idle/components/ScrapPlanet.tsx
+   58:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/runner/work/lastfire-idle/lastfire-idle/components/ScrapPlanet.tsx:58:5
+  56 |     const loaded = loadScrap();
+  57 |     stateRef.current = loaded;
+> 58 |     setState(loaded);
+     |     ^^^^^^^^ Avoid calling setState() directly within an effect
+  59 |     setMounted(true);
+  60 |   }, []);
+  61 |  react-hooks/set-state-in-effect
+  136:9  error  Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   @next/next/no-html-link-for-pages
+
+✖ 2 problems (2 errors, 0 warnings)
+
+
+--- build tail ---
+
+> lastfire-idle@0.1.0 build
+> next build
+
+⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+▲ Next.js 16.2.12 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 4.8s
+  Running TypeScript ...
+  Finished TypeScript in 3.5s ...
+  Collecting page data using 3 workers ...
+  Generating static pages using 3 workers (0/6) ...
+  Generating static pages using 3 workers (1/6) 
+  Generating static pages using 3 workers (2/6) 
+  Generating static pages using 3 workers (4/6) 
+✓ Generating static pages using 3 workers (6/6) in 346ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /icon.svg
+├ ○ /manifest.webmanifest
+└ ○ /scrap
+
+
+○  (Static)  prerendered as static content
+
