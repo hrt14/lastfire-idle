@@ -3,12 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node scripts/apply-scrap-controls.mjs && node scripts/fix-scrap-sorter-stall.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/apply-scrap-controls.mjs && node scripts/fix-scrap-sorter-stall.mjs",
     "build": "next build",
     "start": "next start",
-    "prelint": "node scripts/apply-scrap-controls.mjs && node scripts/fix-scrap-sorter-stall.mjs",
     "lint": "eslint ."
   },
   "dependencies": {
