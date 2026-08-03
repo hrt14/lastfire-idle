@@ -40,6 +40,12 @@
 5. ウェブの設定値（firebaseConfig）は `lib/firebase.ts` に直接書いてある。
    ブラウザに配られる公開値で秘密ではないため、環境変数にはしていない。
    別のプロジェクトに向けたいときは、このファイルの値を書き替える
+6. **スマホのログイン対策**: `working-planet.hitobito.jp` では、認証の受け口を
+   同じドメインに置いている（`next.config.ts` の中継 + `authDomain` の差し替え）。
+   これに合わせて、Google Cloud の OAuth クライアントに次を登録しておくこと:
+   <https://console.cloud.google.com/apis/credentials?project=working-planet>
+   - 承認済みの JavaScript 生成元: `https://working-planet.hitobito.jp`
+   - 承認済みのリダイレクト URI: `https://working-planet.hitobito.jp/__/auth/handler`
 
 セーブは `saves/{uid}` に丸ごと1件で入ります。ログインすると、端末とクラウドの
 **新しい方**を正として合わせ、そのあとは保存のたびに数秒おきに送ります。

@@ -20,9 +20,22 @@ const config = {
   appId: "1:299273365543:web:f5ce35b6bc35bb83140602",
 };
 
+/**
+ * ログインの受け口。
+ * 公開ドメインでは、next.config.ts の中継のおかげで同じドメインのまま
+ * ログインできる（スマホの Safari 対策）。ほかの場所では既定のまま。
+ */
+const SAME_SITE_AUTH = new Set(["working-planet.hitobito.jp"]);
+
+const authDomain = () => {
+  if (typeof window === "undefined") return config.authDomain;
+  const host = window.location.hostname;
+  return SAME_SITE_AUTH.has(host) ? host : config.authDomain;
+};
+
 /** いま使っている設定の目印（どのビルドが動いているかの確認用） */
 export const configMark = () =>
-  `${config.projectId}/…${config.apiKey.slice(-6)}`;
+  `${config.projectId}/…${config.apiKey.slice(-6)}/${authDomain()}`;
 
 /** ログイン機能を出してよいか（設定がそろっているか） */
 export const cloudReady = () =>
@@ -33,7 +46,9 @@ let app: FirebaseApp | null = null;
 const firebaseApp = (): FirebaseApp | null => {
   if (!cloudReady()) return null;
   if (!app) {
-    app = getApps().length ? getApp() : initializeApp(config);
+    app = getApps().length
+      ? getApp()
+      : initializeApp({ ...config, authDomain: authDomain() });
   }
   return app;
 };
