@@ -37,12 +37,10 @@
    }
    ```
 
-5. プロジェクトの設定 → マイアプリ（ウェブ）の値を、Vercel の環境変数に入れる
-   （`.env.example` と同じ名前。ローカルでは `.env.local` に置く）
-   - 値の取得: <https://console.firebase.google.com/project/_/settings/general>
-   - 貼り付け先: Vercel → Settings → Environment Variables
-     （<https://vercel.com/dashboard> → lastfire-idle → Settings → Environment Variables）
-   - 入れ替えたあとは **Redeploy** が必要
+5. ウェブの設定値（firebaseConfig）は `lib/firebase.ts` に直接書いてある。
+   これはブラウザに配られる公開値なので、秘密ではない。
+   別のプロジェクトに向けたいときだけ、`.env.example` と同じ名前の環境変数を入れれば
+   そちらが優先される（Vercel に入れた場合は **Redeploy** が必要）
 
 セーブは `saves/{uid}` に丸ごと1件で入ります。ログインすると、端末とクラウドの
 **新しい方**を正として合わせ、そのあとは保存のたびに数秒おきに送ります。
