@@ -233,7 +233,7 @@ export default function Page() {
                   disabled={!open}
                   onClick={() => start(def.id)}
                 >
-                  {progress.started ? "つづき" : "はじめる"}
+                  {!open ? "ロック中" : progress.started ? "つづき" : "はじめる"}
                 </button>
               </li>
             );
