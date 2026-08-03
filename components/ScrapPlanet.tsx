@@ -24,7 +24,8 @@ import {
   purchaseRemaining,
   purchases,
   resources,
-  sellCarriedRobots,
+  saleValue,
+  sellCarried,
   type MachineDef,
   type Purchase,
   type ResourceId,
@@ -39,7 +40,7 @@ import { startCloud } from "@/lib/cloud";
 
 const FONT = `700 11px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
 const SMALL = `700 9px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
-const INTERACT_RADIUS = 34;
+const INTERACT_RADIUS = 46;
 
 const distance = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (value: number, min: number, max: number) =>
@@ -327,8 +328,11 @@ const drawMachine = (
   ctx.fillText(resources[machine.output].icon, outPos.x, outPos.y + 4);
   ctx.font = SMALL;
   ctx.fillStyle = "#cbd5e1";
-  ctx.fillText(`${Math.floor(state.inputs[machine.id])}/${machineCapacity(state, machine.id)}`, inPos.x, inPos.y + 36);
-  ctx.fillText(`${Math.floor(state.resources[machine.output])}`, outPos.x, outPos.y + 36);
+  ctx.fillText("投入", inPos.x, inPos.y + 30);
+  ctx.fillText("受取", outPos.x, outPos.y + 30);
+  ctx.fillStyle = "#94a3b8";
+  ctx.fillText(`${Math.floor(state.inputs[machine.id])}/${machineCapacity(state, machine.id)}`, inPos.x, inPos.y + 43);
+  ctx.fillText(`${Math.floor(state.resources[machine.output])}`, outPos.x, outPos.y + 43);
   ctx.fillStyle = "#94a3b8";
   ctx.fillText(`LV ${state.levels[machine.id] + 1}`, machine.pos.x, machine.pos.y + 47);
 };
@@ -364,10 +368,10 @@ const drawShipping = (ctx: CanvasRenderingContext2D, state: ScrapState, time: nu
   ctx.font = FONT;
   ctx.textAlign = "center";
   ctx.fillStyle = "#f8fafc";
-  ctx.fillText("出荷ポート", x, y - 50);
+  ctx.fillText("再生資源取引所", x, y - 50);
   ctx.font = SMALL;
   ctx.fillStyle = "#94a3b8";
-  ctx.fillText("完成ロボ 1体 = 2,600 C", x, y + 62);
+  ctx.fillText("加工品を運ぶとクレジットに交換", x, y + 62);
 };
 
 const drawPurchase = (
@@ -517,6 +521,7 @@ export default function ScrapPlanet() {
     if (!canvas) return;
     let raf = 0;
     let last = performance.now();
+    const camera = { x: 0, y: 0 };
 
     const resize = () => {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -532,16 +537,37 @@ export default function ScrapPlanet() {
     const interact = (state: ScrapState): ScrapState => {
       let next = state;
       const player = next.player;
-      if (distance(player, { x: SOURCE_POS.x, y: SOURCE_POS.y + 62 }) < INTERACT_RADIUS) {
-        next = pickup(next, "raw");
+      // Sorter stall guard: do not pick up more raw scrap than the sorter can accept.
+      const firstMachine = machines[0];
+      const rawRoom = Math.max(
+        0,
+        machineCapacity(next, firstMachine.id) - next.inputs[firstMachine.id],
+      );
+      if (
+        !next.carry.kind &&
+        rawRoom > 0 &&
+        distance(player, { x: SOURCE_POS.x, y: SOURCE_POS.y + 62 }) < INTERACT_RADIUS
+      ) {
+        next = pickup(next, "raw", Math.min(carryCapacity(next), rawRoom));
       }
       for (const machine of machines) {
         if (!machineUnlocked(next, machine.id)) continue;
-        if (distance(player, inputPos(machine)) < INTERACT_RADIUS) next = deposit(next, machine.id);
-        if (distance(player, outputPos(machine)) < INTERACT_RADIUS) next = pickup(next, machine.output);
+        const nearMachine = distance(player, machine.pos) < 80;
+        const nearInput = distance(player, inputPos(machine)) < INTERACT_RADIUS;
+        const nearOutput = distance(player, outputPos(machine)) < INTERACT_RADIUS;
+        if (next.carry.kind === machine.input && (nearInput || nearMachine)) {
+          next = deposit(next, machine.id, carryCapacity(next));
+        }
+        if (
+          (!next.carry.kind || next.carry.kind === machine.output) &&
+          next.resources[machine.output] > 0 &&
+          (nearOutput || nearMachine)
+        ) {
+          next = pickup(next, machine.output, carryCapacity(next));
+        }
       }
-      if (distance(player, { x: SHIP_POS.x, y: SHIP_POS.y + 40 }) < 43) {
-        next = sellCarriedRobots(next);
+      if (distance(player, { x: SHIP_POS.x, y: SHIP_POS.y + 40 }) < 52) {
+        next = sellCarried(next, carryCapacity(next));
       }
       return next;
     };
@@ -595,10 +621,13 @@ export default function ScrapPlanet() {
         const width = canvas.width / dpr;
         const height = canvas.height / dpr;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const camera = {
+        const targetCamera = {
           x: clamp(state.player.x - width / 2, 0, Math.max(0, SCRAP_WORLD.w - width)),
           y: clamp(state.player.y - height / 2, 0, Math.max(0, SCRAP_WORLD.h - height)),
         };
+        const follow = Math.min(1, (dt / 1000) * 6);
+        camera.x += (targetCamera.x - camera.x) * follow;
+        camera.y += (targetCamera.y - camera.y) * follow;
         drawFloor(ctx, camera, width, height);
         ctx.save();
         ctx.translate(-camera.x, -camera.y);
@@ -645,6 +674,7 @@ export default function ScrapPlanet() {
   }, [help, mounted]);
 
   const pointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
@@ -662,6 +692,7 @@ export default function ScrapPlanet() {
   }, []);
 
   const pointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
     const joy = joystickRef.current;
     if (!joy.active || joy.pointerId !== event.pointerId) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -670,14 +701,18 @@ export default function ScrapPlanet() {
     const rawX = px - joy.startX;
     const rawY = py - joy.startY;
     const length = Math.hypot(rawX, rawY);
-    const max = 38;
-    const scale = length > max ? max / length : 1;
+    const maxVisual = 42;
+    const visualScale = length > maxVisual ? maxVisual / length : 1;
+    const deadZone = 4;
+    const strength = length <= deadZone ? 0 : Math.min(1, (length - deadZone) / 30);
+    const nx = length > 0 ? rawX / length : 0;
+    const ny = length > 0 ? rawY / length : 0;
     joystickRef.current = {
       ...joy,
-      x: joy.startX + rawX * scale,
-      y: joy.startY + rawY * scale,
-      dx: clamp(rawX / max, -1, 1),
-      dy: clamp(rawY / max, -1, 1),
+      x: joy.startX + rawX * visualScale,
+      y: joy.startY + rawY * visualScale,
+      dx: nx * strength,
+      dy: ny * strength,
     };
   }, []);
 
@@ -748,8 +783,9 @@ export default function ScrapPlanet() {
             </div>
             <ul>
               <li>画面をスワイプして作業員を動かします。PCは矢印キー／WASDです。</li>
-              <li>宇宙ゴミや完成品へ近づくと自動で拾い、機械の投入口へ近づくと自動で投入します。</li>
-              <li>緑の枠に立つとクレジットが吸い出され、設備建設・強化・作業ロボ雇用が進みます。</li>
+              <li>宇宙ゴミを拾って機械へ投入し、完成した加工品を受け取ります。</li>
+              <li>加工品を再生資源取引所へ運ぶとクレジットになります。高い工程ほど高値で売れます。</li>
+              <li>緑の枠に立つとクレジットが吸い出され、次の設備建設・強化・作業ロボ雇用が進みます。</li>
               <li>作業ロボを買うと、その工程への運搬が自動化され、自分の往復がひとつ減ります。</li>
               <li>選別→破砕→洗浄→溶解→精錬→部品化→ロボット組立→出荷までつなげます。</li>
               <li>工場を閉じているあいだも、自動化済みの工程は最大8時間進みます。</li>
