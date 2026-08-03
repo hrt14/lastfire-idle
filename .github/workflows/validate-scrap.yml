@@ -1,0 +1,61 @@
+name: Validate Scrap Planet
+
+on:
+  push:
+    branches:
+      - agent/scrap-planet
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/scrap-planet
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Run checks and save result
+        shell: bash
+        run: |
+          set +e
+          npm ci > /tmp/install.log 2>&1
+          install_status=$?
+          if [ "$install_status" -eq 0 ]; then
+            npm run lint > /tmp/lint.log 2>&1
+            lint_status=$?
+            npm run build > /tmp/build.log 2>&1
+            build_status=$?
+          else
+            lint_status=99
+            build_status=99
+            : > /tmp/lint.log
+            : > /tmp/build.log
+          fi
+          {
+            echo "install=$install_status"
+            echo "lint=$lint_status"
+            echo "build=$build_status"
+            echo
+            echo "--- install tail ---"
+            tail -80 /tmp/install.log
+            echo
+            echo "--- lint tail ---"
+            tail -120 /tmp/lint.log
+            echo
+            echo "--- build tail ---"
+            tail -160 /tmp/build.log
+          } > SCRAP_BUILD_STATUS.txt
+      - name: Remove one-shot workflow and commit result
+        run: |
+          rm .github/workflows/validate-scrap.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SCRAP_BUILD_STATUS.txt .github/workflows/validate-scrap.yml
+          git commit -m "Record Scrap Planet build validation"
+          git push origin HEAD:agent/scrap-planet
