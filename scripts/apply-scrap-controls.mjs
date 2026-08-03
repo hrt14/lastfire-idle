@@ -100,7 +100,7 @@ export const machines: MachineDef[] = [`, "sale values"],
   next.totalActions += sold;
   return next;
 };`, "generic sale"],
-  [/    if \(machine\) return `\$\{machine\.name\}の投入口へ運ぼう`;\n    if \(state\.carry\.kind === "robots"\) return "出荷ポートへ完成ロボットを運ぼう";/, `    if (machine) return \`${machine.name}の投入口へ運ぼう\`;
+  [/    if \(machine\) return `\$\{machine\.name\}の投入口へ運ぼう`;\n    if \(state\.carry\.kind === "robots"\) return "出荷ポートへ完成ロボットを運ぼう";/, `    if (machine) return \`\${machine.name}の投入口へ運ぼう\`;
     if (state.carry.kind !== "raw") {
       return \`再生資源取引所へ運ぼう（1個 \${saleValue(state.carry.kind).toLocaleString("ja-JP")} C）\`;
     }`, "sale objective"],
