@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import styles from "./ScrapPlanet.module.css";
 import {
   batchSize,
@@ -53,10 +54,13 @@ export default function ScrapPlanet() {
 
   useEffect(() => {
     startCloud();
-    const loaded = loadScrap();
-    stateRef.current = loaded;
-    setState(loaded);
-    setMounted(true);
+    const frame = window.requestAnimationFrame(() => {
+      const loaded = loadScrap();
+      stateRef.current = loaded;
+      setState(loaded);
+      setMounted(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -133,9 +137,9 @@ export default function ScrapPlanet() {
     <main className={styles.page}>
       <div className={styles.stars} aria-hidden />
       <header className={styles.header}>
-        <a className={styles.back} href="/">
+        <Link className={styles.back} href="/">
           ← シリーズ選択
-        </a>
+        </Link>
         <div className={styles.titleBlock}>
           <span className={styles.planet}>♻️</span>
           <div>
