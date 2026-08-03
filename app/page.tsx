@@ -247,6 +247,25 @@ export default function Page() {
           })}
         </ul>
 
+        <h2 className="series-head">
+          <span aria-hidden>♻️</span> SCRAP PLANET
+        </h2>
+        <ul className="stages">
+          <li className="stage-card stage-scrap">
+            <div className="stage-art" aria-hidden>
+              🏭
+            </div>
+            <div className="stage-body">
+              <strong>スクラップ工場</strong>
+              <p>宇宙ゴミを加工し、ロボットで全工程を自動化</p>
+              <span className="stage-progress">9段階の加工ライン・新登場</span>
+            </div>
+            <a className="stage-go" href="/scrap">
+              はじめる
+            </a>
+          </li>
+        </ul>
+
         <h2 className="series-head is-soon">
           <span aria-hidden>🦕</span> ワーキングプラネット
         </h2>

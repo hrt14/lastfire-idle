@@ -27,6 +27,8 @@ type Vault = {
   savedAt?: number;
   active: StageId;
   stages: Partial<Record<StageId, Persisted>>;
+  /** SCRAP PLANETの専用工場データ。同じユーザーセーブ内に保存する */
+  scrap?: Record<string, unknown>;
   /** ガチャで当てた見た目（ステージ共通） */
   skins: string[];
   /** 見た目ごとの★（ダブるたびに増えて光り方が変わる） */
@@ -70,6 +72,10 @@ const readVault = (): Vault => {
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : 0,
       active: parsed.active === "park" ? "park" : "ramen",
       stages: (parsed.stages ?? {}) as Partial<Record<StageId, Persisted>>,
+      scrap:
+        parsed.scrap && typeof parsed.scrap === "object"
+          ? (parsed.scrap as Record<string, unknown>)
+          : undefined,
       skins: Array.from(new Set(["default", ...owned])),
       stars,
       equipped:
