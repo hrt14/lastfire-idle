@@ -17,9 +17,22 @@ import {
   type User,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { authClient, cloudReady, configMark, dbClient } from "@/lib/firebase";
+import {
+  authClient,
+  cloudReady,
+  configMark,
+  dbClient,
+  sameSiteAuth,
+  useSameSiteAuth,
+} from "@/lib/firebase";
 
-export { cloudReady };
+export { cloudReady, sameSiteAuth };
+
+/** ログインの受け口を切り替えて開き直す（スマホで戻ってこないとき用） */
+export const switchAuthRoute = (on: boolean) => {
+  useSameSiteAuth(on);
+  window.location.reload();
+};
 
 export type Account = {
   uid: string;

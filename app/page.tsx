@@ -30,9 +30,11 @@ import { setMuted, unlockAudio } from "@/lib/sfx";
 import {
   cloudReady,
   cloudState,
+  sameSiteAuth,
   signIn,
   signOutAccount,
   startCloud,
+  switchAuthRoute,
   watchCloud,
 } from "@/lib/cloud";
 
@@ -200,6 +202,18 @@ export default function Page() {
               </>
             )}
           </div>
+        ) : null}
+
+        {mounted && cloudReady() && !cloud.account ? (
+          <button
+            type="button"
+            className="account-swap"
+            onClick={() => switchAuthRoute(!sameSiteAuth())}
+          >
+            {sameSiteAuth()
+              ? "うまくいかないときは、元のログイン方法に戻す"
+              : "スマホでログインできないときは、別のログイン方法を試す"}
+          </button>
         ) : null}
 
         <h2 className="series-head">
