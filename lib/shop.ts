@@ -267,8 +267,8 @@ const hireSub: Record<StaffKind, string> = {
   busser: "テーブルの皿を片づける",
   stocker: "倉庫から棚へ商品を並べる",
   server: "厨房の料理をテーブルへ運ぶ",
-  seller: "入口で入場券を売ってくれる",
-  gatekeeper: "改札でお客さんを通してくれる",
+  seller: "入場券を売ってくれる（1人ずつ）",
+  gatekeeper: "改札で通してくれる（1人ずつ）",
 };
 
 const buildPads = (): Pad[] => [
@@ -1639,7 +1639,8 @@ const updateStaff = (state: ShopState, dt: number) => {
       if (!guest) continue;
       if (selling) sellTicket(state, guest);
       else letIn(state, guest);
-      worker.charge = AUTO_TIME * (selling ? 0.6 : 0.5);
+      // 1人さばくたびに手間がかかる。機械のように同時にはさばけない
+      worker.charge = AUTO_TIME * (selling ? 0.8 : 0.65);
       worker.trips += 1;
       continue;
     }
@@ -2385,11 +2386,13 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
       } else if (worker.kind === "seller") {
         lines.push(
           "入口に立って、入場券を売ってくれる",
+          "1人ずつしかさばけない（自動入場券売機は同時にさばく）",
           `1人 ${yen(admissionValue(state))}・いま ${atBooth(state).length}人 待っている`,
         );
       } else if (worker.kind === "gatekeeper") {
         lines.push(
           "改札に立って、お客さんを通してくれる",
+          "1人ずつしか通せない（自動改札機は同時に通す）",
           `いま ${atGate(state).length}人 待っている`,
         );
       } else {

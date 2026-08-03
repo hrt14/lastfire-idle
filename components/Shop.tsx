@@ -3007,7 +3007,7 @@ export default function Shop({ onSample, paused }: Props) {
     downAt: number;
     moved: boolean;
   } | null>(null);
-  const inspect = useRef<{ data: Inspect; until: number } | null>(null);
+  const inspect = useRef<Inspect | null>(null);
   const camera = useRef({ x: 0, y: 0 });
   const pausedRef = useRef(paused);
   const sampleRef = useRef(onSample);
@@ -4234,16 +4234,18 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.restore();
 
       /* --- 長押しの説明 --- */
-      const info = inspect.current?.data;
+      const info = inspect.current;
       if (info) {
         ctx.font = FONT;
         const lines = info.lines;
+        const close = "タップで閉じる";
         const width =
           Math.max(
             ctx.measureText(info.title).width + 8,
+            ctx.measureText(close).width,
             ...lines.map((line) => ctx.measureText(line).width),
           ) + 22;
-        const height = 26 + lines.length * 15;
+        const height = 26 + lines.length * 15 + 15;
         const cx = Math.min(
           camX + WORLD.w - width / 2 - 6,
           Math.max(camX + width / 2 + 6, info.pos.x),
@@ -4273,6 +4275,10 @@ export default function Shop({ onSample, paused }: Props) {
         lines.forEach((line, i) => {
           ctx.fillText(line, cx, top + 33 + i * 15);
         });
+        ctx.fillStyle = "rgba(232,221,205,0.5)";
+        ctx.font = SMALL;
+        ctx.fillText(close, cx, top + 36 + lines.length * 15);
+        ctx.font = FONT;
       }
 
       /* --- ジョイスティック --- */
@@ -4341,6 +4347,13 @@ export default function Shop({ onSample, paused }: Props) {
     const onDown = (event: PointerEvent) => {
       event.preventDefault();
       unlockAudio();
+      // 説明が出ているあいだは、どこを触っても閉じるだけ
+      if (inspect.current) {
+        inspect.current = null;
+        stick.current = null;
+        input.current = { x: 0, y: 0 };
+        return;
+      }
       canvas.setPointerCapture(event.pointerId);
       const point = toWorld(event);
       stick.current = {
@@ -4370,8 +4383,7 @@ export default function Shop({ onSample, paused }: Props) {
       if (stick.current?.id !== event.pointerId) return;
       stick.current = null;
       input.current = { x: 0, y: 0 };
-      // 指を離しても少しのあいだ読めるように残す
-      if (inspect.current) inspect.current.until = performance.now() + 2200;
+      // 説明は指を離しても消えない。読み終わったら画面をタップして閉じる
     };
 
     canvas.addEventListener("pointerdown", onDown);
@@ -4409,14 +4421,12 @@ export default function Shop({ onSample, paused }: Props) {
       if (s && !s.moved && !inspect.current && now - s.downAt > 380) {
         const found = inspectAt(state, s.origin);
         if (found) {
-          inspect.current = { data: found, until: Infinity };
+          inspect.current = found;
           input.current = { x: 0, y: 0 };
         } else {
           s.moved = true;
         }
       }
-      if (inspect.current && now > inspect.current.until) inspect.current = null;
-
       const move: Input =
         inspect.current !== null
           ? { x: 0, y: 0 }

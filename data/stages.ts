@@ -507,8 +507,8 @@ const parkHires: HireSpec[] = [
   { id: "collector-1", kind: "collector", pos: { x: 230, y: 434 }, price: 1100, label: "集金係", area: 0, unlockAfter: "waiter-1" },
   { id: "robot-1", kind: "robot", pos: { x: 310, y: 434 }, price: 5000, label: "案内ロボ", area: 0, unlockAfter: "waiter-2" },
   // 入口の係。まず人を立てて、あとから機械にできる
-  { id: "seller-1", kind: "seller", pos: { x: 400, y: 0 }, row: 1, price: 200000, label: "入場券係", area: 0, outside: true, unlockAfter: "equip-sign" },
-  { id: "gatekeeper-1", kind: "gatekeeper", pos: { x: 520, y: 0 }, row: 1, price: 500000, label: "入場ゲート係", area: 0, outside: true, unlockAfter: "seller-1" },
+  { id: "seller-1", kind: "seller", pos: { x: 222, y: 0 }, price: 1600, label: "入場券係", area: 0, outside: true, unlockAfter: "waiter-1" },
+  { id: "gatekeeper-1", kind: "gatekeeper", pos: { x: 340, y: 0 }, price: 4000, label: "入場ゲート係", area: 0, outside: true, unlockAfter: "seller-1" },
   { id: "waiter-3", kind: "waiter", pos: { x: 470, y: 434 }, price: 12000, label: "案内係", area: 1 },
   { id: "robot-2", kind: "robot", pos: { x: 620, y: 434 }, price: 40000, label: "案内ロボ", area: 1, unlockAfter: "waiter-3" },
   { id: "waiter-4", kind: "waiter", pos: { x: 80, y: 912 }, price: 90000, label: "案内係", area: 2 },
@@ -552,8 +552,8 @@ const parkEquipment: EquipSpec[] = [
   { id: "parade", name: "パレードカー", detail: "毎日パレードが出る。集客 1.7倍", pos: { x: 660, y: 0 }, price: 40000000, area: 3, outside: true, draw: 1.7, unlockAfter: "area-3" },
   { id: "firework", name: "花火の打ち上げ台", detail: "夜空に花火が上がる。集客 2倍", pos: { x: 800, y: 0 }, price: 600000000, area: 5, outside: true, draw: 2, unlockAfter: "area-5" },
   // 入場まわりの自動化（最初は自分で売って、自分で通す）
-  { id: "vend", name: "自動入場券売機", detail: "入場券が自動で売れる（係より速い）", pos: { x: 640, y: 0 }, price: 900000, area: 0, outside: true, row: 1, unlockAfter: "gatekeeper-1" },
-  { id: "turnstile", name: "自動改札機", detail: "お客さんが自動で入場する（係より速い）", pos: { x: 760, y: 0 }, price: 3600000, area: 0, outside: true, row: 1, unlockAfter: "equip-vend" },
+  { id: "vend", name: "自動入場券売機", detail: "入場券が自動で売れる。何人でも同時に", pos: { x: 400, y: 0 }, price: 900000, area: 0, outside: true, row: 1, unlockAfter: "equip-sign" },
+  { id: "turnstile", name: "自動改札機", detail: "お客さんが自動で入場する。何人でも同時に", pos: { x: 520, y: 0 }, price: 3600000, area: 0, outside: true, row: 1, unlockAfter: "equip-vend" },
 ];
 
 const parkUpgrades: Upgrade[] = [
