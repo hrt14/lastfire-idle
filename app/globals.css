@@ -74,6 +74,22 @@ button {
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 209, 102, 0.35);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+/* 長押し中は、正確な金額をぜんぶ見せる（はみ出しても縮めて全部出す） */
+.wallet.is-exact {
+  flex: 1 1 auto;
+  background: rgba(255, 209, 102, 0.16);
+  border-color: rgba(255, 209, 102, 0.6);
+}
+.wallet.is-exact strong {
+  overflow: visible;
+  text-overflow: clip;
+  font-size: 0.92rem;
 }
 
 .wallet-icon {

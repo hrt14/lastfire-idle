@@ -125,3 +125,16 @@ const sounds: Record<SoundId, () => void> = {
 export const playSound = (id: SoundId) => {
   sounds[id]?.();
 };
+
+/**
+ * 連続で渡したときの、音がだんだん高くなるチャイム。
+ * step が大きいほど高い（1オクターブで頭打ち）。爽快感を出す。
+ */
+export const playCombo = (step: number) => {
+  const semis = Math.min(Math.max(0, step - 1), 12);
+  const freq = 1046 * Math.pow(2, semis / 12);
+  play([
+    { freq, dur: 0.06, gain: 0.4, type: "triangle" },
+    { freq: freq * 1.5, at: 0.03, dur: 0.09, gain: 0.28 },
+  ]);
+};

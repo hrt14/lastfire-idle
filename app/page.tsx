@@ -67,6 +67,8 @@ export default function Page() {
   const [wearing, setWearing] = useState("default");
   const [stars, setStars] = useState<Record<string, number>>({});
   const [offline, setOffline] = useState<OfflineReport | null>(null);
+  /** ウォレットを長押しすると、正確な金額を出す */
+  const [showExact, setShowExact] = useState(false);
 
   const handleSample = useCallback((next: Sample) => {
     setSample(next);
@@ -321,10 +323,19 @@ export default function Page() {
   return (
     <main className="app">
       <header className="hud">
-        <div className="wallet">
+        <div
+          className={`wallet${showExact ? " is-exact" : ""}`}
+          role="button"
+          tabIndex={0}
+          title="長押しで正確な金額"
+          onPointerDown={() => setShowExact(true)}
+          onPointerUp={() => setShowExact(false)}
+          onPointerLeave={() => setShowExact(false)}
+          onPointerCancel={() => setShowExact(false)}
+        >
           <span className="wallet-icon">💴</span>
           <strong>
-            {money < 100_000
+            {showExact || money < 100_000
               ? Math.floor(money).toLocaleString("ja-JP")
               : formatNumber(money)}
           </strong>

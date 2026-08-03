@@ -61,7 +61,7 @@ import {
 } from "@/lib/shopStore";
 import type { Face, Hat } from "@/data/skins";
 import { formatYen } from "@/lib/format";
-import { isMuted, loadMuted, playSound, unlockAudio } from "@/lib/sfx";
+import { isMuted, loadMuted, playCombo, playSound, unlockAudio } from "@/lib/sfx";
 
 export type Sample = {
   money: number;
@@ -900,18 +900,33 @@ const chainItem = (
   s: number,
   time: number,
 ) => {
-  const spec: Record<string, { body: string; cap: string; steam?: boolean }> = {
-    nut: { body: "#8a5a2b", cap: "#5f3d1c" },
-    roast: { body: "#5a3417", cap: "#3a220f", steam: true },
-    fish: { body: "#8fa9b8", cap: "#5f7686" },
-    fillet: { body: "#e6b7a6", cap: "#c98d78" },
-    cooked: { body: "#c2703f", cap: "#8a4a26", steam: true },
+  const spec: Record<
+    string,
+    { body: string; cap: string; steam?: boolean; log?: boolean }
+  > = {
+    meat: { body: "#c0503f", cap: "#e0d8c8" }, // なま肉（赤身＋骨）
+    wood: { body: "#8a5a2b", cap: "#a9743f", log: true }, // まき
+    roast: { body: "#7a4325", cap: "#4a2a15", steam: true }, // 焼き肉
+    cut: { body: "#d98a7a", cap: "#b56553" }, // 切り身
+    feast: { body: "#c8843f", cap: "#8a5220", steam: true }, // ごちそう
   };
   const it = spec[item] ?? { body: "#b98a4a", cap: "#7a5a2b" };
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
   shadow(ctx, 0, 4, 6);
+  if (it.log) {
+    // まきは横向きの丸太
+    ctx.fillStyle = it.body;
+    roundRect(ctx, -7, -3, 14, 6, 2);
+    ctx.fill();
+    ctx.fillStyle = it.cap;
+    ctx.beginPath();
+    ctx.ellipse(7, 0, 2, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = it.body;
   ctx.beginPath();
   ctx.ellipse(0, 0, 6, 7, 0, 0, Math.PI * 2);
@@ -956,6 +971,7 @@ const drawFireStation = (
   x: number,
   y: number,
   time: number,
+  state: ShopState,
 ) => {
   ctx.fillStyle = "rgba(0,0,0,0.28)";
   ctx.beginPath();
@@ -963,24 +979,70 @@ const drawFireStation = (
   ctx.fill();
 
   const art = stove.art ?? "";
-  if (art === "tree" || stove.takes === undefined) {
-    // 木の実の木（採取場）
-    ctx.fillStyle = "#6b4a2b";
-    ctx.fillRect(x - 4, y - 18, 8, 24);
-    ctx.fillStyle = "#4f7a44";
-    ctx.beginPath();
-    ctx.arc(x, y - 26, 18, 0, Math.PI * 2);
-    ctx.arc(x - 14, y - 16, 12, 0, Math.PI * 2);
-    ctx.arc(x + 14, y - 16, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#8a5a2b";
-    for (const [dx, dy] of [[-8, -28], [6, -22], [-2, -14], [12, -30]]) {
+  if (art === "hunt") {
+    // 狩り場: 草むらと、立てかけた槍
+    ctx.fillStyle = "#3f5a34";
+    for (const gx of [-16, -6, 5, 15]) {
       ctx.beginPath();
-      ctx.arc(x + dx, y + dy, 2.4, 0, Math.PI * 2);
+      ctx.moveTo(x + gx, y + 6);
+      ctx.lineTo(x + gx - 3, y - 8);
+      ctx.lineTo(x + gx + 3, y - 8);
+      ctx.closePath();
       ctx.fill();
     }
+    // 槍
+    ctx.strokeStyle = "#8a6a44";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x + 6, y + 6);
+    ctx.lineTo(x - 4, y - 28);
+    ctx.stroke();
+    ctx.fillStyle = "#d8d2c4";
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y - 28);
+    ctx.lineTo(x - 8, y - 20);
+    ctx.lineTo(x, y - 22);
+    ctx.closePath();
+    ctx.fill();
+    // 足あと
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    for (const [dx, dy] of [[10, -6], [16, -14], [12, -20]]) {
+      ctx.beginPath();
+      ctx.ellipse(x + dx, y + dy, 2.2, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (art === "logs") {
+    // まき集め: 積んだ丸太
+    for (let r = 0; r < 2; r += 1) {
+      for (let i = 0; i < 3 - r; i += 1) {
+        const lx = x - 16 + r * 8 + i * 16;
+        const ly = y + 2 - r * 9;
+        ctx.fillStyle = "#6b4a2b";
+        roundRect(ctx, lx - 8, ly - 4, 16, 8, 3);
+        ctx.fill();
+        ctx.fillStyle = "#a9743f";
+        ctx.beginPath();
+        ctx.ellipse(lx + 8, ly, 2.6, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else if (art === "cut") {
+    // さばき台: 切り株の台と、石のナイフ
+    ctx.fillStyle = "#5a3a20";
+    roundRect(ctx, x - 16, y - 6, 32, 12, 3);
+    ctx.fill();
+    ctx.fillStyle = "#6e4a2a";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 6, 16, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#c8c2b4";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y - 8);
+    ctx.lineTo(x + 14, y - 18);
+    ctx.stroke();
   } else {
-    // たき火・焼き石（加工場）
+    // たき火・大かまど（焼き場）
     ctx.fillStyle = "#4a4038";
     for (let i = 0; i < 6; i += 1) {
       const a = (i / 6) * Math.PI * 2;
@@ -988,11 +1050,14 @@ const drawFireStation = (
       ctx.ellipse(x + Math.cos(a) * 18, y + 6 + Math.sin(a) * 6, 5, 4, 0, 0, Math.PI * 2);
       ctx.fill();
     }
+    // まきの土台
     ctx.fillStyle = "#5a3a20";
     ctx.fillRect(x - 12, y - 2, 24, 5);
     ctx.fillRect(x - 3, y - 10, 6, 16);
+    // 燃えているときだけ炎（まき切れなら小さく）
+    const lit = (state.fuel[stove.id] ?? 0) > 0 || !stove.fuel;
     for (const fx of [x - 6, x, x + 6]) {
-      const flame = 0.6 + Math.abs(Math.sin(time * 6 + fx)) * 0.4;
+      const flame = (lit ? 0.6 : 0.15) + Math.abs(Math.sin(time * 6 + fx)) * (lit ? 0.4 : 0.1);
       ctx.fillStyle = `rgba(255,${120 + flame * 80},50,${flame})`;
       ctx.beginPath();
       ctx.moveTo(fx, y - 6);
@@ -2210,6 +2275,20 @@ const drawEquip = (
     return;
   }
   if (id === "flag") {
+    const fire = stage().id === "fire";
+    if (fire) {
+      // けむりのろし: 立てた棒から、ゆらめく煙が上がる
+      ctx.fillStyle = "#6b5433";
+      ctx.fillRect(x - 2, y - 30, 4, 44);
+      ctx.fillStyle = "rgba(200,190,180,0.5)";
+      for (let i = 0; i < 4; i += 1) {
+        const t = (time * 0.6 + i * 0.25) % 1;
+        ctx.beginPath();
+        ctx.arc(x + Math.sin(t * 6 + i) * 6, y - 30 - t * 34, 5 - t * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return;
+    }
     // のぼり旗
     ctx.fillStyle = "#6b5433";
     ctx.fillRect(x - 2, y - 44, 4, 58);
@@ -3316,7 +3395,7 @@ export default function Shop({ onSample, paused }: Props) {
         const { x, y } = stove.pos;
         const made = stoveItem(stove);
         if (isFire) {
-          drawFireStation(ctx, stove, x, y, time);
+          drawFireStation(ctx, stove, x, y, time, state);
         } else if (made === "food") {
           // 厨房（レストラン）
           ctx.fillStyle = "#4d4038";
@@ -3407,16 +3486,32 @@ export default function Shop({ onSample, paused }: Props) {
         const ready = state.ready[stove.id] ?? 0;
         for (let i = 0; i < ready; i += 1) held(ctx, made, x, y + 22 - i * 5.5);
 
-        // 工程の作業場: 受け口にたまっている材料と、詰まりの合図
+        // 工程の作業場: 受け口の材料（左）とまき（右）、詰まりの合図
         if (isStation(stove)) {
           const held0 = state.hold[stove.id] ?? 0;
           for (let i = 0; i < held0; i += 1) {
             held(ctx, stove.takes ?? null, x - 30, y + 16 - i * 5, 0.8);
           }
-          if (held0 <= 0) {
-            ctx.fillStyle = "rgba(255,180,120,0.85)";
-            ctx.fillText("材料まち", x, y - 42);
+          const fuel0 = stove.fuel ? state.fuel[stove.id] ?? 0 : 0;
+          if (stove.fuel) {
+            for (let i = 0; i < fuel0; i += 1) {
+              held(ctx, stove.fuel, x + 30, y + 16 - i * 5, 0.8);
+            }
           }
+          const waitWord: Record<string, string> = {
+            meat: "肉まち",
+            cut: "身まち",
+          };
+          ctx.font = SMALL;
+          if (held0 <= 0) {
+            ctx.fillStyle = "rgba(255,150,140,0.9)";
+            ctx.fillText(waitWord[stove.takes ?? ""] ?? "材料まち", x - 30, y - 30);
+          }
+          if (stove.fuel && fuel0 <= 0) {
+            ctx.fillStyle = "rgba(255,200,120,0.9)";
+            ctx.fillText("まきまち", x + 30, y - 30);
+          }
+          ctx.font = FONT;
         }
         if (ready >= holdCap(state, stove)) {
           ctx.fillStyle = "#ffd166";
@@ -4641,10 +4736,15 @@ export default function Shop({ onSample, paused }: Props) {
       // 効果音を鳴らす（同じ音が同フレームで重ならないようにする）
       if (state.sfx.length > 0) {
         const played = new Set<string>();
-        for (const id of state.sfx) {
-          if (played.has(id)) continue;
-          played.add(id);
-          playSound(id);
+        for (const entry of state.sfx) {
+          if (typeof entry === "object") {
+            // 連鎖チャイムは、段ごとに音が上がるので毎回鳴らす
+            playCombo(entry.combo);
+            continue;
+          }
+          if (played.has(entry)) continue;
+          played.add(entry);
+          playSound(entry);
         }
         state.sfx.length = 0;
       }
