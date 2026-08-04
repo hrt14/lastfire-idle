@@ -19,7 +19,7 @@ import {
   hasAuto,
   openSeats,
   openStoves,
-  carryTotal,
+  carryOf,
   topKind,
   seatCost,
   seatMode,
@@ -4836,11 +4836,14 @@ export default function Shop({ onSample, paused }: Props) {
 
       if (now - sampleAt > 110) {
         sampleAt = now;
+        // 種類ごとに上限があるので、足もとの数字は
+        // アイコンに出している種類のぶんだけを見せる（合計だと上限を超えて見える）
+        const shown = topKind(state.player);
         sampleRef.current({
           money: state.money,
-          carry: carryTotal(state.player),
+          carry: shown ? carryOf(state.player, shown) : 0,
           maxCarry: maxCarry(state),
-          item: topKind(state.player),
+          item: shown,
           served: state.served,
           staff: state.staff.length,
           levels: { ...state.levels },

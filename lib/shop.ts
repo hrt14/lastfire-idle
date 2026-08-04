@@ -1607,6 +1607,15 @@ export const sellsTickets = (state: ShopState) =>
 export const opensGate = (state: ShopState) =>
   hasEquip(state, "turnstile") || hasStaff(state, "gatekeeper");
 
+/**
+ * 近くの出し口から1つ受け取る。受け取れた種類を返す（受け取れなければ null）。
+ *
+ * itemCounts を渡すと、limit は「その種類を何個まで持てるか」として効く。
+ * プレイヤーは種類ごとに limit まで持てる（肉3・まき3 のように同時に持てる）。
+ *
+ * itemCounts を渡さない呼び出し（スタッフ）では種類ごとの判定ができないので、
+ * ここでは合計を見ない。呼ぶ側が while (carry < limit) で合計を抑えること。
+ */
 const pickUp = (
   state: ShopState,
   pos: Vec,
