@@ -1,6 +1,12 @@
-/** ガチャで当たる見た目。1億円で1回引ける。 */
+/**
+ * ガチャで当たる見た目。
+ *
+ * 価格帯ごとに3段（1億／10億／100億）あり、
+ * 下の段をだいたい集めると、上の段が出てくる（§11）。
+ * 抽選は、選んでいる段のスキンだけを相手にする。
+ */
 
-export type Rarity = "N" | "R" | "SR";
+export type Rarity = "N" | "R" | "SR" | "UR" | "LR";
 
 export type Hat =
   | "none"
@@ -10,7 +16,19 @@ export type Hat =
   | "helmet"
   | "topknot"
   | "ears"
-  | "cap";
+  | "cap"
+  /** とんがり帽子（大魔法使い・森の精） */
+  | "wizard"
+  /** 三角帽（海賊船長） */
+  | "tricorn"
+  /** 毛皮のフード（雪国の探検家） */
+  | "hood"
+  /** 火祭りの面 */
+  | "mask"
+  /** 光の輪（最上位） */
+  | "halo"
+  /** 角（龍・神） */
+  | "horns";
 
 /** 動物の見た目（耳・鼻・しっぽが付く） */
 export type Face =
@@ -24,12 +42,38 @@ export type Face =
   | "tiger"
   | "panda"
   | "unicorn"
-  | "dragon";
+  | "dragon"
+  | "fox"
+  | "wolf"
+  | "redpanda"
+  | "capybara"
+  | "owl"
+  | "mammoth"
+  | "phoenix"
+  | "ninetails";
+
+/** まわりに出る、動く飾り（最上位のスキンに付く） */
+export type Aura =
+  | "none"
+  | "flame"
+  | "star"
+  | "moon"
+  | "galaxy"
+  | "rainbow"
+  | "gold"
+  | "clock"
+  | "water"
+  | "sun";
+
+/** どの価格帯のガチャから出るか */
+export type Tier = 1 | 2 | 3;
 
 export type Skin = {
   id: string;
   name: string;
   rarity: Rarity;
+  /** 出てくるガチャの段（省略で 1億円ガチャ） */
+  tier?: Tier;
   coat: string;
   head: string;
   hat: Hat;
@@ -38,6 +82,10 @@ export type Skin = {
   face?: Face;
   /** 耳やしっぽの色 */
   faceColor?: string;
+  /** まわりに出る動く飾り */
+  aura?: Aura;
+  /** マントや羽など、背中に付く飾りの色 */
+  cape?: string;
   /** 一覧に出す小さな絵 */
   icon?: string;
 };
@@ -69,6 +117,38 @@ export const skins: Skin[] = [
   { id: "panda", name: "パンダ", rarity: "SR", coat: "#f4f1ea", head: "#fbf7ef", hat: "none", face: "panda", faceColor: "#2b2b33" , icon: "🐼" },
   { id: "unicorn", name: "ユニコーン", rarity: "SR", coat: "#e9d6ff", head: "#f6ecff", hat: "none", face: "unicorn", faceColor: "#a78bfa" , icon: "🦄" },
   { id: "dragon", name: "ドラゴン", rarity: "SR", coat: "#3f8f7a", head: "#5fb39b", hat: "none", face: "dragon", faceColor: "#ffd166" , icon: "🐲" },
+
+  /* ==================== 10億円ガチャ（12種） ====================
+   * 既存より飾りの多いテーマ衣装と動物。マントや帽子で輪郭から見分けられる
+   */
+  { id: "spirit", name: "森の精", rarity: "UR", tier: 2, coat: "#3f8f6a", head: "#d8f0d8", hat: "wizard", hatColor: "#2f6b4e", cape: "#7ee7a8", aura: "star", icon: "🌿" },
+  { id: "festival", name: "火祭りの長", rarity: "UR", tier: 2, coat: "#c2402f", head: "#f0cfae", hat: "mask", hatColor: "#ffd166", cape: "#ff8c3c", aura: "flame", icon: "🔥" },
+  { id: "pirate", name: "海賊船長", rarity: "UR", tier: 2, coat: "#2f3b4d", head: "#e8c49a", hat: "tricorn", hatColor: "#1a2230", cape: "#a33b3b", icon: "🏴‍☠️" },
+  { id: "archmage", name: "大魔法使い", rarity: "UR", tier: 2, coat: "#4a3b8f", head: "#f0cfae", hat: "wizard", hatColor: "#332a63", cape: "#6b5ac2", aura: "star", icon: "🪄" },
+  { id: "explorer", name: "雪国の探検家", rarity: "UR", tier: 2, coat: "#d8e4ef", head: "#f0cfae", hat: "hood", hatColor: "#8a7a5a", cape: "#b9c9dc", icon: "🧭" },
+  { id: "king", name: "王様", rarity: "UR", tier: 2, coat: "#8f2f4a", head: "#f0cfae", hat: "crown", hatColor: "#ffd166", cape: "#c2405f", aura: "gold", icon: "👑" },
+  { id: "fox", name: "きつね", rarity: "UR", tier: 2, coat: "#e08a3c", head: "#f5c48a", hat: "none", face: "fox", faceColor: "#f4f1ea", icon: "🦊" },
+  { id: "wolf", name: "おおかみ", rarity: "UR", tier: 2, coat: "#6b7684", head: "#8b96a4", hat: "none", face: "wolf", faceColor: "#3a424c", icon: "🐺" },
+  { id: "redpanda", name: "レッサーパンダ", rarity: "UR", tier: 2, coat: "#c2603a", head: "#f4e3d2", hat: "none", face: "redpanda", faceColor: "#8a3f26", icon: "🦝" },
+  { id: "capybara", name: "カピバラ", rarity: "UR", tier: 2, coat: "#a98055", head: "#c2a077", hat: "none", face: "capybara", faceColor: "#7a5a38", icon: "🦫" },
+  { id: "owl", name: "ふくろう", rarity: "UR", tier: 2, coat: "#7a6247", head: "#c4b295", hat: "none", face: "owl", faceColor: "#ffd166", icon: "🦉" },
+  { id: "mammoth", name: "マンモス", rarity: "UR", tier: 2, coat: "#8a5f3f", head: "#a97a52", hat: "none", face: "mammoth", faceColor: "#e8ddc8", icon: "🦣" },
+
+  /* ==================== 100億円ガチャ（12種） ====================
+   * 専用のオーラや動く飾りを持つ、いちばん上の見た目
+   */
+  { id: "phoenix", name: "不死鳥", rarity: "LR", tier: 3, coat: "#e8541f", head: "#ffd166", hat: "none", face: "phoenix", faceColor: "#ffd166", cape: "#ff8c3c", aura: "flame", icon: "🔥" },
+  { id: "ninetails", name: "九尾", rarity: "LR", tier: 3, coat: "#f4e3c2", head: "#fbf3e2", hat: "none", face: "ninetails", faceColor: "#e0a52b", aura: "gold", icon: "🦊" },
+  { id: "whitedragon", name: "白龍", rarity: "LR", tier: 3, coat: "#eef4fb", head: "#f8fbff", hat: "horns", hatColor: "#c8dcf0", face: "dragon", faceColor: "#9fd0ff", cape: "#cfe4f8", aura: "water", icon: "🐉" },
+  { id: "blackdragon", name: "黒龍", rarity: "LR", tier: 3, coat: "#232a33", head: "#333d4a", hat: "horns", hatColor: "#8a3f5f", face: "dragon", faceColor: "#c2405f", cape: "#3f2a3f", aura: "galaxy", icon: "🐲" },
+  { id: "sungod", name: "太陽神", rarity: "LR", tier: 3, coat: "#ffcf4a", head: "#ffe9b0", hat: "halo", hatColor: "#fff0c2", cape: "#ffa726", aura: "sun", icon: "☀️" },
+  { id: "moongod", name: "月の神", rarity: "LR", tier: 3, coat: "#3f4a7a", head: "#dfe6ef", hat: "halo", hatColor: "#cfe0ff", cape: "#5b6ba8", aura: "moon", icon: "🌙" },
+  { id: "voyager", name: "銀河の旅人", rarity: "LR", tier: 3, coat: "#2b2f52", head: "#d6d0f0", hat: "helmet", hatColor: "#b6c8ff", cape: "#5b4a9e", aura: "galaxy", icon: "🌌" },
+  { id: "timeking", name: "時の王", rarity: "LR", tier: 3, coat: "#5a4a2b", head: "#f0cfae", hat: "crown", hatColor: "#d9b45a", cape: "#8a7130", aura: "clock", icon: "⏳" },
+  { id: "prism", name: "虹の幻獣", rarity: "LR", tier: 3, coat: "#8fd6c2", head: "#e6f7f0", hat: "horns", hatColor: "#ff8fd0", face: "unicorn", faceColor: "#ff8fd0", cape: "#a78bfa", aura: "rainbow", icon: "🌈" },
+  { id: "goldmammoth", name: "黄金マンモス", rarity: "LR", tier: 3, coat: "#e0a52b", head: "#ffd166", hat: "none", face: "mammoth", faceColor: "#fff0c2", aura: "gold", icon: "🦣" },
+  { id: "starknight", name: "星の騎士", rarity: "LR", tier: 3, coat: "#c8d4e4", head: "#f0cfae", hat: "helmet", hatColor: "#e8f0ff", cape: "#3f5ba8", aura: "star", icon: "⭐" },
+  { id: "abyss", name: "深海の王", rarity: "LR", tier: 3, coat: "#1f4a5c", head: "#8fd0d8", hat: "crown", hatColor: "#4fd6c2", cape: "#2f7a8a", aura: "water", icon: "🔱" },
 ];
 
 export const skinById = new Map(skins.map((skin) => [skin.id, skin]));
@@ -77,15 +157,61 @@ export const rarityLabel: Record<Rarity, string> = {
   N: "ノーマル",
   R: "レア",
   SR: "スーパーレア",
+  UR: "ウルトラレア",
+  LR: "レジェンド",
 };
 
-export const rarityWeight: Record<Rarity, number> = { N: 60, R: 32, SR: 8 };
+export const rarityWeight: Record<Rarity, number> = {
+  N: 60,
+  R: 32,
+  SR: 8,
+  UR: 20,
+  LR: 20,
+};
 
-/** 1回の値段 */
-export const GACHA_COST = 100_000_000;
+/** そのスキンが出るガチャの段（省略は 1億円ガチャ） */
+export const skinTier = (skin: Skin): Tier => skin.tier ?? 1;
+
+/* ---------- 段階式のガチャ ---------- */
+
+export type GachaTier = {
+  tier: Tier;
+  /** 表示名。単位はステージごとに差し替える */
+  name: string;
+  cost: number;
+  /** ★上限のあとの払い戻し（1回の値段の30%） */
+  refund: number;
+  /** 次の段が開く割合 */
+  nextAt: number;
+};
+
+export const gachaTiers: GachaTier[] = [
+  { tier: 1, name: "1億", cost: 100_000_000, refund: 30_000_000, nextAt: 0.7 },
+  { tier: 2, name: "10億", cost: 1_000_000_000, refund: 300_000_000, nextAt: 0.7 },
+  { tier: 3, name: "100億", cost: 10_000_000_000, refund: 3_000_000_000, nextAt: 0.7 },
+];
+
+export const gachaTierById = new Map(gachaTiers.map((item) => [item.tier, item]));
+
+/**
+ * その段の抽選対象。
+ * 初期スキン「見習い」は無料なので、1億円ガチャの分母に入れない
+ */
+export const tierPool = (tier: Tier): Skin[] =>
+  skins.filter((skin) => skinTier(skin) === tier && skin.id !== "default");
+
+/** 次の段が開くのに要る種類数（端数は切り上げ。23種の70% → 17種） */
+export const tierNeed = (tier: Tier): number => {
+  const spec = gachaTierById.get(tier);
+  if (!spec) return Infinity;
+  return Math.ceil(tierPool(tier).length * spec.nextAt);
+};
+
+/** 1回の値段（いちばん下の段。既存の呼び出し向け） */
+export const GACHA_COST = gachaTiers[0].cost;
 
 /** ★が上がりきったあと、ダブったときの払い戻し */
-export const GACHA_REFUND = 30_000_000;
+export const GACHA_REFUND = gachaTiers[0].refund;
 
 /** 同じ見た目がダブるたびに★が増えて、光り方が6段階まで変わる */
 export const MAX_STARS = 6;
@@ -106,8 +232,12 @@ export const shineLabel = (stars: number): string =>
 /** ★1つにつき足の速さ +5% */
 export const shineBonus = (stars: number) => stars * 5;
 
-export const rollSkin = (): Skin => {
-  const pool = skins.filter((skin) => skin.id !== "default");
+/**
+ * 抽選。選んでいる段に属するスキンだけを相手にする。
+ * 10億円ガチャから1億円ガチャのスキンは出ないし、その逆もない
+ */
+export const rollSkin = (tier: Tier = 1): Skin => {
+  const pool = tierPool(tier);
   const total = pool.reduce((sum, skin) => sum + rarityWeight[skin.rarity], 0);
   let point = Math.random() * total;
   for (const skin of pool) {
