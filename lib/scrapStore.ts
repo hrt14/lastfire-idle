@@ -11,7 +11,7 @@ import {
 
 type SharedVault = {
   savedAt?: number;
-  active?: "ramen" | "park" | "fire" | "scrap";
+  active?: "ramen" | "park" | "fire";
   stages?: Record<string, Persisted | ScrapPersisted | unknown>;
   skins?: string[];
   stars?: Record<string, number>;
@@ -46,8 +46,7 @@ export const loadScrap = (): ScrapState => {
   if (typeof window === "undefined") return createScrapState();
   const shared = readShared();
   const staged = shared.stages?.scrap as ScrapPersisted | undefined;
-  const state = tickScrap(fromScrapPersisted(staged ?? shared.scrap));
-  return state;
+  return tickScrap(fromScrapPersisted(staged ?? shared.scrap));
 };
 
 export const saveScrap = (state: ScrapState) => {
@@ -57,7 +56,7 @@ export const saveScrap = (state: ScrapState) => {
   const next: SharedVault = {
     ...withoutLegacy,
     savedAt: Date.now(),
-    active: "scrap",
+    // 通常ステージ側の active は変えない。スクラップは stages.scrap で独立管理する。
     stages: {
       ...(shared.stages ?? {}),
       scrap: toScrapPersisted({ ...state, lastSeen: Date.now(), offlineReport: undefined }),
