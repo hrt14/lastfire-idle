@@ -1060,11 +1060,25 @@ export const fromPersisted = (input: unknown): ShopState => {
 
 /* ---------- 参照 ---------- */
 
+/**
+ * いま動いている作る場所・座る場所。
+ *
+ * 買ってあっても、その区画をまだ広げていなければ動かさない。
+ * ふつうに遊んでいるとこの状態にはならないが、
+ * 配置を組み替える前のセーブを読むと、id の指す先が変わって
+ * 「買っていない区画の中に作業場を持っている」ことが起きる。
+ * そこは歩いて行けないので、はこび手が材料を運びに行って
+ * むだ足を踏まないよう、区画が開くまでは無いものとして扱う。
+ */
 export const openStoves = (state: ShopState) =>
-  stoves.filter((stove) => state.unlocked.includes(stove.id));
+  stoves.filter(
+    (stove) => state.unlocked.includes(stove.id) && areaOpen(state, stove.area),
+  );
 
 export const openSeats = (state: ShopState) =>
-  seats.filter((seat) => state.unlocked.includes(seat.id));
+  seats.filter(
+    (seat) => state.unlocked.includes(seat.id) && areaOpen(state, seat.area),
+  );
 
 /** その場所の遊び方 */
 export const seatMode = (seat: SeatSpec) => seat.mode ?? "ride";
