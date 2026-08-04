@@ -1614,14 +1614,16 @@ const pickUp = (
   limit: number,
   holding: ItemKind | null,
   want?: ItemKind | null,
+  itemCounts?: Record<string, number>,
 ): ItemKind | null => {
-  if (carry >= limit) return null;
   for (const stove of openStoves(state)) {
     if ((state.ready[stove.id] ?? 0) <= 0) continue;
     const item = stoveItem(stove);
     if (holding && item !== holding) continue;
     if (want && item !== want) continue;
     if (dist(pos, stove.pos) > PICK_RADIUS) continue;
+    const currentCount = itemCounts?.[item] ?? 0;
+    if (currentCount >= limit) continue;
     state.ready[stove.id] -= 1;
     return item;
   }
@@ -1806,10 +1808,9 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
   catchPrey(state, player.pos);
 
   // 近くの出し口から受け取る（複数の種類を同時に持てる）
-  if (carryTotal(player) < maxCarry(state)) {
-    const got = pickUp(state, player.pos, 0, 1, null);
-    if (got) addToBag(player, got, 1);
-  }
+  // 各素材が上限に達していないかチェック
+  const got = pickUp(state, player.pos, 0, maxCarry(state), null, undefined, player.bag);
+  if (got) addToBag(player, got, 1);
 
   if (carryTotal(player) > 0) {
     // まず、持っている種類を作業場の受け口・棚へ（まとめて）
