@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Shop, { type Sample } from "@/components/Shop";
 import Feedback from "@/components/Feedback";
 import { OFFLINE_CAP_HOURS, type OfflineReport } from "@/lib/shop";
 import {
+  allTierProgress,
   equipSkin,
   equippedSkin,
   ownedSkins,
@@ -15,18 +16,21 @@ import {
   stageUnlocked,
   switchStage,
   type GachaResult,
+  type TierProgress,
 } from "@/lib/shopStore";
 import {
-  GACHA_COST,
-  GACHA_REFUND,
   MAX_STARS,
+  gachaTierById,
+  gachaTiers,
   rarityLabel,
   shineBonus,
   shineLabel,
   skins,
+  tierPool,
+  type Tier,
 } from "@/data/skins";
 import { planetStages, stageDefs, stageList, type StageId } from "@/data/stages";
-import { formatDuration, formatNumber, formatYen } from "@/lib/format";
+import { formatDuration, formatExact, formatMoney } from "@/lib/format";
 import { setMuted, unlockAudio } from "@/lib/sfx";
 import {
   cloudReady,
@@ -47,13 +51,14 @@ const useMounted = () =>
     () => false,
   );
 
+/** その段がもう開いているか（読み込んだ進みぐあいから引く） */
+const tierOpenIn = (list: TierProgress[], tier: Tier) =>
+  list.find((item) => item.tier === tier)?.open ?? false;
+
 const cloudSnapshot = () => cloudState();
-const cloudServer = () => ({
-  account: null,
-  status: "off" as const,
-  note: "",
-  at: 0,
-});
+// サーバー描画側のスナップショットは、毎回同じものを返す（作り直すと再描画が止まらない）
+const serverCloud = { account: null, status: "off" as const, note: "", at: 0 };
+const cloudServer = () => serverCloud;
 
 export default function Page() {
   const mounted = useMounted();
@@ -62,14 +67,22 @@ export default function Page() {
   const [stageId, setStageId] = useState<StageId>("ramen");
   const [sample, setSample] = useState<Sample | null>(null);
   const [help, setHelp] = useState(false);
+  const [settings, setSettings] = useState(false);
+  /** リセットの確認。既定はキャンセル（この画面を開いただけでは消えない） */
+  const [confirmReset, setConfirmReset] = useState(false);
   const [gacha, setGacha] = useState(false);
+  const [tier, setTier] = useState<Tier>(1);
+  const [tiers, setTiers] = useState<TierProgress[]>([]);
+  /** 上の段が開いた瞬間の演出（1回だけ） */
+  const [unlockedTier, setUnlockedTier] = useState<Tier | null>(null);
   const [result, setResult] = useState<GachaResult | null>(null);
   const [owned, setOwned] = useState<string[]>([]);
   const [wearing, setWearing] = useState("default");
   const [stars, setStars] = useState<Record<string, number>>({});
   const [offline, setOffline] = useState<OfflineReport | null>(null);
-  /** ウォレットを長押しすると、正確な金額を出す */
+  /** ウォレットを押すと、省略なしの金額をポップオーバーで出す */
   const [showExact, setShowExact] = useState(false);
+  const walletRef = useRef<HTMLDivElement | null>(null);
 
   const handleSample = useCallback((next: Sample) => {
     setSample(next);
@@ -77,7 +90,6 @@ export default function Page() {
   }, []);
 
   const handleReset = useCallback(() => {
-    if (!window.confirm("お店を最初から建て直しますか？")) return;
     resetState();
     window.location.reload();
   }, []);
@@ -87,20 +99,26 @@ export default function Page() {
     setOwned(list);
     setWearing(equippedSkin().id);
     setStars(Object.fromEntries(list.map((id) => [id, skinStars(id)])));
+    setTiers(allTierProgress());
   }, []);
 
   const openGacha = useCallback(() => {
     refreshSkins();
     setResult(null);
+    setUnlockedTier(null);
     setGacha(true);
   }, [refreshSkins]);
 
-  const handlePull = useCallback(() => {
-    const got = pullGacha();
-    if (!got) return;
-    setResult(got);
-    refreshSkins();
-  }, [refreshSkins]);
+  const handlePull = useCallback(
+    (at: Tier) => {
+      const got = pullGacha(at);
+      if (!got) return;
+      setResult(got);
+      if (got.unlockedTier) setUnlockedTier(got.unlockedTier);
+      refreshSkins();
+    },
+    [refreshSkins],
+  );
 
   const handleEquip = useCallback(
     (id: string) => {
@@ -113,21 +131,53 @@ export default function Page() {
   const starMark = (count: number) =>
     "★".repeat(count) + "☆".repeat(Math.max(0, MAX_STARS - count));
 
+  /*
+   * 金額のポップオーバーは、画面外タップ・Esc・時間切れで閉じる。
+   * 長押しだけを必須操作にしない（キーボードでも開閉できる）
+   */
+  useEffect(() => {
+    if (!showExact) return;
+    const away = (event: PointerEvent) => {
+      if (!walletRef.current?.contains(event.target as Node)) setShowExact(false);
+    };
+    const esc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowExact(false);
+    };
+    const timer = window.setTimeout(() => setShowExact(false), 4000);
+    window.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointerdown", away);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [showExact]);
+
   const start = useCallback((id: StageId) => {
     switchStage(id);
     setStageId(id);
     setSample(null);
+    // 開いているガチャの段を控えておく（🎁 が光るかどうかに使う）
+    setTiers(allTierProgress());
     setView("play");
   }, []);
 
   const money = sample?.money ?? 0;
   const mute = sample?.muted ?? false;
-  const carryIcon =
-    sample?.item === "food"
-      ? "🍽️"
-      : sample?.item === "goods"
-        ? "🎁"
-        : stageDefs[stageId].itemIcon;
+  const unit = stageDefs[stageId].currency ?? "円";
+  const itemIcons: Record<string, string> = {
+    food: "🍽️",
+    goods: "🎁",
+    meat: "🥩",
+    log: "🪵",
+    wood: "🪵",
+    roast: "🍖",
+    cut: "🥩",
+    feast: "🍖",
+  };
+  const carryIcon = sample?.item
+    ? itemIcons[sample.item] ?? stageDefs[stageId].itemIcon
+    : stageDefs[stageId].itemIcon;
 
   if (view === "top") {
     if (mounted) startCloud();
@@ -322,26 +372,36 @@ export default function Page() {
     setMuted(!mute);
   };
 
+  const gachaReady = tiers.some(
+    (item) => item.open && money >= (gachaTierById.get(item.tier)?.cost ?? Infinity),
+  );
+
   return (
     <main className="app">
       <header className="hud">
-        <div
-          className={`wallet${showExact ? " is-exact" : ""}`}
-          role="button"
-          tabIndex={0}
-          title="長押しで正確な金額"
-          onPointerDown={() => setShowExact(true)}
-          onPointerUp={() => setShowExact(false)}
-          onPointerLeave={() => setShowExact(false)}
-          onPointerCancel={() => setShowExact(false)}
-        >
-          <span className="wallet-icon">💴</span>
-          <strong>
-            {showExact || money < 100_000
-              ? Math.floor(money).toLocaleString("ja-JP")
-              : formatNumber(money)}
-          </strong>
-          <small>円</small>
+        {/*
+          金額は短縮表記で出し、押すと正確な金額を小さなポップオーバーで見せる。
+          HUD の幅は変わらないので、桁が増えても右のボタンが動かない（§10）
+        */}
+        <div className="wallet-slot" ref={walletRef}>
+          <button
+            type="button"
+            className={`wallet${showExact ? " is-open" : ""}`}
+            aria-expanded={showExact}
+            aria-label={`所持金 ${formatExact(money, unit)}`}
+            onClick={() => setShowExact((on) => !on)}
+          >
+            <span className="wallet-icon" aria-hidden>
+              {unit === "貝" ? "🐚" : "💴"}
+            </span>
+            <strong>{formatMoney(money, "")}</strong>
+            <small>{unit}</small>
+          </button>
+          {showExact ? (
+            <div className="wallet-pop" role="status">
+              {formatExact(money, unit)}
+            </div>
+          ) : null}
         </div>
         <div className="hud-right">
           <Feedback where={stageDefs[stageId].name} />
@@ -356,15 +416,15 @@ export default function Page() {
           >
             ☰
           </button>
-          <span className="chip">
-            {stageDefs[stageId].icon}{" "}
-            {(sample?.served ?? 0) < 100_000
-              ? (sample?.served ?? 0).toLocaleString("ja-JP")
-              : formatNumber(sample?.served ?? 0)}
+          <span className="chip" aria-label="提供した数">
+            <i className="chip-mark" aria-hidden>
+              {stageDefs[stageId].icon}
+            </i>
+            {formatMoney(sample?.served ?? 0, "")}
           </span>
           <button
             type="button"
-            className={`chip-button${money >= GACHA_COST ? " is-ready" : ""}`}
+            className={`chip-button${gachaReady ? " is-ready" : ""}`}
             onClick={openGacha}
             aria-label="ガチャ"
           >
@@ -378,12 +438,17 @@ export default function Page() {
           >
             {mute ? "🔇" : "🔊"}
           </button>
+          {/* 遊びかたとリセットは、この設定シートの中にまとめてある */}
           <button
             type="button"
             className="chip-button"
-            onClick={() => setHelp(true)}
+            onClick={() => {
+              setConfirmReset(false);
+              setSettings(true);
+            }}
+            aria-label="設定・遊びかた"
           >
-            ？
+            ⚙
           </button>
         </div>
       </header>
@@ -391,7 +456,7 @@ export default function Page() {
       <Shop
         key={stageId}
         onSample={handleSample}
-        paused={help || offline !== null}
+        paused={help || settings || offline !== null}
       />
 
       <footer className="dock">
@@ -484,12 +549,138 @@ export default function Page() {
                 券売機を入れるとお金は自動で入るので、
                 <strong>雇っていたレジ係はホール店員に配置転換</strong>されます（無駄になりません）。
               </li>
+              <li>
+                <strong>火のはじまり</strong>では、草原で動物を狩って生肉に、森で木を切って丸太に、
+                丸太は薪割り場で薪にします。たき火は<strong>生肉と薪の両方</strong>を受け取って
+                はじめて焼けます。薪割り場は人の手が要るので、
+                <strong>薪割りを雇うまでは自分で立って割ります</strong>。
+              </li>
+              <li>
+                <strong>はこび手</strong>は品種ごとに別の上限を持ちます。
+                生肉を持ったままでも薪を拾えるので、片方の受け口が満杯でも工程は止まりません。
+                1人では全区間を運びきれないので、足りなければ2人目を雇ってください。
+              </li>
             </ul>
-            <button type="button" className="ghost" onClick={handleReset}>
-              最初からやり直す
-            </button>
+            <p className="notes-foot">
+              このステージをやり直すときは、右上の <strong>⚙</strong> から。
+            </p>
           </section>
         </>
+      ) : null}
+
+      {/* 設定。ステージのリセットはここに常設する（ヘルプの末尾だけに置かない） */}
+      {settings ? (
+        <>
+          <button
+            type="button"
+            className="scrim"
+            aria-label="閉じる"
+            onClick={() => setSettings(false)}
+          />
+          <section className="sheet">
+            <div className="sheet-head">
+              <h2>設定</h2>
+              <button
+                type="button"
+                className="sheet-close"
+                onClick={() => setSettings(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <ul className="setting-list">
+              <li>
+                <div>
+                  <strong>音</strong>
+                  <small>効果音を鳴らすかどうか</small>
+                </div>
+                <button type="button" className="ghost" onClick={toggleMute}>
+                  {mute ? "🔇 消音中" : "🔊 鳴らす"}
+                </button>
+              </li>
+              <li>
+                <div>
+                  <strong>遊びかた</strong>
+                  <small>操作と仕組みの説明</small>
+                </div>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => {
+                    setSettings(false);
+                    setHelp(true);
+                  }}
+                >
+                  ひらく
+                </button>
+              </li>
+              <li>
+                <div>
+                  <strong>このステージをリセット</strong>
+                  <small>
+                    「{stageDefs[stageId].name}」だけを最初の状態に戻します
+                  </small>
+                </div>
+                <button
+                  type="button"
+                  className="ghost is-danger"
+                  onClick={() => setConfirmReset(true)}
+                >
+                  リセット
+                </button>
+              </li>
+            </ul>
+          </section>
+        </>
+      ) : null}
+
+      {/* リセットの確認。何が消えて何が残るかを出し、既定はキャンセル */}
+      {confirmReset ? (
+        <div className="modal" role="dialog" aria-modal aria-labelledby="reset-title">
+          <div className="modal-card">
+            <h2 id="reset-title">
+              「{stageDefs[stageId].name}」をリセットしますか？
+            </h2>
+            <div className="reset-cols">
+              <div className="reset-col is-lost">
+                <strong>消えるもの</strong>
+                <ul>
+                  <li>このステージの{unit}</li>
+                  <li>雇った人（狩人・木こり・薪割り・はこび手など）</li>
+                  <li>設備・席・区画</li>
+                  <li>強化レベル</li>
+                  <li>提供数と進行状況</li>
+                </ul>
+              </div>
+              <div className="reset-col is-kept">
+                <strong>残るもの</strong>
+                <ul>
+                  <li>ほかのステージの進行</li>
+                  <li>持っているスキンと、装備中のスキン</li>
+                  <li>音量などの全体設定</li>
+                  <li>ログイン状態</li>
+                </ul>
+              </div>
+            </div>
+            <p className="reset-note">
+              ほかのステージや、集めたスキンには手をつけません。
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="ghost"
+                autoFocus
+                onClick={() => setConfirmReset(false)}
+              >
+                キャンセル
+              </button>
+              <button type="button" className="is-danger" onClick={handleReset}>
+                リセットする
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {gacha ? (
@@ -503,7 +694,7 @@ export default function Page() {
           <section className="sheet">
             <div className="sheet-head">
               <h2>ガチャ</h2>
-              <span className="sheet-money">{formatYen(money)}</span>
+              <span className="sheet-money">{formatMoney(money, unit)}</span>
               <button
                 type="button"
                 className="sheet-close"
@@ -513,83 +704,180 @@ export default function Page() {
               </button>
             </div>
 
-            <p className="gacha-note">
-              1回 {formatYen(GACHA_COST)}。店主の見た目が当たります。
-              同じものが出ると★が増えて光り方が変わり、足の速さも上がります
-              （★1つ +5%・★{MAX_STARS} まで6段階）。
-              ★が上限のあとは {formatYen(GACHA_REFUND)} 返ってきます。
-            </p>
-
-            {result ? (
-              <div className={`gacha-result rarity-${result.skin.rarity}`}>
-                <span className="gacha-rarity">
-                  {rarityLabel[result.skin.rarity]}
-                </span>
-                <strong>{result.skin.name}</strong>
-                {result.stars > 0 ? (
-                  <span className="gacha-stars">{starMark(result.stars)}</span>
-                ) : null}
-                <small>
-                  {result.shined
-                    ? `ダブり ・ ★${result.stars} になった！ ${shineLabel(result.stars)}・足 +${shineBonus(result.stars)}%`
-                    : result.refunded
-                      ? `★は上限 ・ ${formatYen(GACHA_REFUND)} 返金`
-                      : "着替えました！"}
-                </small>
-              </div>
-            ) : null}
-
-            <button
-              type="button"
-              className="gacha-pull"
-              disabled={money < GACHA_COST}
-              onClick={handlePull}
-            >
-              {money < GACHA_COST
-                ? `あと ${formatYen(GACHA_COST - money)}`
-                : `引く（${formatYen(GACHA_COST)}）`}
-            </button>
-
-            <h3 className="gacha-sub">
-              持っている見た目 {owned.length} / {skins.length}
-            </h3>
-            <ul className="skins">
-              {skins.map((skin) => {
-                const have = owned.includes(skin.id);
+            {/* 3つの価格帯。未解放のものも、値段と解放条件と進みぐあいを見せる */}
+            <ul className="gacha-tiers">
+              {gachaTiers.map((spec) => {
+                const at = tiers.find((item) => item.tier === spec.tier);
+                const open = at?.open ?? spec.tier === 1;
+                const from = tiers.find(
+                  (item) => item.next === spec.tier,
+                );
                 return (
-                  <li
-                    key={skin.id}
-                    className={`skin rarity-${skin.rarity}${have ? "" : " is-locked"}${
-                      wearing === skin.id ? " is-on" : ""
-                    }${(stars[skin.id] ?? 0) > 0 ? " is-shining" : ""}${
-                      (stars[skin.id] ?? 0) >= 3 ? " is-rainbow" : ""
-                    }${(stars[skin.id] ?? 0) >= MAX_STARS ? " is-max" : ""}`}
-                  >
+                  <li key={spec.tier}>
                     <button
                       type="button"
-                      disabled={!have}
-                      onClick={() => handleEquip(skin.id)}
+                      className={`gacha-tier${tier === spec.tier ? " is-on" : ""}${
+                        open ? "" : " is-locked"
+                      }`}
+                      disabled={!open}
+                      onClick={() => {
+                        setTier(spec.tier);
+                        setResult(null);
+                      }}
                     >
-                      <span
-                        className="skin-chip"
-                        style={{ background: have ? skin.coat : "#3a3229" }}
-                      >
-                        {have && skin.icon ? skin.icon : null}
-                      </span>
-                      <span className="skin-name">{have ? skin.name : "？？？"}</span>
-                      {have && (stars[skin.id] ?? 0) > 0 ? (
-                        <span className="skin-stars">
-                          ★{stars[skin.id] ?? 0}
-                          <em>+{shineBonus(stars[skin.id] ?? 0)}%</em>
-                        </span>
+                      <strong>
+                        {spec.name}
+                        {unit}ガチャ
+                      </strong>
+                      <small>{formatMoney(spec.cost, unit)}／回</small>
+                      {open ? (
+                        <em>
+                          {at?.owned ?? 0} / {at?.total ?? 0}種
+                        </em>
                       ) : (
-                        <span className="skin-rarity">{skin.rarity}</span>
+                        <em className="is-need">
+                          🔒{" "}
+                          {from
+                            ? `${from.owned} / ${from.need}種で解放`
+                            : "解放条件なし"}
+                        </em>
                       )}
                     </button>
                   </li>
                 );
               })}
             </ul>
+
+            {(() => {
+              const spec = gachaTierById.get(tier)!;
+              const at = tiers.find((item) => item.tier === tier);
+              const nextSpec = at?.next ? gachaTierById.get(at.next) : null;
+              const nextOpen = at?.next ? tierOpenIn(tiers, at.next) : true;
+              const left = Math.max(0, (at?.need ?? 0) - (at?.owned ?? 0));
+              return (
+                <>
+                  <p className="gacha-note">
+                    1回 {formatMoney(spec.cost, unit)}。この価格帯のスキンだけが当たります
+                    （ほかの価格帯のものは出ません）。
+                    同じものが出ると★が増えて光り方が変わり、足の速さも上がります
+                    （★1つ +5%・★{MAX_STARS} まで6段階）。
+                    ★が上限のあとは {formatMoney(spec.refund, unit)} 返ってきます。
+                  </p>
+
+                  <p className="gacha-progress">
+                    {spec.name}
+                    {unit}ガチャのスキン {at?.owned ?? 0} / {at?.total ?? 0}
+                    {nextSpec && !nextOpen
+                      ? `（あと${left}種で ${nextSpec.name}${unit}ガチャ解放）`
+                      : nextSpec
+                        ? `（${nextSpec.name}${unit}ガチャ 解放ずみ）`
+                        : "（最上位）"}
+                    ・コンプ率{" "}
+                    {Math.round(((at?.owned ?? 0) / Math.max(1, at?.total ?? 1)) * 100)}%
+                  </p>
+
+                  {unlockedTier ? (
+                    <div className="gacha-unlocked" role="status">
+                      🎉 {gachaTierById.get(unlockedTier)?.name}
+                      {unit}ガチャが解放されました！
+                    </div>
+                  ) : null}
+
+                  {result ? (
+                    <div className={`gacha-result rarity-${result.skin.rarity}`}>
+                      <span className="gacha-rarity">
+                        {rarityLabel[result.skin.rarity]}
+                      </span>
+                      <strong>{result.skin.name}</strong>
+                      {result.stars > 0 ? (
+                        <span className="gacha-stars">{starMark(result.stars)}</span>
+                      ) : null}
+                      <small>
+                        {result.shined
+                          ? `ダブり ・ ★${result.stars} になった！ ${shineLabel(result.stars)}・足 +${shineBonus(result.stars)}%`
+                          : result.refunded
+                            ? `★は上限 ・ ${formatMoney(spec.refund, unit)} 返金`
+                            : "着替えました！"}
+                      </small>
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    className="gacha-pull"
+                    disabled={money < spec.cost}
+                    onClick={() => handlePull(tier)}
+                  >
+                    {money < spec.cost
+                      ? `あと ${formatMoney(spec.cost - money, unit)}`
+                      : `引く（${formatMoney(spec.cost, unit)}）`}
+                  </button>
+                </>
+              );
+            })()}
+
+            <h3 className="gacha-sub">
+              持っている見た目 {owned.length - 1} / {skins.length - 1}
+            </h3>
+            {/* 一覧は価格帯ごとに分ける。未取得はシルエットで見せる */}
+            {gachaTiers.map((spec) => {
+              const at = tiers.find((item) => item.tier === spec.tier);
+              return (
+                <div key={spec.tier} className="skin-group">
+                  <h4 className="skin-group-head">
+                    {spec.name}
+                    {unit}ガチャ
+                    <span>
+                      {at?.owned ?? 0} / {at?.total ?? 0}
+                    </span>
+                  </h4>
+                  <ul className="skins">
+                    {tierPool(spec.tier).map((skin) => {
+                      const have = owned.includes(skin.id);
+                      return (
+                        <li
+                          key={skin.id}
+                          className={`skin rarity-${skin.rarity}${have ? "" : " is-locked"}${
+                            wearing === skin.id ? " is-on" : ""
+                          }${(stars[skin.id] ?? 0) > 0 ? " is-shining" : ""}${
+                            (stars[skin.id] ?? 0) >= 3 ? " is-rainbow" : ""
+                          }${(stars[skin.id] ?? 0) >= MAX_STARS ? " is-max" : ""}`}
+                        >
+                          <button
+                            type="button"
+                            disabled={!have}
+                            onClick={() => handleEquip(skin.id)}
+                          >
+                            <span
+                              className="skin-chip"
+                              style={{ background: have ? skin.coat : "#3a3229" }}
+                            >
+                              {have && skin.icon ? skin.icon : null}
+                            </span>
+                            <span className="skin-name">
+                              {have ? skin.name : "？？？"}
+                            </span>
+                            {have && (stars[skin.id] ?? 0) > 0 ? (
+                              <span className="skin-stars">
+                                ★{stars[skin.id] ?? 0}
+                                <em>+{shineBonus(stars[skin.id] ?? 0)}%</em>
+                              </span>
+                            ) : (
+                              <span className="skin-rarity">{skin.rarity}</span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+            {/* 無料の初期スキンは、どのガチャの分母にも入れない */}
+            <p className="gacha-foot">
+              「見習い」は最初から持っている無料スキンなので、どの価格帯の
+              種類数にも数えません。
+            </p>
           </section>
         </>
       ) : null}
@@ -603,8 +891,8 @@ export default function Page() {
               店員がお店を回してくれました。
             </p>
             <div className="offline-earn">
-              <span>💴</span>
-              <strong>+{formatYen(offline.earned)}</strong>
+              <span>{unit === "貝" ? "🐚" : "💴"}</span>
+              <strong>+{formatMoney(offline.earned, unit)}</strong>
             </div>
             <button type="button" onClick={() => setOffline(null)}>
               受け取る

@@ -12,12 +12,16 @@ import {
 } from "@/lib/shop";
 import { stageDefs, type StageId } from "@/data/stages";
 import {
-  GACHA_COST,
-  GACHA_REFUND,
   MAX_STARS,
+  gachaTierById,
+  gachaTiers,
   rollSkin,
   skinById,
+  skinTier,
+  tierNeed,
+  tierPool,
   type Skin,
+  type Tier,
 } from "@/data/skins";
 import { setSkinShine } from "@/lib/shop";
 import { bindVault, syncVault } from "@/lib/cloud";
@@ -34,6 +38,11 @@ type Vault = {
   /** 見た目ごとの★（ダブるたびに増えて光り方が変わる） */
   stars: Record<string, number>;
   equipped: string;
+  /**
+   * 開いたガチャの段（1 は最初から）。
+   * 一度開いたら、あとでスキンが増えて割合が下がっても閉じない
+   */
+  gacha?: Tier[];
 };
 
 const emptyVault = (): Vault => ({
@@ -42,6 +51,7 @@ const emptyVault = (): Vault => ({
   skins: ["default"],
   stars: {},
   equipped: "default",
+  gacha: [1],
 });
 
 let vault: Vault = emptyVault();
@@ -82,6 +92,16 @@ const readVault = (): Vault => {
         typeof parsed.equipped === "string" && skinById.has(parsed.equipped)
           ? parsed.equipped
           : "default",
+      gacha: Array.from(
+        new Set<Tier>([
+          1,
+          ...(Array.isArray(parsed.gacha)
+            ? parsed.gacha.filter((tier): tier is Tier =>
+                gachaTierById.has(tier as Tier),
+              )
+            : []),
+        ]),
+      ),
     };
   } catch {
     return emptyVault();
@@ -221,6 +241,21 @@ export type GachaResult = {
   stars: number;
   /** ★が上限で、お金に変わったか */
   refunded: boolean;
+  /** この抽選で、上の段のガチャが開いたか（開いたらその段） */
+  unlockedTier: Tier | null;
+};
+
+/** その段の集まりぐあい */
+export type TierProgress = {
+  tier: Tier;
+  /** 取得ずみの固有スキン数（ダブりと★は数えない） */
+  owned: number;
+  total: number;
+  /** 次の段が開くのに要る種類数 */
+  need: number;
+  open: boolean;
+  /** 次の段（いちばん上ならなし） */
+  next: Tier | null;
 };
 
 export const ownedSkins = (): string[] => {
@@ -257,14 +292,63 @@ export const equipSkin = (id: string) => {
   writeVault();
 };
 
-export const canPull = (): boolean => getState().money >= GACHA_COST;
+/** その段で、いくつの種類を持っているか（ダブりと★は数えない） */
+const ownedInTier = (tier: Tier) =>
+  tierPool(tier).filter((skin) => vault.skins.includes(skin.id)).length;
 
-export const pullGacha = (): GachaResult | null => {
+export const tierProgress = (tier: Tier): TierProgress => {
+  getState();
+  const index = gachaTiers.findIndex((item) => item.tier === tier);
+  const next = gachaTiers[index + 1]?.tier ?? null;
+  return {
+    tier,
+    owned: ownedInTier(tier),
+    total: tierPool(tier).length,
+    need: tierNeed(tier),
+    open: (vault.gacha ?? [1]).includes(tier),
+    next,
+  };
+};
+
+export const allTierProgress = (): TierProgress[] => {
+  getState();
+  return gachaTiers.map((item) => tierProgress(item.tier));
+};
+
+export const tierOpen = (tier: Tier): boolean => {
+  getState();
+  return (vault.gacha ?? [1]).includes(tier);
+};
+
+/**
+ * 下の段が70%そろっていたら、上の段を開ける。
+ * 一度開いた段は、あとでスキンが増えて割合が下がっても閉じない
+ */
+const openNextTier = (from: Tier): Tier | null => {
+  const index = gachaTiers.findIndex((item) => item.tier === from);
+  const next = gachaTiers[index + 1];
+  if (!next) return null;
+  if (!vault.gacha) vault.gacha = [1];
+  if (vault.gacha.includes(next.tier)) return null;
+  if (ownedInTier(from) < tierNeed(from)) return null;
+  vault.gacha.push(next.tier);
+  return next.tier;
+};
+
+export const gachaCost = (tier: Tier): number =>
+  gachaTierById.get(tier)?.cost ?? Infinity;
+
+export const canPull = (tier: Tier = 1): boolean =>
+  tierOpen(tier) && getState().money >= gachaCost(tier);
+
+export const pullGacha = (tier: Tier = 1): GachaResult | null => {
   const current = getState();
-  if (current.money < GACHA_COST) return null;
-  current.money -= GACHA_COST;
+  const spec = gachaTierById.get(tier);
+  if (!spec || !tierOpen(tier)) return null;
+  if (current.money < spec.cost) return null;
+  current.money -= spec.cost;
 
-  const skin = rollSkin();
+  const skin = rollSkin(tier);
   const duplicate = vault.skins.includes(skin.id);
   let shined = false;
   let refunded = false;
@@ -277,13 +361,15 @@ export const pullGacha = (): GachaResult | null => {
       vault.equipped = skin.id;
       shined = true;
     } else {
-      current.money += GACHA_REFUND;
+      current.money += spec.refund;
       refunded = true;
     }
   } else {
     vault.skins.push(skin.id);
     vault.equipped = skin.id;
   }
+  // 新しく取ったことで、上の段が開くことがある
+  const unlockedTier = duplicate ? null : openNextTier(skinTier(skin));
   syncShine();
   save();
   return {
@@ -292,5 +378,6 @@ export const pullGacha = (): GachaResult | null => {
     shined,
     stars: vault.stars[skin.id] ?? 0,
     refunded,
+    unlockedTier,
   };
 };

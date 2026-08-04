@@ -73,6 +73,25 @@ export type StageDef = {
   chain?: boolean;
   /** 席が埋まったら、あふれた客が行列にならぶか */
   queue?: boolean;
+  /** お金の単位（省略で「円」。火のはじまりは「貝」） */
+  currency?: string;
+  /** 画面の横幅（ワールド単位）。広い区画のステージは少し引いて見せる */
+  view?: number;
+  /** 1つ作るのにかかる基本の時間（秒。省略で 2.0） */
+  cookTime?: number;
+  /** 担当者が付いた作業場の速さ（省略で 2.2） */
+  cookBoost?: number;
+  /**
+   * 同時に見せておく、まだ買っていない枠の数。
+   * 指定すると、条件を満たした枠を順ぐりに少しずつ出す
+   */
+  revealLimit?: number;
+  /** 入口とお客さんの来る通りの横位置（省略で 306） */
+  entranceX?: number;
+  /** はじめる位置（省略で x180 y250） */
+  startPos?: { x: number; y: number };
+  /** 最初からくべてあるまき（1食目だけ、火の世話を教えずに済ませる） */
+  startFuel?: Record<string, number>;
 };
 
 /**
@@ -579,129 +598,239 @@ const parkUpgrades: Upgrade[] = [
  */
 const benchRow = (
   area: number,
-  xs: number[],
   baseY: number,
-  prices: number[],
   needs: string,
   value: number,
   label: string,
+  benches: { x: number; price: number; unlockAfter?: string; reveal?: number }[],
 ): SeatSpec[] =>
-  xs.map((x, i) => ({
+  benches.map((bench, i) => ({
     id: `seat-${area}-${i + 1}`,
-    pos: { x, y: baseY + 64 },
-    serve: { x, y: baseY },
-    tray: { x, y: baseY + 24 },
-    price: prices[i],
+    pos: { x: bench.x, y: baseY + 64 },
+    serve: { x: bench.x, y: baseY },
+    tray: { x: bench.x, y: baseY + 24 },
+    price: bench.price,
     area,
     label,
     art: "bench",
     needs,
     value,
-    unlockAfter: i > 0 ? `seat-${area}-${i}` : undefined,
+    reveal: bench.reveal,
+    unlockAfter: bench.unlockAfter ?? (i > 0 ? `seat-${area}-${i}` : undefined),
   }));
 
+/**
+ * 火のはじまりの区画。
+ *
+ * 1区画目は、草原と森をそれぞれ別の場所として認識できる広さ（720 × 520）を取る。
+ * 画面には収まりきらないので、カメラがプレイヤーを追い、
+ * 目的地が画面の外にあるときは、へりに向きが出る。
+ */
 const fireAreas: AreaSpec[] = [
   {
     id: "area-0",
-    label: "たき火のまわり",
+    label: "はじまりの野",
     price: 0,
-    rect: { x0: 0, y0: 0, x1: 360, y1: 480 },
+    rect: { x0: 0, y0: 0, x1: 720, y1: 520 },
     padPos: { x: 0, y: 0 },
     palette: { floor: "#2a1c12", deep: "#1c130b", prop: "none" },
   },
   {
     id: "area-1",
-    label: "草原をひろげる",
-    price: 1200,
-    rect: { x0: 0, y0: 480, x1: 360, y1: 960 },
-    padPos: { x: 150, y: 452 },
+    label: "南の草原をひらく",
+    price: 2400,
+    rect: { x0: 0, y0: 520, x1: 720, y1: 1040 },
+    padPos: { x: 360, y: 492 },
     palette: { floor: "#26301c", deep: "#182010", prop: "none" },
-    unlockAfter: "seat-0-2",
+    // 1区画目が自動でまわるようになってから、はじめて外の話が出てくる
+    unlockAfter: "robot-1",
+    reveal: 22,
   },
   {
     id: "area-2",
     label: "マンモスの谷へ下りる",
-    price: 16000,
-    rect: { x0: 360, y0: 0, x1: 720, y1: 480 },
-    padPos: { x: 298, y: 250 },
+    price: 40000,
+    rect: { x0: 720, y0: 0, x1: 1440, y1: 520 },
+    padPos: { x: 690, y: 260 },
     palette: { floor: "#2a2320", deep: "#1a1512", prop: "none" },
+    reveal: 30,
   },
 ];
 
 /**
  * 火のはじまりの流れ（意味の通る工程）:
- *   狩り場 ──(なま肉)──┐
- *                       ├─▶ たき火（まきで焼く）──(焼き肉)──▶ 仲間
- *   まき集め ──(まき)──┘
- * たき火は「なま肉」と「まき」の2つを受け取って、はじめて焼ける。
+ *
+ *   草原 ──(生肉)────────────────┐
+ *                                 ├─▶ たき火（薪で焼く）──(焼き肉)──▶ ベンチの仲間
+ *   森 ──(丸太)──▶ 薪割り場 ──(薪)┘
+ *
+ * 木こりは森で丸太を作り、薪割りは丸太を薪へ変える。
+ * 運ぶのは、はこび手かプレイヤーの仕事。
  */
 const fireStoves: StoveSpec[] = [
-  // area-0
-  { id: "hunt-1", pos: { x: 70, y: 118 }, price: 0, area: 0, item: "meat", art: "hunt", label: "狩り場" },
-  { id: "wood-1", pos: { x: 250, y: 118 }, price: 0, area: 0, item: "wood", art: "logs", label: "まき集め" },
-  { id: "fire-1", pos: { x: 160, y: 220 }, price: 0, area: 0, item: "roast", takes: "meat", fuel: "wood", art: "fire", label: "たき火" },
-  { id: "fire-2", pos: { x: 290, y: 220 }, price: 1200, area: 0, item: "roast", takes: "meat", fuel: "wood", art: "fire", label: "たき火", unlockAfter: "fire-1" },
-  // area-1
-  { id: "hunt-2", pos: { x: 70, y: 600 }, price: 3000, area: 1, item: "meat", art: "hunt", label: "狩り場" },
-  { id: "wood-2", pos: { x: 250, y: 600 }, price: 3000, area: 1, item: "wood", art: "logs", label: "まき集め" },
-  { id: "fire-3", pos: { x: 160, y: 700 }, price: 7000, area: 1, item: "roast", takes: "meat", fuel: "wood", art: "fire", label: "たき火" },
-  // area-2: さばく工程が1つ増える（なま肉 → 切り身 → ごちそう）
-  { id: "hunt-3", pos: { x: 430, y: 118 }, price: 16000, area: 2, item: "meat", art: "hunt", label: "マンモス狩り" },
-  { id: "wood-3", pos: { x: 660, y: 118 }, price: 24000, area: 2, item: "wood", art: "logs", label: "まき集め" },
-  { id: "butcher-1", pos: { x: 500, y: 118 }, price: 30000, area: 2, item: "cut", takes: "meat", art: "cut", label: "さばき台" },
-  { id: "grill-1", pos: { x: 600, y: 220 }, price: 70000, area: 2, item: "feast", takes: "cut", fuel: "wood", art: "fire", label: "大かまど" },
+  /* --- area-0: 左に草原、右に森と薪割り場、中央にたき火 --- */
+  {
+    id: "hunt-1",
+    pos: { x: 150, y: 322 },
+    price: 0,
+    area: 0,
+    item: "meat",
+    art: "hunt",
+    label: "狩り場",
+    zone: { x0: 26, y0: 66, x1: 268, y1: 288 },
+    hold: 6,
+  },
+  {
+    id: "forest-1",
+    pos: { x: 574, y: 322 },
+    price: 0,
+    area: 0,
+    item: "log",
+    art: "forest",
+    label: "森",
+    zone: { x0: 452, y0: 66, x1: 694, y1: 288 },
+    hold: 6,
+  },
+  {
+    id: "split-1",
+    pos: { x: 544, y: 400 },
+    price: 0,
+    area: 0,
+    item: "wood",
+    takes: "log",
+    art: "split",
+    label: "薪割り場",
+    // 人の手が要る。薪割りを雇うまでは、自分で立って割る
+    manual: true,
+    work: 0.5,
+  },
+  {
+    id: "fire-1",
+    pos: { x: 344, y: 196 },
+    price: 0,
+    area: 0,
+    item: "roast",
+    takes: "meat",
+    fuel: "wood",
+    art: "fire",
+    label: "たき火",
+  },
+  // 1区画目がまわり始めてから、2つ目のたき火を足せる
+  {
+    id: "fire-1b",
+    pos: { x: 190, y: 196 },
+    price: 1600,
+    area: 0,
+    item: "roast",
+    takes: "meat",
+    fuel: "wood",
+    art: "fire",
+    label: "2つ目のたき火",
+    unlockAfter: "robot-1",
+    reveal: 20,
+  },
+
+  /* --- area-1: 同じ工程がもう一式 --- */
+  { id: "hunt-2", pos: { x: 150, y: 842 }, price: 5000, area: 1, item: "meat", art: "hunt", label: "狩り場", zone: { x0: 26, y0: 586, x1: 268, y1: 808 }, hold: 6, reveal: 23 },
+  { id: "forest-2", pos: { x: 574, y: 842 }, price: 6000, area: 1, item: "log", art: "forest", label: "森", zone: { x0: 452, y0: 586, x1: 694, y1: 808 }, hold: 6, reveal: 24 },
+  { id: "split-2", pos: { x: 544, y: 920 }, price: 7000, area: 1, item: "wood", takes: "log", art: "split", label: "薪割り場", manual: true, work: 0.5, reveal: 25 },
+  { id: "fire-2", pos: { x: 344, y: 716 }, price: 9000, area: 1, item: "roast", takes: "meat", fuel: "wood", art: "fire", label: "たき火", reveal: 26 },
+
+  /* --- area-2: さばく工程が1つ増える（生肉 → 切り身 → ごちそう） --- */
+  { id: "hunt-3", pos: { x: 870, y: 322 }, price: 40000, area: 2, item: "meat", art: "hunt", label: "マンモスの原", zone: { x0: 746, y0: 66, x1: 988, y1: 288 }, hold: 6 },
+  { id: "forest-3", pos: { x: 1294, y: 322 }, price: 52000, area: 2, item: "log", art: "forest", label: "大森林", zone: { x0: 1172, y0: 66, x1: 1414, y1: 288 }, hold: 6 },
+  { id: "split-3", pos: { x: 1264, y: 400 }, price: 60000, area: 2, item: "wood", takes: "log", art: "split", label: "薪割り場", manual: true, work: 0.5 },
+  { id: "butcher-1", pos: { x: 1060, y: 130 }, price: 80000, area: 2, item: "cut", takes: "meat", art: "cut", label: "さばき台" },
+  { id: "grill-1", pos: { x: 1064, y: 300 }, price: 140000, area: 2, item: "feast", takes: "cut", fuel: "wood", art: "fire", label: "大かまど" },
 ];
 
 const fireSeats: SeatSpec[] = [
-  ...benchRow(0, [70, 170, 270], 300, [0, 300, 900], "roast", 1, "丸太のベンチ"),
-  ...benchRow(1, [70, 170, 270], 780, [5000, 11000, 22000], "roast", 1.4, "草原のベンチ"),
-  ...benchRow(2, [460, 600], 300, [40000, 90000], "feast", 3, "谷の宴席"),
+  // 1席目は最初から。2席目は「はこび手を雇ったあと」に出す（段階5）
+  ...benchRow(0, 424, "roast", 1, "丸太のベンチ", [
+    { x: 120, price: 0 },
+    { x: 248, price: 76, unlockAfter: "waiter-1", reveal: 5 },
+    { x: 376, price: 90, unlockAfter: "waiter-2", reveal: 7.5 },
+  ]),
+  ...benchRow(1, 944, "roast", 1.4, "草原のベンチ", [
+    { x: 120, price: 12000, reveal: 27 },
+    { x: 248, price: 24000, reveal: 28 },
+    { x: 376, price: 48000, reveal: 29 },
+  ]),
+  ...benchRow(2, 424, "feast", 3, "谷の宴席", [
+    { x: 830, price: 90000 },
+    { x: 980, price: 200000 },
+  ]),
 ];
 
+/**
+ * 雇う順（§3.2）。
+ * 5食ぶんを自分の手でやりきってから、狩り → 木 → 薪 → 運び …と
+ * 「いま覚えた仕事の次の改善」だけを出していく。
+ */
 const fireHires: HireSpec[] = [
-  // area-0: 狩人・まき割りは最初から選べる拡張。はこび手・火の番・犬ぞりも
-  { id: "hunter-1", kind: "hunter", pos: { x: 70, y: 76 }, price: 300, label: "狩人", stoveId: "hunt-1", area: 0 },
-  { id: "wooder-1", kind: "cook", pos: { x: 250, y: 76 }, price: 300, label: "まき割り", stoveId: "wood-1", area: 0 },
-  { id: "waiter-1", kind: "waiter", pos: { x: 40, y: 330 }, price: 150, label: "はこび手", area: 0 },
-  { id: "collector-1", kind: "collector", pos: { x: 320, y: 300 }, price: 500, label: "拾い手", area: 0, unlockAfter: "waiter-1" },
-  { id: "fireman-1", kind: "cook", pos: { x: 160, y: 178 }, price: 900, label: "火の番", stoveId: "fire-1", area: 0, unlockAfter: "waiter-1" },
-  { id: "waiter-2", kind: "waiter", pos: { x: 320, y: 330 }, price: 1800, label: "はこび手", area: 0, unlockAfter: "collector-1" },
-  { id: "robot-1", kind: "robot", pos: { x: 180, y: 360 }, price: 5000, label: "犬ぞり", area: 0, unlockAfter: "waiter-2" },
-  // area-1
-  { id: "hunter-2", kind: "hunter", pos: { x: 70, y: 558 }, price: 4000, label: "狩人", stoveId: "hunt-2", area: 1 },
-  { id: "wooder-2", kind: "cook", pos: { x: 250, y: 558 }, price: 4000, label: "まき割り", stoveId: "wood-2", area: 1 },
-  { id: "fireman-2", kind: "cook", pos: { x: 160, y: 658 }, price: 9000, label: "火の番", stoveId: "fire-3", area: 1 },
-  { id: "waiter-3", kind: "waiter", pos: { x: 40, y: 810 }, price: 7000, label: "はこび手", area: 1, unlockAfter: "robot-1" },
-  { id: "robot-2", kind: "robot", pos: { x: 300, y: 810 }, price: 30000, label: "犬ぞり", area: 1 },
-  // area-2
-  { id: "hunter-3", kind: "hunter", pos: { x: 430, y: 76 }, price: 30000, label: "狩人", stoveId: "hunt-3", area: 2 },
-  { id: "wooder-3", kind: "cook", pos: { x: 660, y: 76 }, price: 40000, label: "まき割り", stoveId: "wood-3", area: 2 },
-  { id: "butcher-1c", kind: "cook", pos: { x: 500, y: 76 }, price: 50000, label: "さばき手", stoveId: "butcher-1", area: 2 },
-  { id: "fireman-3", kind: "cook", pos: { x: 600, y: 178 }, price: 80000, label: "火の番", stoveId: "grill-1", area: 2 },
-  { id: "waiter-4", kind: "waiter", pos: { x: 460, y: 330 }, price: 60000, label: "はこび手", area: 2 },
-  { id: "robot-3", kind: "robot", pos: { x: 600, y: 360 }, price: 120000, label: "犬ぞり", area: 2 },
+  /* --- area-0: 序盤の順ぐり --- */
+  { id: "hunter-1", kind: "hunter", pos: { x: 150, y: 372 }, price: 40, label: "狩人", stoveId: "hunt-1", area: 0, needServed: 5, reveal: 1 },
+  { id: "logger-1", kind: "logger", pos: { x: 574, y: 372 }, price: 28, label: "木こり", stoveId: "forest-1", area: 0, unlockAfter: "hunter-1", reveal: 2 },
+  { id: "splitter-1", kind: "splitter", pos: { x: 610, y: 446 }, price: 48, label: "薪割り", stoveId: "split-1", area: 0, unlockAfter: "logger-1", reveal: 3 },
+  { id: "waiter-1", kind: "waiter", pos: { x: 344, y: 300 }, price: 64, label: "はこび手", area: 0, unlockAfter: "splitter-1", reveal: 4 },
+  { id: "waiter-2", kind: "waiter", pos: { x: 420, y: 300 }, price: 96, label: "はこび手", area: 0, unlockAfter: "seat-0-2", reveal: 7 },
+  { id: "fireman-1", kind: "cook", pos: { x: 268, y: 196 }, price: 120, label: "火の番", stoveId: "fire-1", area: 0, unlockAfter: "seat-0-3", reveal: 8 },
+  { id: "collector-1", kind: "collector", pos: { x: 464, y: 424 }, price: 140, label: "拾い手", area: 0, unlockAfter: "fireman-1", reveal: 9 },
+  { id: "robot-1", kind: "robot", pos: { x: 464, y: 480 }, price: 320, label: "犬ぞり", area: 0, unlockAfter: "collector-1", reveal: 11 },
+  // 2つ目のたき火を足したら、その火の番も雇える
+  { id: "fireman-1b", kind: "cook", pos: { x: 114, y: 196 }, price: 2400, label: "火の番", stoveId: "fire-1b", area: 0, unlockAfter: "fire-1b", reveal: 20.5 },
+
+  /* --- area-1 --- */
+  { id: "hunter-2", kind: "hunter", pos: { x: 150, y: 892 }, price: 6000, label: "狩人", stoveId: "hunt-2", area: 1, reveal: 23.5 },
+  { id: "logger-2", kind: "logger", pos: { x: 574, y: 892 }, price: 7000, label: "木こり", stoveId: "forest-2", area: 1, reveal: 24.5 },
+  { id: "splitter-2", kind: "splitter", pos: { x: 610, y: 966 }, price: 8000, label: "薪割り", stoveId: "split-2", area: 1, reveal: 25.5 },
+  { id: "fireman-2", kind: "cook", pos: { x: 268, y: 716 }, price: 12000, label: "火の番", stoveId: "fire-2", area: 1, reveal: 26.5 },
+  { id: "waiter-3", kind: "waiter", pos: { x: 344, y: 820 }, price: 14000, label: "はこび手", area: 1, reveal: 27.5 },
+  { id: "robot-2", kind: "robot", pos: { x: 464, y: 1000 }, price: 60000, label: "犬ぞり", area: 1, reveal: 29.5 },
+
+  /* --- area-2 --- */
+  { id: "hunter-3", kind: "hunter", pos: { x: 870, y: 372 }, price: 60000, label: "狩人", stoveId: "hunt-3", area: 2 },
+  { id: "logger-3", kind: "logger", pos: { x: 1294, y: 372 }, price: 70000, label: "木こり", stoveId: "forest-3", area: 2 },
+  { id: "splitter-3", kind: "splitter", pos: { x: 1330, y: 446 }, price: 80000, label: "薪割り", stoveId: "split-3", area: 2 },
+  { id: "butcher-1c", kind: "cook", pos: { x: 990, y: 130 }, price: 120000, label: "さばき手", stoveId: "butcher-1", area: 2 },
+  { id: "fireman-3", kind: "cook", pos: { x: 990, y: 300 }, price: 180000, label: "火の番", stoveId: "grill-1", area: 2 },
+  { id: "waiter-4", kind: "waiter", pos: { x: 900, y: 470 }, price: 150000, label: "はこび手", area: 2 },
+  { id: "robot-3", kind: "robot", pos: { x: 1010, y: 470 }, price: 400000, label: "犬ぞり", area: 2 },
 ];
 
 const fireEquipment: EquipSpec[] = [
-  // 直結の設備（区間を消す）: 肉とまきを、たき火へ直接おくる
-  { id: "chute-meat", name: "肉はこびそり", detail: "なま肉を、たき火へ直接おくる", pos: { x: 110, y: 170 }, price: 9000, area: 0, link: { from: "hunt-1", to: "fire-1" }, unlockAfter: "robot-1" },
-  { id: "chute-wood", name: "まきのとい", detail: "まきを、たき火へ直接おくる", pos: { x: 210, y: 170 }, price: 14000, area: 0, link: { from: "wood-1", to: "fire-1" }, unlockAfter: "equip-chute-meat" },
-  { id: "chute-cut", name: "石のすべり台", detail: "切り身を、大かまどへ直接おくる", pos: { x: 550, y: 170 }, price: 300000, area: 2, link: { from: "butcher-1", to: "grill-1" }, unlockAfter: "fireman-3" },
+  // 直結の設備（区間を消す）: 生肉・丸太・薪を、次の場所へ直接おくる
+  { id: "chute-meat", name: "肉はこびそり", detail: "生肉を、たき火へ直接おくる", pos: { x: 250, y: 260 }, price: 6000, area: 0, link: { from: "hunt-1", to: "fire-1" }, unlockAfter: "robot-1", reveal: 12 },
+  { id: "chute-log", name: "丸太ころがし", detail: "丸太を、薪割り場へ直接おくる", pos: { x: 618, y: 360 }, price: 9000, area: 0, link: { from: "forest-1", to: "split-1" }, unlockAfter: "equip-chute-meat", reveal: 13 },
+  { id: "chute-wood", name: "薪のとい", detail: "薪を、たき火へ直接おくる", pos: { x: 444, y: 300 }, price: 14000, area: 0, link: { from: "split-1", to: "fire-1" }, unlockAfter: "equip-chute-log", reveal: 14 },
+  { id: "chute-cut", name: "石のすべり台", detail: "切り身を、大かまどへ直接おくる", pos: { x: 1124, y: 216 }, price: 600000, area: 2, link: { from: "butcher-1", to: "grill-1" }, unlockAfter: "fireman-3" },
   // 道具の強化・集客
-  { id: "noodle", name: "石おの", detail: "すべての作業場が +30%速くなる", pos: { x: 300, y: 660 }, price: 20000, area: 1, unlockAfter: "area-1" },
-  { id: "fridge", name: "ほぞ穴の倉", detail: "受け口・出し口に積める数 +4", pos: { x: 300, y: 720 }, price: 45000, area: 1, unlockAfter: "equip-noodle" },
-  { id: "ticket", name: "貝がら入れ", detail: "貝がらが自動でサイフに入る・拾い手は運びへ", pos: { x: 112, y: 0 }, price: 30000, area: 0, outside: true, unlockAfter: "area-1" },
-  { id: "sign", name: "物見やぐら", detail: "仲間が 1.5倍のはやさで来る", pos: { x: 240, y: 0 }, price: 60000, area: 0, outside: true, unlockAfter: "equip-ticket" },
-  { id: "flag", name: "けむりのろし", detail: "遠くの仲間を呼ぶ。集客 1.25倍", pos: { x: 40, y: 0 }, price: 1200, area: 0, outside: true, row: 1, draw: 1.25, unlockAfter: "waiter-1" },
-  { id: "lantern", name: "たいこ", detail: "音で人を集める。集客 1.4倍", pos: { x: 176, y: 0 }, price: 26000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-1" },
-  { id: "queue", name: "かがり火", detail: "夜通し明るい。集客 1.6倍", pos: { x: 330, y: 0 }, price: 90000, area: 0, outside: true, row: 1, draw: 1.6, unlockAfter: "area-2" },
+  { id: "noodle", name: "石おの", detail: "すべての作業場が +30%速くなる", pos: { x: 660, y: 480 }, price: 24000, area: 0, unlockAfter: "equip-chute-wood", reveal: 15 },
+  { id: "fridge", name: "ほぞ穴の倉", detail: "受け口・出し口に積める数 +4", pos: { x: 660, y: 220 }, price: 45000, area: 0, unlockAfter: "equip-noodle", reveal: 16 },
+  { id: "ticket", name: "貝がら入れ", detail: "貝がらが自動でサイフに入る・拾い手は運びへ", pos: { x: 250, y: 0 }, price: 30000, area: 0, outside: true, unlockAfter: "equip-noodle", reveal: 17 },
+  { id: "flag", name: "けむりのろし", detail: "遠くの仲間を呼ぶ。集まりが 1.25倍", pos: { x: 120, y: 0 }, price: 1200, area: 0, outside: true, row: 1, draw: 1.25, unlockAfter: "collector-1", reveal: 18 },
+  { id: "sign", name: "物見やぐら", detail: "仲間が 1.5倍のはやさで来る", pos: { x: 380, y: 0 }, price: 60000, area: 0, outside: true, unlockAfter: "equip-ticket", reveal: 19 },
+  { id: "lantern", name: "たいこ", detail: "音で人を集める。集まりが 1.4倍", pos: { x: 470, y: 0 }, price: 90000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-1", reveal: 31 },
+  { id: "queue", name: "かがり火", detail: "夜通し明るい。集まりが 1.6倍", pos: { x: 590, y: 0 }, price: 240000, area: 0, outside: true, row: 1, draw: 1.6, unlockAfter: "area-2", reveal: 32 },
 ];
 
+/**
+ * 強化は、その強化が効く相手を体験してから出す（§3.3）。
+ *   編みかご   ← はこび手を雇ったあと
+ *   火をあおぐ ← 火の番を雇ったあと
+ *   わらじ     ← 集金が自動になったあと
+ *   石塩       ← 犬ぞりまで来て、次の区画が見えるころ
+ */
+/*
+ * 強化の枠は、買っても消えない。
+ * 人の通り道に置くと、通りかかるたびに貝が吸い出されてしまうので、
+ * 草原の西はしに「道具置き場」としてまとめ、往復の線から外しておく。
+ */
 const fireUpgrades: Upgrade[] = [
-  { id: "carry", name: "編みかご", detail: (n) => `${3 + n}こまで持てる・仲間も ${3 + Math.floor(n / 2)}こ`, pos: { x: 46, y: 66 }, basePrice: 60, growth: 1.7, max: 9, unlockAfter: "waiter-1" },
-  { id: "speed", name: "わらじ", detail: (n) => `足の速さ +${n * 10}%・仲間も +${n * 5}%`, pos: { x: 138, y: 66 }, basePrice: 50, growth: 1.65, max: 12, unlockAfter: "waiter-1" },
-  { id: "cook", name: "火をあおぐ", detail: (n) => `作る速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 230, y: 66 }, basePrice: 80, growth: 1.7, max: 14, unlockAfter: "fireman-1" },
-  { id: "price", name: "味つけの石塩", detail: (n) => `ひとつ ${Math.round(8 * Math.pow(1.4, n))}貝`, pos: { x: 314, y: 66 }, basePrice: 120, growth: 1.75, max: 20, unlockAfter: "seat-0-2" },
+  { id: "carry", name: "編みかご", detail: (n) => `${3 + n}こまで持てる・はこび手も 品種ごとに ${3 + Math.floor(n / 2)}こ`, pos: { x: 40, y: 330 }, basePrice: 56, growth: 1.7, max: 9, unlockAfter: "waiter-1", reveal: 6 },
+  { id: "cook", name: "火をあおぐ", detail: (n) => `作る速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 40, y: 390 }, basePrice: 150, growth: 1.7, max: 14, unlockAfter: "fireman-1", reveal: 8.5 },
+  { id: "speed", name: "わらじ", detail: (n) => `足の速さ +${n * 10}%・仲間も +${n * 5}%`, pos: { x: 40, y: 450 }, basePrice: 110, growth: 1.65, max: 12, unlockAfter: "collector-1", reveal: 10 },
+  { id: "price", name: "味つけの石塩", detail: (n) => `ひとつ ${Math.round(8 * Math.pow(1.4, n))}貝`, pos: { x: 40, y: 510 }, basePrice: 600, growth: 1.75, max: 20, unlockAfter: "robot-1", reveal: 11.5 },
 ];
 
 /* ==================== 登録 ==================== */
@@ -740,6 +869,8 @@ export const stageDefs: Record<StageId, StageDef> = {
         seller: "券売係",
         gatekeeper: "入口係",
         hunter: "狩人",
+        logger: "木こり",
+        splitter: "薪割り",
       },
       objective: {
         pickup: "厨房で丼を受け取ろう",
@@ -787,6 +918,8 @@ export const stageDefs: Record<StageId, StageDef> = {
         seller: "入場券係",
         gatekeeper: "入場ゲート係",
         hunter: "狩人",
+        logger: "木こり",
+        splitter: "薪割り",
       },
       objective: {
         pickup: "券売所でチケットを受け取ろう",
@@ -805,8 +938,8 @@ export const stageDefs: Record<StageId, StageDef> = {
     name: "火のはじまり",
     subtitle: "原始の火からはじめる",
     icon: "🔥",
-    itemIcon: "🌰",
-    frontRoom: { top: 38, bottom: 250 },
+    itemIcon: "🍖",
+    frontRoom: { top: 38, bottom: 300 },
     areas: fireAreas,
     stoves: fireStoves,
     seats: fireSeats,
@@ -817,8 +950,20 @@ export const stageDefs: Record<StageId, StageDef> = {
     requiresAreas: 0,
     chain: true,
     queue: true,
-    // 狩り場・まき集め・たき火・最初のベンチだけ見えている
-    start: ["hunt-1", "wood-1", "fire-1", "seat-0-1"],
+    currency: "貝",
+    // 720幅の区画は画面に収まらないので、少し引いて見せてカメラで追う
+    view: 400,
+    entranceX: 360,
+    startPos: { x: 344, y: 300 },
+    // たき火は 4.0秒に1つ。火の番が付くと 2.0秒（§6）
+    cookTime: 4.0,
+    cookBoost: 2.0,
+    // 「いま覚えた仕事の次の改善」だけを見せる
+    revealLimit: 2,
+    // 1食目は「狩る → 置く → 渡す」だけ。まきは最初からくべてある
+    startFuel: { "fire-1": 3 },
+    // 草原・森・薪割り場・たき火・最初のベンチだけ見えている
+    start: ["hunt-1", "forest-1", "split-1", "fire-1", "seat-0-1"],
     labels: {
       item: "しなもの",
       producer: "作業場",
@@ -837,6 +982,8 @@ export const stageDefs: Record<StageId, StageDef> = {
         seller: "受付",
         gatekeeper: "門番",
         hunter: "狩人",
+        logger: "木こり",
+        splitter: "薪割り",
       },
       objective: {
         pickup: "出し口でしなものを受け取ろう",

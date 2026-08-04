@@ -5,11 +5,14 @@ import {
   EAT_TIME,
   KITCHEN,
   PAD_RADIUS,
-  WORLD,
+  TREE_REGROW,
   availablePads,
+  currency,
   currentObjective,
   inspectAt,
+  itemLabel,
   maxCarry,
+  viewWidth,
   AUTO_TIME,
   autoPos,
   boothPos,
@@ -20,16 +23,22 @@ import {
   openSeats,
   openStoves,
   carryOf,
+  carryTotal,
   topKind,
   seatCost,
   seatMode,
+  seatNeeds,
   isDirty,
+  isManned,
   shelfStock,
   SHELF_MAX,
   stoveItem,
   isStation,
+  fuelAt,
+  heldAt,
   holdCap,
   huntZone,
+  seatById,
   stoveById,
   type ItemKind,
   type StoveSpec,
@@ -62,8 +71,8 @@ import {
   getState,
   save,
 } from "@/lib/shopStore";
-import type { Face, Hat } from "@/data/skins";
-import { formatYen } from "@/lib/format";
+import type { Aura, Face, Hat } from "@/data/skins";
+import { formatMoney } from "@/lib/format";
 import { isMuted, loadMuted, playCombo, playSound, unlockAudio } from "@/lib/sfx";
 
 export type Sample = {
@@ -893,8 +902,26 @@ const parcel = (ctx: CanvasRenderingContext2D, x: number, y: number, s = 1) => {
   ctx.fill();
 };
 
-/** 持ちものの絵（種類で変わる） */
-/** ワーキングプラネットの工程の品（種類ごとに色と形を変える） */
+/** 立ちのぼる湯気 */
+const steamPuffs = (ctx: CanvasRenderingContext2D, time: number, from = -8) => {
+  ctx.fillStyle = "rgba(255,255,255,0.3)";
+  for (let i = 0; i < 2; i += 1) {
+    const t = (time * 0.6 + i * 0.5) % 1;
+    ctx.beginPath();
+    ctx.arc(Math.sin(t * 6 + i) * 3, from - t * 12, 2.4 - t * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
+/**
+ * ワーキングプラネットの工程の品。
+ *
+ * 色だけでなく形でも見分けられるようにする（§8.3）。
+ *   生肉   骨つきの赤身。白い骨が横に突き出る
+ *   丸太   樹皮と年輪の見える太い木材。横向き
+ *   薪     割った薪を3本たばねた、とがった束
+ *   焼き肉 串と焦げ目のついた、湯気の立つ肉
+ */
 const chainItem = (
   ctx: CanvasRenderingContext2D,
   item: string,
@@ -903,50 +930,143 @@ const chainItem = (
   s: number,
   time: number,
 ) => {
-  const spec: Record<
-    string,
-    { body: string; cap: string; steam?: boolean; log?: boolean }
-  > = {
-    meat: { body: "#c0503f", cap: "#e0d8c8" }, // なま肉（赤身＋骨）
-    wood: { body: "#8a5a2b", cap: "#a9743f", log: true }, // まき
-    roast: { body: "#7a4325", cap: "#4a2a15", steam: true }, // 焼き肉
-    cut: { body: "#d98a7a", cap: "#b56553" }, // 切り身
-    feast: { body: "#c8843f", cap: "#8a5220", steam: true }, // ごちそう
-  };
-  const it = spec[item] ?? { body: "#b98a4a", cap: "#7a5a2b" };
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
-  shadow(ctx, 0, 4, 6);
-  if (it.log) {
-    // まきは横向きの丸太
-    ctx.fillStyle = it.body;
-    roundRect(ctx, -7, -3, 14, 6, 2);
+  shadow(ctx, 0, 5, 6);
+
+  if (item === "meat") {
+    // 生肉: 赤身のかたまり + 白い骨 + 脂身のふち
+    ctx.fillStyle = "#e8ddc8";
+    roundRect(ctx, 3, -2.4, 8, 3.4, 1.7);
     ctx.fill();
-    ctx.fillStyle = it.cap;
     ctx.beginPath();
-    ctx.ellipse(7, 0, 2, 3, 0, 0, Math.PI * 2);
+    ctx.arc(10.5, -0.7, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#c0402f";
+    ctx.beginPath();
+    ctx.moveTo(-7, -4);
+    ctx.quadraticCurveTo(2, -7.5, 5, -1.5);
+    ctx.quadraticCurveTo(2, 6, -6, 4);
+    ctx.quadraticCurveTo(-9.5, 0.5, -7, -4);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,236,220,0.6)";
+    ctx.beginPath();
+    ctx.ellipse(-5.6, -1.4, 2.2, 3.4, 0.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     return;
   }
-  ctx.fillStyle = it.body;
+
+  if (item === "log") {
+    // 丸太: 樹皮のついた太い木材。切り口に年輪
+    ctx.fillStyle = "#6b4a2b";
+    roundRect(ctx, -9, -4.5, 17, 9, 2.5);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.28)";
+    ctx.lineWidth = 0.9;
+    for (const bx of [-4, 0, 4]) {
+      ctx.beginPath();
+      ctx.moveTo(bx, -4.2);
+      ctx.lineTo(bx - 1, 4.2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#c79a5e";
+    ctx.beginPath();
+    ctx.ellipse(8, 0, 2.6, 4.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#8a6236";
+    ctx.lineWidth = 0.8;
+    for (const r of [1, 2]) {
+      ctx.beginPath();
+      ctx.ellipse(8, 0, r * 0.8, r * 1.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "wood") {
+    // 薪: 割った薪を3本たばねた束。先がとがっていて丸太と見分けられる
+    for (const [i, oy] of [-3.4, 0, 3.4].entries()) {
+      ctx.fillStyle = i === 1 ? "#c79a5e" : "#a9743f";
+      ctx.beginPath();
+      ctx.moveTo(-8, oy - 1.5);
+      ctx.lineTo(5, oy - 1.9);
+      ctx.lineTo(8.5, oy);
+      ctx.lineTo(5, oy + 1.9);
+      ctx.lineTo(-8, oy + 1.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // たばねたつる
+    ctx.strokeStyle = "#5a4024";
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(-2, -5.6);
+    ctx.lineTo(-2, 5.6);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "roast" || item === "feast") {
+    const big = item === "feast";
+    // 焼き肉: 串に刺した焼き色つきの肉。焦げ目と湯気
+    ctx.strokeStyle = "#8a6a44";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-9, 5);
+    ctx.lineTo(9, -5);
+    ctx.stroke();
+    ctx.fillStyle = big ? "#b06a2a" : "#8a4a24";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, big ? 8 : 6.6, big ? 6 : 4.8, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#d9903f";
+    ctx.beginPath();
+    ctx.ellipse(-1.4, -1.2, big ? 4.4 : 3.4, big ? 3 : 2.2, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // 焦げ目
+    ctx.strokeStyle = "rgba(40,22,10,0.75)";
+    ctx.lineWidth = 1;
+    for (const g of [-2.2, 0.6, 3.4]) {
+      ctx.beginPath();
+      ctx.moveTo(g - 2.4, -3.6);
+      ctx.lineTo(g + 1.4, 3.4);
+      ctx.stroke();
+    }
+    steamPuffs(ctx, time, big ? -9 : -7);
+    ctx.restore();
+    return;
+  }
+
+  if (item === "cut") {
+    // 切り身: 平たい四角の身。脂の筋が入る
+    ctx.fillStyle = "#d98a7a";
+    roundRect(ctx, -7, -4.5, 14, 9, 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,240,235,0.7)";
+    ctx.lineWidth = 1;
+    for (const ly of [-1.6, 1.6]) {
+      ctx.beginPath();
+      ctx.moveTo(-6, ly);
+      ctx.lineTo(6, ly - 0.8);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  // 知らない品は、まるい包みで出しておく
+  ctx.fillStyle = "#b98a4a";
   ctx.beginPath();
   ctx.ellipse(0, 0, 6, 7, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = it.cap;
+  ctx.fillStyle = "#7a5a2b";
   ctx.beginPath();
   ctx.ellipse(0, -4, 6, 3, 0, 0, Math.PI * 2);
   ctx.fill();
-  if (it.steam) {
-    ctx.fillStyle = "rgba(255,255,255,0.28)";
-    for (let i = 0; i < 2; i += 1) {
-      const t = (time * 0.6 + i * 0.5) % 1;
-      ctx.beginPath();
-      ctx.arc(Math.sin(t * 6 + i) * 3, -8 - t * 12, 2.4 - t * 1.4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
   ctx.restore();
 };
 
@@ -962,6 +1082,47 @@ const held = (
   else if (item === "goods") parcel(ctx, x, y, s);
   else if (item === "main") bowl(ctx, x, y, s);
   else chainItem(ctx, item, x, y, s, performance.now() / 1000);
+};
+
+/**
+ * 持っている荷物を、品種ごとに分けて見せる（§4.6）。
+ *
+ * 異種の品を1本の縦積みに混ぜず、種類ごとに列を分ける。
+ * 3つを超えるぶんは、全部は描かずに `×5` とまとめる。
+ */
+const drawLoad = (
+  ctx: CanvasRenderingContext2D,
+  bag: Record<string, number>,
+  x: number,
+  y: number,
+  offset: number,
+  time: number,
+) => {
+  const kinds = Object.keys(bag).filter((kind) => (bag[kind] ?? 0) > 0);
+  if (kinds.length === 0) return;
+  const span = 13;
+  const left = x + offset - ((kinds.length - 1) * span) / 2;
+  kinds.forEach((kind, col) => {
+    const count = bag[kind] ?? 0;
+    const show = Math.min(3, count);
+    const cx = left + col * span;
+    for (let i = 0; i < show; i += 1) {
+      held(ctx, kind, cx, y - i * 6, 0.8);
+    }
+    if (count > 3) {
+      const label = `×${count}`;
+      const top = y - show * 6 - 7;
+      ctx.font = SMALL;
+      ctx.fillStyle = "rgba(10,8,6,0.75)";
+      const w = ctx.measureText(label).width + 6;
+      roundRect(ctx, cx - w / 2, top - 5, w, 10, 5);
+      ctx.fill();
+      ctx.fillStyle = "#ffd166";
+      ctx.fillText(label, cx, top);
+      ctx.font = FONT;
+    }
+  });
+  void time;
 };
 
 /** 狩り場をうろつく動物 */
@@ -1017,6 +1178,111 @@ const drawPrey = (
   }
 };
 
+/** 森に生えている木。切ると切り株になり、しばらくして生えなおす */
+const drawTree = (
+  ctx: CanvasRenderingContext2D,
+  kind: string,
+  x: number,
+  y: number,
+  stump: number,
+  chop: number,
+  time: number,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.26)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 4, 11, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (stump > 0) {
+    // 切り株。芽が出はじめると、もうすぐ生えなおす合図
+    ctx.fillStyle = "#5a3f26";
+    roundRect(ctx, x - 7, y - 8, 14, 12, 3);
+    ctx.fill();
+    ctx.fillStyle = "#c79a5e";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 8, 7, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#8a6236";
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 8, 3.4, 1.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    if (stump < TREE_REGROW * 0.45) {
+      ctx.fillStyle = "#6fae52";
+      ctx.beginPath();
+      ctx.ellipse(x + 3, y - 13, 3.5, 2.2, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return;
+  }
+
+  // 幹
+  const sway = Math.sin(time * 1.4 + x * 0.05) * 1.2 + chop * Math.sin(time * 22) * 3;
+  ctx.fillStyle = "#5f4227";
+  roundRect(ctx, x - 3.5, y - 26, 7, 30, 2);
+  ctx.fill();
+  if (kind === "cedar") {
+    // すぎ: とがった三角が3段
+    for (let i = 0; i < 3; i += 1) {
+      const w = 17 - i * 3.5;
+      const ty = y - 24 - i * 11;
+      ctx.fillStyle = i === 2 ? "#4f8f4a" : "#3f7a3d";
+      ctx.beginPath();
+      ctx.moveTo(x + sway * (0.4 + i * 0.3), ty - 15);
+      ctx.lineTo(x - w, ty);
+      ctx.lineTo(x + w, ty);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (kind === "pine") {
+    // まつ: 幹が高く、まるい葉が上に寄る
+    ctx.fillStyle = "#4a7c3f";
+    for (const [ox, oy, r] of [
+      [0, -44, 13],
+      [-9, -36, 9],
+      [9, -36, 9],
+    ]) {
+      ctx.beginPath();
+      ctx.arc(x + ox + sway, y + oy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // ぶな: 横に広い、こんもりした葉
+    ctx.fillStyle = "#557f3d";
+    ctx.beginPath();
+    ctx.ellipse(x + sway, y - 36, 18, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#67934a";
+    ctx.beginPath();
+    ctx.ellipse(x - 5 + sway, y - 40, 9, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (chop > 0) {
+    // 切りかけの傷と、飛び散る木くず
+    ctx.fillStyle = "#c79a5e";
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y - 6);
+    ctx.lineTo(x - 4 + 8 * chop, y - 9);
+    ctx.lineTo(x - 4 + 8 * chop, y - 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(214,180,120,0.8)";
+    for (let i = 0; i < 3; i += 1) {
+      const t = (time * 3 + i * 0.4) % 1;
+      ctx.beginPath();
+      ctx.arc(x - 8 - t * 8, y - 8 - Math.sin(t * Math.PI) * 10, 1.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 進み具合の輪
+    ctx.strokeStyle = "rgba(255,209,102,0.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y - 2, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * chop);
+    ctx.stroke();
+  }
+};
+
 /**
  * ワーキングプラネットの作業場。
  * 素材の採取場（takes なし）と、加工場（takes あり）で見た目を変える。
@@ -1036,47 +1302,118 @@ const drawFireStation = (
 
   const art = stove.art ?? "";
   if (art === "hunt") {
-    // 狩り場: 草の生えた囲い（この中を動物がうろつく）
+    // 狩り場: 草の生えた開けた草原（この中を動物がうろつく）と、生肉を置く台
     const zone = huntZone(state, stove);
-    ctx.fillStyle = "rgba(70,100,55,0.28)";
-    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 10);
+    ctx.fillStyle = "rgba(84,116,60,0.3)";
+    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 22);
     ctx.fill();
-    ctx.strokeStyle = "rgba(160,140,90,0.5)";
-    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = "rgba(150,190,110,0.35)";
     ctx.lineWidth = 2;
-    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 10);
+    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 22);
     ctx.stroke();
-    ctx.setLineDash([]);
-    // 草
+    // 草むら
     ctx.fillStyle = "#3f5a34";
-    for (let i = 0; i < 7; i += 1) {
-      const gx = zone.x0 + 8 + ((i * 13) % (zone.x1 - zone.x0 - 16));
-      const gy = zone.y1 - 6 - (i % 2) * 8;
+    for (let i = 0; i < 26; i += 1) {
+      const gx = zone.x0 + 12 + ((i * 53) % (zone.x1 - zone.x0 - 24));
+      const gy = zone.y0 + 16 + ((i * 71) % (zone.y1 - zone.y0 - 26));
       ctx.beginPath();
       ctx.moveTo(gx, gy);
-      ctx.lineTo(gx - 3, gy - 10);
-      ctx.lineTo(gx + 3, gy - 10);
+      ctx.lineTo(gx - 3, gy - 9);
+      ctx.lineTo(gx + 3, gy - 9);
       ctx.closePath();
       ctx.fill();
     }
-    // 肉を置く小さな台（出し口）
-    ctx.fillStyle = "#5a3a20";
-    roundRect(ctx, x - 10, y + 2, 20, 6, 2);
+    ctx.font = SMALL;
+    ctx.fillStyle = "rgba(190,220,160,0.55)";
+    ctx.fillText("草原", (zone.x0 + zone.x1) / 2, zone.y0 + 12);
+    ctx.font = FONT;
+    // 生肉を置く、石を並べた出し口
+    ctx.fillStyle = "#6b6157";
+    roundRect(ctx, x - 20, y - 6, 40, 14, 4);
     ctx.fill();
-  } else if (art === "logs") {
-    // まき集め: 積んだ丸太
-    for (let r = 0; r < 2; r += 1) {
-      for (let i = 0; i < 3 - r; i += 1) {
-        const lx = x - 16 + r * 8 + i * 16;
-        const ly = y + 2 - r * 9;
-        ctx.fillStyle = "#6b4a2b";
-        roundRect(ctx, lx - 8, ly - 4, 16, 8, 3);
-        ctx.fill();
-        ctx.fillStyle = "#a9743f";
-        ctx.beginPath();
-        ctx.ellipse(lx + 8, ly, 2.6, 4, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    ctx.fillStyle = "#8b8073";
+    roundRect(ctx, x - 20, y - 6, 40, 5, 3);
+    ctx.fill();
+  } else if (art === "forest") {
+    // 森: 下草の広がりと、丸太を積む出し口（木そのものは actors 側で描く）
+    const zone = huntZone(state, stove);
+    ctx.fillStyle = "rgba(46,72,42,0.42)";
+    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 22);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(110,160,100,0.3)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 22);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(60,92,52,0.5)";
+    for (let i = 0; i < 14; i += 1) {
+      const bx = zone.x0 + 16 + ((i * 67) % (zone.x1 - zone.x0 - 32));
+      const by = zone.y0 + 20 + ((i * 43) % (zone.y1 - zone.y0 - 34));
+      ctx.beginPath();
+      ctx.ellipse(bx, by, 7, 3.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.font = SMALL;
+    ctx.fillStyle = "rgba(180,220,160,0.55)";
+    ctx.fillText("森", (zone.x0 + zone.x1) / 2, zone.y0 + 12);
+    ctx.font = FONT;
+    // 丸太の出し口: 横木を渡した木組みの台
+    ctx.fillStyle = "#4a3320";
+    roundRect(ctx, x - 24, y - 2, 48, 8, 3);
+    ctx.fill();
+    for (const px of [x - 20, x + 20]) {
+      ctx.fillStyle = "#3a2716";
+      ctx.fillRect(px - 2, y + 4, 4, 8);
+    }
+  } else if (art === "split") {
+    // 薪割り場: 切り株の割り台に斧が刺さり、まわりに薪が散る
+    ctx.fillStyle = "#3f2c1a";
+    roundRect(ctx, x - 30, y - 4, 60, 16, 5);
+    ctx.fill();
+    // 割り台（切り株）
+    ctx.fillStyle = "#5f4227";
+    roundRect(ctx, x - 13, y - 20, 26, 22, 4);
+    ctx.fill();
+    ctx.fillStyle = "#c79a5e";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 20, 13, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#8a6236";
+    ctx.lineWidth = 1;
+    for (const r of [0.4, 0.7]) {
+      ctx.beginPath();
+      ctx.ellipse(x, y - 20, 13 * r, 5.5 * r, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // 刺さった斧（作業中はふり上がる）
+    const working = (state.cooking[stove.id] ?? 0) > 0;
+    const swing = working ? Math.abs(Math.sin(time * 7)) : 0;
+    ctx.save();
+    ctx.translate(x + 6, y - 22);
+    ctx.rotate(-0.5 - swing * 1.5);
+    ctx.strokeStyle = "#8a6a44";
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -20);
+    ctx.stroke();
+    ctx.fillStyle = "#b9bec4";
+    ctx.beginPath();
+    ctx.moveTo(-1, -20);
+    ctx.lineTo(7, -24);
+    ctx.lineTo(7, -15);
+    ctx.lineTo(-1, -16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // 足もとの薪くず
+    for (const [ox, oy] of [
+      [-22, 8],
+      [20, 9],
+      [-14, 12],
+    ]) {
+      ctx.fillStyle = "#a9743f";
+      roundRect(ctx, x + ox - 5, y + oy - 2, 10, 4, 1.5);
+      ctx.fill();
     }
   } else if (art === "cut") {
     // さばき台: 切り株の台と、石のナイフ
@@ -1094,28 +1431,84 @@ const drawFireStation = (
     ctx.lineTo(x + 14, y - 18);
     ctx.stroke();
   } else {
-    // たき火・大かまど（焼き場）
+    // たき火・大かまど（焼き場）: 囲いの石・まき・炎・焼けていく肉
     ctx.fillStyle = "#4a4038";
-    for (let i = 0; i < 6; i += 1) {
-      const a = (i / 6) * Math.PI * 2;
+    for (let i = 0; i < 8; i += 1) {
+      const a = (i / 8) * Math.PI * 2;
       ctx.beginPath();
-      ctx.ellipse(x + Math.cos(a) * 18, y + 6 + Math.sin(a) * 6, 5, 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + Math.cos(a) * 22, y + 8 + Math.sin(a) * 8, 6, 4.5, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    // まきの土台
+    ctx.fillStyle = "#5c5148";
+    for (let i = 0; i < 8; i += 1) {
+      const a = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.ellipse(x + Math.cos(a) * 22, y + 6 + Math.sin(a) * 8, 6, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 組んだまき
     ctx.fillStyle = "#5a3a20";
-    ctx.fillRect(x - 12, y - 2, 24, 5);
-    ctx.fillRect(x - 3, y - 10, 6, 16);
-    // 燃えているときだけ炎（まき切れなら小さく）
+    ctx.save();
+    ctx.translate(x, y + 2);
+    for (const rot of [-0.5, 0.5]) {
+      ctx.save();
+      ctx.rotate(rot);
+      roundRect(ctx, -13, -3, 26, 6, 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+
     const lit = (state.fuel[stove.id] ?? 0) > 0 || !stove.fuel;
-    for (const fx of [x - 6, x, x + 6]) {
-      const flame = (lit ? 0.6 : 0.15) + Math.abs(Math.sin(time * 6 + fx)) * (lit ? 0.4 : 0.1);
+    const cooking = (state.cooking[stove.id] ?? 0) > 0;
+    // 燃えさし（まき切れなら赤いおき火だけ）
+    ctx.fillStyle = lit ? "rgba(255,140,40,0.75)" : "rgba(190,70,30,0.5)";
+    ctx.beginPath();
+    ctx.ellipse(x, y, 12, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 炎（まきがあるほど高く、火の番が付いた火は勢いよく揺れる）
+    for (const fx of [x - 7, x, x + 7]) {
+      const flame = (lit ? 0.62 : 0.14) + Math.abs(Math.sin(time * 6 + fx)) * (lit ? 0.4 : 0.1);
+      const tall = lit ? 28 : 10;
       ctx.fillStyle = `rgba(255,${120 + flame * 80},50,${flame})`;
       ctx.beginPath();
-      ctx.moveTo(fx, y - 6);
-      ctx.quadraticCurveTo(fx + 6, y - 18, fx, y - 26);
-      ctx.quadraticCurveTo(fx - 6, y - 18, fx, y - 6);
+      ctx.moveTo(fx, y - 4);
+      ctx.quadraticCurveTo(fx + 7, y - tall * 0.6, fx, y - tall);
+      ctx.quadraticCurveTo(fx - 7, y - tall * 0.6, fx, y - 4);
       ctx.fill();
+    }
+    // 火にかけた肉。焼けるほど色が変わり、焦げ目が出る
+    if (cooking) {
+      const done = Math.min(1, state.cooking[stove.id] ?? 0);
+      ctx.strokeStyle = "#8a6a44";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 20, y - 26);
+      ctx.lineTo(x + 20, y - 26);
+      ctx.stroke();
+      const r = Math.round(198 - done * 60);
+      const g = Math.round(74 + done * 26);
+      const b = Math.round(50 - done * 20);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.beginPath();
+      ctx.ellipse(x, y - 22, 9, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (done > 0.5) {
+        ctx.strokeStyle = `rgba(50,26,12,${(done - 0.5) * 1.6})`;
+        ctx.lineWidth = 1.4;
+        for (const g0 of [-3, 1, 5]) {
+          ctx.beginPath();
+          ctx.moveTo(x + g0 - 3, y - 26);
+          ctx.lineTo(x + g0 + 2, y - 18);
+          ctx.stroke();
+        }
+      }
+      // 焼き上がりまでの輪
+      ctx.strokeStyle = "rgba(255,209,102,0.85)";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(x, y - 22, 14, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * done);
+      ctx.stroke();
     }
   }
 };
@@ -3108,8 +3501,261 @@ const drawFace = (
       ctx.closePath();
       ctx.fill();
       return;
+
+    /* ---- 10億／100億ガチャで増える動物 ---- */
+    case "fox":
+      // きつね: とがった大きな耳と、白い先のふさふさしっぽ
+      tail(color, 15, 5);
+      ctx.fillStyle = head;
+      ctx.beginPath();
+      ctx.moveTo(x - 9, hy - 3);
+      ctx.lineTo(x - 6, hy - 14);
+      ctx.lineTo(x - 2, hy - 4);
+      ctx.closePath();
+      ctx.moveTo(x + 9, hy - 3);
+      ctx.lineTo(x + 6, hy - 14);
+      ctx.lineTo(x + 2, hy - 4);
+      ctx.closePath();
+      ctx.fill();
+      eyes(3, 1.2);
+      // とがった鼻づら
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x - 3.4, hy + 2);
+      ctx.lineTo(x, hy + 8);
+      ctx.lineTo(x + 3.4, hy + 2);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    case "wolf":
+      // おおかみ: きつねより角ばった耳と、太いしっぽ
+      tail(color, 13, 5);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x - 9, hy - 2);
+      ctx.lineTo(x - 8, hy - 13);
+      ctx.lineTo(x - 1, hy - 4);
+      ctx.closePath();
+      ctx.moveTo(x + 9, hy - 2);
+      ctx.lineTo(x + 8, hy - 13);
+      ctx.lineTo(x + 1, hy - 4);
+      ctx.closePath();
+      ctx.fill();
+      eyes(3.2, 1.3);
+      snout(head, 5, 3.4);
+      // きば
+      ctx.fillStyle = "#f4f1ea";
+      ctx.beginPath();
+      ctx.moveTo(x - 2, hy + 5);
+      ctx.lineTo(x - 1, hy + 8);
+      ctx.lineTo(x, hy + 5);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    case "redpanda":
+      // レッサーパンダ: まるい耳、白い顔まわり、しま模様のしっぽ
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x + 8, y - 2);
+      ctx.quadraticCurveTo(x + 20, y - 6, x + 19, y - 15);
+      ctx.stroke();
+      ctx.strokeStyle = "#f4e3d2";
+      ctx.lineWidth = 1.6;
+      for (const p of [0.35, 0.7]) {
+        ctx.beginPath();
+        ctx.arc(x + 12 + p * 8, y - 6 - p * 8, 2.4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#f4e3d2";
+      ear(-7, 4, 3.6);
+      ear(7, 4, 3.6);
+      ctx.beginPath();
+      ctx.ellipse(x, hy + 1, 8, 6.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      eyes(3.2, 1.4);
+      snout(color, 3, 2.2);
+      return;
+    case "capybara":
+      // カピバラ: 小さい耳、四角い鼻づら、ねむたい目
+      ctx.fillStyle = color;
+      ear(-6.5, 2.6, 2.4);
+      ear(6.5, 2.6, 2.4);
+      ctx.fillStyle = head;
+      roundRect(ctx, x - 7, hy - 5, 14, 13, 5);
+      ctx.fill();
+      ctx.strokeStyle = "#2b2b33";
+      ctx.lineWidth = 1.3;
+      for (const dx of [-3, 3]) {
+        ctx.beginPath();
+        ctx.moveTo(x + dx - 1.6, hy - 1);
+        ctx.lineTo(x + dx + 1.6, hy - 1);
+        ctx.stroke();
+      }
+      ctx.fillStyle = color;
+      roundRect(ctx, x - 4, hy + 3, 8, 4, 2);
+      ctx.fill();
+      return;
+    case "owl":
+      // ふくろう: 大きな丸い目と、羽の角、翼
+      ctx.fillStyle = color;
+      for (const dir of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(x + dir * 10, y - 8, 4.5, 9, dir * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = head;
+      ctx.beginPath();
+      ctx.arc(x, hy, 8.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color;
+      for (const dir of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(x + dir * 3, hy - 7);
+        ctx.lineTo(x + dir * 8, hy - 13);
+        ctx.lineTo(x + dir * 8, hy - 5);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = "#fbf7ef";
+      ctx.beginPath();
+      ctx.arc(x - 3.4, hy - 1, 3.2, 0, Math.PI * 2);
+      ctx.arc(x + 3.4, hy - 1, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#2b2b33";
+      ctx.beginPath();
+      ctx.arc(x - 3.4, hy - 1, 1.6, 0, Math.PI * 2);
+      ctx.arc(x + 3.4, hy - 1, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x - 2, hy + 2);
+      ctx.lineTo(x, hy + 7);
+      ctx.lineTo(x + 2, hy + 2);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    case "mammoth":
+      // マンモス: 長い鼻と、そりあがった牙、もこもこの毛
+      ctx.fillStyle = color;
+      for (let i = 0; i < 6; i += 1) {
+        ctx.beginPath();
+        ctx.arc(x - 9 + i * 3.6, y - 12 + (i % 2) * 3, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = head;
+      ctx.beginPath();
+      ctx.ellipse(x, hy, 9, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ear(-9.5, 4, 6);
+      ear(9.5, 4, 6);
+      eyes(3.4, 1.1);
+      // 鼻
+      ctx.strokeStyle = head;
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(x, hy + 4);
+      ctx.quadraticCurveTo(x + 2, hy + 12, x - 2 + Math.sin(time * 2) * 2, hy + 16);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      // 牙
+      ctx.strokeStyle = faceColorOr(color, "#f2ece0");
+      ctx.lineWidth = 2.2;
+      for (const dir of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(x + dir * 5, hy + 5);
+        ctx.quadraticCurveTo(x + dir * 10, hy + 12, x + dir * 11, hy + 4);
+        ctx.stroke();
+      }
+      return;
+    case "phoenix":
+      // 不死鳥: 燃える翼と、羽根の冠
+      for (const dir of [-1, 1]) {
+        const wing = ctx.createLinearGradient(x, y - 20, x + dir * 24, y);
+        wing.addColorStop(0, "rgba(255,209,102,0.9)");
+        wing.addColorStop(1, "rgba(232,84,31,0.35)");
+        ctx.fillStyle = wing;
+        ctx.beginPath();
+        ctx.moveTo(x + dir * 5, y - 14);
+        ctx.quadraticCurveTo(
+          x + dir * 26,
+          y - 28 + Math.sin(time * 5) * 5,
+          x + dir * 22,
+          y - 2,
+        );
+        ctx.quadraticCurveTo(x + dir * 12, y - 8, x + dir * 5, y - 14);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = head;
+      ctx.beginPath();
+      ctx.arc(x, hy, 7.6, 0, Math.PI * 2);
+      ctx.fill();
+      // 冠羽
+      for (let i = -1; i <= 1; i += 1) {
+        ctx.fillStyle = `rgba(255,${150 + i * 30},60,0.95)`;
+        ctx.beginPath();
+        ctx.moveTo(x + i * 4 - 2, hy - 5);
+        ctx.lineTo(x + i * 4 + Math.sin(time * 4 + i) * 2, hy - 15);
+        ctx.lineTo(x + i * 4 + 2, hy - 5);
+        ctx.closePath();
+        ctx.fill();
+      }
+      eyes(2.8, 1.2);
+      ctx.fillStyle = "#ffb347";
+      ctx.beginPath();
+      ctx.moveTo(x - 2, hy + 2);
+      ctx.lineTo(x, hy + 7);
+      ctx.lineTo(x + 2, hy + 2);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    case "ninetails":
+      // 九尾: 何本もの尾が扇のように広がる
+      for (let i = 0; i < 9; i += 1) {
+        const a = -0.4 + (i / 8) * 1.5 + Math.sin(time * 2 + i) * 0.06;
+        ctx.strokeStyle = i % 2 === 0 ? color : "#fbf3e2";
+        ctx.lineWidth = 3.4;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x + 6, y - 4);
+        ctx.quadraticCurveTo(
+          x + 12 + Math.cos(a) * 10,
+          y - 10 - Math.sin(a) * 10,
+          x + 10 + Math.cos(a) * 20,
+          y - 14 - Math.sin(a) * 20,
+        );
+        ctx.stroke();
+      }
+      ctx.lineCap = "butt";
+      ctx.fillStyle = head;
+      ctx.beginPath();
+      ctx.moveTo(x - 9, hy - 3);
+      ctx.lineTo(x - 6, hy - 14);
+      ctx.lineTo(x - 2, hy - 4);
+      ctx.closePath();
+      ctx.moveTo(x + 9, hy - 3);
+      ctx.lineTo(x + 6, hy - 14);
+      ctx.lineTo(x + 2, hy - 4);
+      ctx.closePath();
+      ctx.fill();
+      eyes(3, 1.2);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x - 3.4, hy + 2);
+      ctx.lineTo(x, hy + 8);
+      ctx.lineTo(x + 3.4, hy + 2);
+      ctx.closePath();
+      ctx.fill();
+      return;
   }
 };
+
+/** 色の指定がなければ、決めうちの色を返す小さな助け */
+const faceColorOr = (color: string | undefined, fallback: string) =>
+  color ?? fallback;
 
 /** ガチャの見た目に付く かぶりもの */
 const drawHat = (
@@ -3197,6 +3843,237 @@ const drawHat = (
     ctx.fill();
     return;
   }
+  if (hat === "wizard") {
+    // とんがり帽子: 大きなつばと、先の折れた円すい
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, top + 3, 14, 4.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x - 8, top + 2);
+    ctx.quadraticCurveTo(x - 3, top - 12, x + 6, top - 18);
+    ctx.quadraticCurveTo(x + 3, top - 8, x + 8, top + 2);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  if (hat === "tricorn") {
+    // 三角帽: 三方に角が跳ねる
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x - 14, top + 3);
+    ctx.quadraticCurveTo(x, top - 11, x + 14, top + 3);
+    ctx.quadraticCurveTo(x, top - 2, x - 14, top + 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#f4f1ea";
+    ctx.beginPath();
+    ctx.arc(x, top - 3, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  if (hat === "hood") {
+    // 毛皮のフード: 顔のまわりをふさふさが囲む
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y - 20, 12, Math.PI * 0.85, Math.PI * 2.15);
+    ctx.fill();
+    for (let i = 0; i < 9; i += 1) {
+      const a = Math.PI * (0.85 + (i / 8) * 1.3);
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(a) * 12, y - 20 + Math.sin(a) * 12, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return;
+  }
+  if (hat === "mask") {
+    // 火祭りの面: 額に乗せた面。目と角がある
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, top - 1, 9, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#2a1806";
+    ctx.beginPath();
+    ctx.ellipse(x - 3.4, top - 1, 1.8, 1.2, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(x + 3.4, top - 1, 1.8, 1.2, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = color;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(x + side * 7, top - 5);
+      ctx.lineTo(x + side * 11, top - 12);
+      ctx.lineTo(x + side * 4, top - 7);
+      ctx.closePath();
+      ctx.fill();
+    }
+    return;
+  }
+  if (hat === "halo") {
+    // 光の輪: 頭のうえに浮く
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.ellipse(x, top - 6, 10, 3.4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(x, top - 6, 10, 3.4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+  if (hat === "horns") {
+    // 角: 頭の両側から後ろへそる
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(x + side * 6, top + 2);
+      ctx.quadraticCurveTo(x + side * 13, top - 3, x + side * 11, top - 11);
+      ctx.stroke();
+    }
+    ctx.lineCap = "butt";
+    return;
+  }
+};
+
+/**
+ * 最上位スキンのオーラ（§11.3）。
+ * 色替えだけにせず、動く飾りで見分けられるようにする
+ */
+const drawAura = (
+  ctx: CanvasRenderingContext2D,
+  aura: Aura,
+  x: number,
+  y: number,
+  t: number,
+) => {
+  if (aura === "none") return;
+  const cy = y - 14;
+  ctx.save();
+  if (aura === "flame") {
+    for (let i = 0; i < 5; i += 1) {
+      const p = (t * 0.9 + i * 0.2) % 1;
+      ctx.fillStyle = `rgba(255,${120 + p * 100},50,${(1 - p) * 0.6})`;
+      ctx.beginPath();
+      ctx.ellipse(
+        x + Math.sin(t * 4 + i * 2) * 12,
+        cy + 12 - p * 34,
+        4 * (1 - p) + 1,
+        7 * (1 - p) + 1,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+  } else if (aura === "star") {
+    for (let i = 0; i < 5; i += 1) {
+      const a = t * 1.6 + (i / 5) * Math.PI * 2;
+      const r = 17 + Math.sin(t * 2 + i) * 3;
+      ctx.fillStyle = `rgba(255,240,190,${0.5 + Math.sin(t * 4 + i) * 0.35})`;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(a) * r, cy + Math.sin(a) * r * 0.55, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (aura === "moon") {
+    ctx.strokeStyle = `rgba(200,220,255,${0.4 + Math.sin(t * 2) * 0.2})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, cy, 19, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(230,240,255,0.85)";
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(t) * 19, cy + Math.sin(t) * 10, 3, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (aura === "sun") {
+    for (let i = 0; i < 8; i += 1) {
+      const a = t * 0.7 + (i / 8) * Math.PI * 2;
+      ctx.strokeStyle = `rgba(255,210,90,${0.35 + Math.sin(t * 3 + i) * 0.25})`;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * 15, cy + Math.sin(a) * 9);
+      ctx.lineTo(x + Math.cos(a) * 23, cy + Math.sin(a) * 14);
+      ctx.stroke();
+    }
+  } else if (aura === "galaxy") {
+    for (let i = 0; i < 14; i += 1) {
+      const a = t * 1.1 + (i / 14) * Math.PI * 2;
+      const r = 8 + (i % 4) * 5;
+      ctx.fillStyle = `rgba(${180 - i * 6},${150 + i * 4},255,0.6)`;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(a) * r, cy + Math.sin(a) * r * 0.5, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (aura === "rainbow") {
+    for (let i = 0; i < 6; i += 1) {
+      ctx.strokeStyle = `hsla(${(t * 90 + i * 60) % 360},90%,68%,0.5)`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, cy, 12 + i * 2.4, t + i, t + i + 1.4);
+      ctx.stroke();
+    }
+  } else if (aura === "gold") {
+    for (let i = 0; i < 7; i += 1) {
+      const p = (t * 0.7 + i * 0.14) % 1;
+      ctx.fillStyle = `rgba(255,209,102,${(1 - p) * 0.8})`;
+      ctx.beginPath();
+      ctx.arc(
+        x + Math.sin(t * 2 + i * 1.7) * 15,
+        cy + 14 - p * 30,
+        2.2 * (1 - p) + 0.6,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+  } else if (aura === "clock") {
+    ctx.strokeStyle = `rgba(230,200,120,${0.35 + Math.sin(t * 2) * 0.2})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, cy, 19, 0, Math.PI * 2);
+    ctx.stroke();
+    for (const [len, speed] of [
+      [12, 1],
+      [17, 0.2],
+    ]) {
+      const a = t * speed - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, cy);
+      ctx.lineTo(x + Math.cos(a) * len, cy + Math.sin(a) * len * 0.6);
+      ctx.stroke();
+    }
+  } else if (aura === "water") {
+    for (let i = 0; i < 4; i += 1) {
+      const p = (t * 0.5 + i * 0.25) % 1;
+      ctx.strokeStyle = `rgba(140,220,240,${(1 - p) * 0.55})`;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.ellipse(x, cy + 12, 8 + p * 18, 3 + p * 7, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+};
+
+/** 背中のマント。歩くとひるがえる */
+const drawCape = (
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  x: number,
+  y: number,
+  t: number,
+) => {
+  const flap = Math.sin(t * 3) * 2.5;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x - 8, y - 16);
+  ctx.quadraticCurveTo(x - 15 - flap, y - 4, x - 12 - flap, y + 6);
+  ctx.lineTo(x + 12 + flap, y + 6);
+  ctx.quadraticCurveTo(x + 15 + flap, y - 4, x + 8, y - 16);
+  ctx.closePath();
+  ctx.fill();
 };
 
 /** 配膳ロボ */
@@ -3227,6 +4104,119 @@ const robot = (ctx: CanvasRenderingContext2D, x: number, y: number, t: number) =
   ctx.beginPath();
   ctx.arc(x, y - 25 + hover, 2, 0, Math.PI * 2);
   ctx.fill();
+};
+
+/** 犬1頭。向きに合わせて体をひっくり返す */
+const sledDog = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  face: number,
+  moving: boolean,
+  t: number,
+) => {
+  const coat = "#8a7050";
+  const gait = moving ? Math.sin(t * 12) : 0;
+  const breath = moving ? 0 : Math.sin(t * 2.2) * 0.5;
+  // 足
+  ctx.strokeStyle = "#6a5238";
+  ctx.lineWidth = 2;
+  for (const [i, lx] of [-4, 3].entries()) {
+    const swing = moving ? Math.sin(t * 12 + i * Math.PI) * 2.4 : 0;
+    ctx.beginPath();
+    ctx.moveTo(x + lx * face, y - 2);
+    ctx.lineTo(x + lx * face + swing, y + 4);
+    ctx.stroke();
+  }
+  // 胴
+  ctx.fillStyle = coat;
+  roundRect(ctx, x - 7, y - 8 - breath, 14, 7.5, 3.5);
+  ctx.fill();
+  // しっぽ（止まっているときはゆっくり振る）
+  ctx.strokeStyle = coat;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 7 * face, y - 6);
+  ctx.quadraticCurveTo(
+    x - 12 * face,
+    y - 9 + (moving ? gait : Math.sin(t * 3) * 3),
+    x - 13 * face,
+    y - 13,
+  );
+  ctx.stroke();
+  // 頭と耳と鼻
+  ctx.fillStyle = coat;
+  ctx.beginPath();
+  ctx.arc(x + 7 * face, y - 10 - breath, 4.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x + 5 * face, y - 13 - breath);
+  ctx.lineTo(x + 5.5 * face, y - 18 - breath);
+  ctx.lineTo(x + 9 * face, y - 13.5 - breath);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#f2ece0";
+  ctx.beginPath();
+  ctx.ellipse(x + 10 * face, y - 9 - breath, 2.6, 1.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#2b2318";
+  ctx.beginPath();
+  ctx.arc(x + 12 * face, y - 9.4 - breath, 1, 0, Math.PI * 2);
+  ctx.arc(x + 8 * face, y - 11.4 - breath, 0.9, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+/**
+ * 犬ぞり（§8.2）。
+ * 2頭の犬・引き綱・荷台でできている。ロボットの部品は使わない。
+ * 進む向きに犬とそりが向き、荷物は荷台に品種ごとに載る。
+ */
+const drawSled = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  face: number,
+  moving: boolean,
+  t: number,
+) => {
+  shadow(ctx, x, y + 8, 22);
+  // 荷台（うしろ側）
+  const bx = x - 16 * face;
+  ctx.fillStyle = "#5a3f26";
+  roundRect(ctx, bx - 12, y - 8, 24, 10, 3);
+  ctx.fill();
+  ctx.fillStyle = "#7a5836";
+  roundRect(ctx, bx - 12, y - 8, 24, 3.5, 2);
+  ctx.fill();
+  // そりの滑走部と支柱
+  ctx.strokeStyle = "#3d2b1a";
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(bx - 13, y + 5);
+  ctx.lineTo(bx + 11, y + 5);
+  ctx.quadraticCurveTo(bx + 16, y + 5, bx + 16, y + 1);
+  ctx.stroke();
+  for (const px of [bx - 8, bx + 6]) {
+    ctx.beginPath();
+    ctx.moveTo(px, y + 2);
+    ctx.lineTo(px, y + 5);
+    ctx.stroke();
+  }
+  // 引き綱（走っているとぴんと張って揺れる）
+  ctx.strokeStyle = "#a08858";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(bx + 12 * face, y - 4);
+  ctx.quadraticCurveTo(
+    x + 6 * face,
+    y - 6 + (moving ? Math.sin(t * 12) * 1.5 : 1.5),
+    x + 18 * face,
+    y - 6,
+  );
+  ctx.stroke();
+  // 犬2頭（前後に並べる）
+  sledDog(ctx, x + 8 * face, y + 3, face, moving, t);
+  sledDog(ctx, x + 26 * face, y - 1, face, moving, t + 0.4);
 };
 
 export default function Shop({ onSample, paused }: Props) {
@@ -3277,6 +4267,8 @@ export default function Shop({ onSample, paused }: Props) {
 
       const isPark = stage().id === "park";
       const isFire = stage().id === "fire";
+      /** 画面に映るワールドの横幅。広い区画のステージは少し引いて見せる */
+      const view = viewWidth();
 
       /* --- 床 --- */
       ctx.fillStyle = isFire ? "#20160f" : isPark ? "#101826" : "#191512";
@@ -3538,32 +4530,74 @@ export default function Shop({ onSample, paused }: Props) {
         const ready = state.ready[stove.id] ?? 0;
         for (let i = 0; i < ready; i += 1) held(ctx, made, x, y + 22 - i * 5.5);
 
-        // 工程の作業場: 受け口の材料（左）とまき（右）、詰まりの合図
+        /*
+         * 工程の作業場の様子を、文字を読まなくても分かるようにする（§8.4）。
+         *   左  = 受け口の材料（生肉・丸太・切り身）
+         *   右  = まき（薪）の受け口
+         *   下  = できあがった品
+         * 足りない受け口には、その品の絵を薄く出して「何待ちか」を見せる
+         */
         if (isStation(stove)) {
-          const held0 = state.hold[stove.id] ?? 0;
-          for (let i = 0; i < held0; i += 1) {
-            held(ctx, stove.takes ?? null, x - 30, y + 16 - i * 5, 0.8);
-          }
-          const fuel0 = stove.fuel ? state.fuel[stove.id] ?? 0 : 0;
-          if (stove.fuel) {
-            for (let i = 0; i < fuel0; i += 1) {
-              held(ctx, stove.fuel, x + 30, y + 16 - i * 5, 0.8);
+          const held0 = heldAt(state, stove.id);
+          const fuel0 = stove.fuel ? fuelAt(state, stove.id) : 0;
+          const slots: { kind: string; count: number; sx: number; word: string }[] = [
+            {
+              kind: stove.takes ?? "",
+              count: held0,
+              sx: x - 32,
+              word: `${itemLabel(stove.takes ?? "")}まち`,
+            },
+            ...(stove.fuel
+              ? [
+                  {
+                    kind: stove.fuel,
+                    count: fuel0,
+                    sx: x + 32,
+                    word: `${itemLabel(stove.fuel)}まち`,
+                  },
+                ]
+              : []),
+          ];
+          for (const slot of slots) {
+            // 受け口の枠（空だと赤く点滅する）
+            const empty = slot.count <= 0;
+            const pulse = 0.5 + Math.sin(time * 4) * 0.5;
+            ctx.save();
+            ctx.strokeStyle = empty
+              ? `rgba(255,150,140,${0.45 + pulse * 0.4})`
+              : "rgba(255,255,255,0.22)";
+            ctx.lineWidth = empty ? 2 : 1;
+            roundRect(ctx, slot.sx - 11, y - 4, 22, 26, 5);
+            ctx.stroke();
+            ctx.restore();
+            if (empty) {
+              // 何を待っているのか、品の絵を薄く出す
+              ctx.save();
+              ctx.globalAlpha = 0.3 + pulse * 0.2;
+              held(ctx, slot.kind, slot.sx, y + 12, 0.75);
+              ctx.restore();
+              ctx.font = SMALL;
+              ctx.fillStyle = "rgba(255,160,148,0.95)";
+              ctx.fillText(slot.word, slot.sx, y - 12);
+              ctx.font = FONT;
+            } else {
+              for (let i = 0; i < slot.count; i += 1) {
+                held(ctx, slot.kind, slot.sx, y + 16 - i * 5, 0.8);
+              }
             }
           }
-          const waitWord: Record<string, string> = {
-            meat: "肉まち",
-            cut: "身まち",
-          };
-          ctx.font = SMALL;
-          if (held0 <= 0) {
-            ctx.fillStyle = "rgba(255,150,140,0.9)";
-            ctx.fillText(waitWord[stove.takes ?? ""] ?? "材料まち", x - 30, y - 30);
+          // 人の手が要る作業場は、誰もいないと止まっているのが分かるようにする
+          if (stove.manual && !isManned(state, stove)) {
+            const word = held0 > 0 ? "手を貸そう" : "手が空いている";
+            ctx.font = SMALL;
+            const w = ctx.measureText(word).width + 10;
+            ctx.fillStyle = "rgba(10,8,6,0.7)";
+            roundRect(ctx, x - w / 2, y - 52, w, 12, 6);
+            ctx.fill();
+            ctx.fillStyle = `rgba(255,209,102,${0.6 + Math.abs(Math.sin(time * 3)) * 0.4})`;
+            ctx.fillText(word, x, y - 46);
+            ctx.font = FONT;
           }
-          if (stove.fuel && fuel0 <= 0) {
-            ctx.fillStyle = "rgba(255,200,120,0.9)";
-            ctx.fillText("まきまち", x + 30, y - 30);
-          }
-          ctx.font = FONT;
         }
         if (ready >= holdCap(state, stove)) {
           ctx.fillStyle = "#ffd166";
@@ -3834,7 +4868,7 @@ export default function Shop({ onSample, paused }: Props) {
           const span = mode === "table" ? EAT_TIME * 1.6 : EAT_TIME;
           const left = Math.max(0, eating.timer) / span;
           if (mode === "table") plate(ctx, tray.x, tray.y, 1.2);
-          else bowl(ctx, tray.x, tray.y, left > 0.88 ? 1.35 : 1.15);
+          else held(ctx, seatNeeds(seat), tray.x, tray.y, left > 0.88 ? 1.35 : 1.15);
           ctx.strokeStyle = "rgba(255,209,102,0.85)";
           ctx.lineWidth = 2.4;
           ctx.beginPath();
@@ -4174,7 +5208,11 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.fillStyle = "#eafff2";
         ctx.fillText(pad.label, at.x, at.y - 3);
         ctx.fillStyle = "#ffd166";
-        ctx.fillText(formatYen(Math.max(0, price - paid)), at.x, at.y + 12);
+        ctx.fillText(
+          formatMoney(Math.max(0, price - paid), currency()),
+          at.x,
+          at.y + 12,
+        );
       }
 
       /* --- お金 --- */
@@ -4186,7 +5224,7 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.arc(coin.pos.x, coin.pos.y - lift, 7, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = "#a8761b";
-        ctx.fillText("円", coin.pos.x, coin.pos.y - lift + 0.5);
+        ctx.fillText(currency(), coin.pos.x, coin.pos.y - lift + 0.5);
       }
 
       /* --- 人 --- */
@@ -4203,6 +5241,8 @@ export default function Shop({ onSample, paused }: Props) {
         seller: "#3f7fbf",
         gatekeeper: "#2f6f5a",
         hunter: "#6b4a2b",
+        logger: "#3f6b4a",
+        splitter: "#8a5a3c",
       };
 
       // 狩り場の動物（人と一緒に前後で並べる）
@@ -4210,6 +5250,15 @@ export default function Shop({ onSample, paused }: Props) {
         actors.push({
           y: animal.pos.y,
           render: () => drawPrey(ctx, animal.kind, animal.pos.x, animal.pos.y, time),
+        });
+      }
+
+      // 森の木（切ると切り株になり、しばらくして生えなおす）
+      for (const tree of state.trees) {
+        actors.push({
+          y: tree.pos.y,
+          render: () =>
+            drawTree(ctx, tree.kind, tree.pos.x, tree.pos.y, tree.stump, tree.chop, time),
         });
       }
 
@@ -4271,7 +5320,9 @@ export default function Shop({ onSample, paused }: Props) {
               ctx.closePath();
               ctx.fill();
               ctx.restore();
-              bowl(ctx, bx, by, 1);
+              // 何を待っているかを、その品の絵で見せる
+              const want = seatById.get(customer.seatId);
+              held(ctx, want ? seatNeeds(want) : "main", bx, by, 1);
             }
             if (customer.state === "eating") {
               ctx.fillStyle = "rgba(255,255,255,0.35)";
@@ -4297,7 +5348,19 @@ export default function Shop({ onSample, paused }: Props) {
           y: worker.pos.y,
           render: () => {
             if (worker.kind === "robot") {
-              robot(ctx, worker.pos.x, worker.pos.y, time);
+              // 火のはじまりの「犬ぞり」は犬が引く。ほかのステージは配膳ロボ
+              if (isFire) {
+                drawSled(
+                  ctx,
+                  worker.pos.x,
+                  worker.pos.y,
+                  worker.face ?? 1,
+                  worker.moving ?? false,
+                  time,
+                );
+              } else {
+                robot(ctx, worker.pos.x, worker.pos.y, time);
+              }
             } else {
               const gait =
                 worker.kind === "master"
@@ -4310,7 +5373,11 @@ export default function Shop({ onSample, paused }: Props) {
                         ? 130
                         : worker.kind === "hunter"
                           ? 80
-                          : 110;
+                          : worker.kind === "logger"
+                            ? 100
+                            : worker.kind === "splitter"
+                              ? 150
+                              : 110;
               person(
                 ctx,
                 worker.pos.x,
@@ -4321,25 +5388,103 @@ export default function Shop({ onSample, paused }: Props) {
               );
               const wx = worker.pos.x;
               const wy = worker.pos.y;
+              const face = worker.face ?? 1;
               if (worker.kind === "cook") {
-                // コック帽
-                ctx.fillStyle = "#fbf7ef";
-                roundRect(ctx, wx - 7, wy - 32, 14, 9, 4);
+                if (isFire) {
+                  // 火の番: すすけた頭巾と、火かき棒。火をつつく手つき
+                  ctx.fillStyle = "#7a4a2b";
+                  roundRect(ctx, wx - 8, wy - 30, 16, 8, 4);
+                  ctx.fill();
+                  ctx.fillStyle = "#5c3620";
+                  roundRect(ctx, wx - 9, wy - 24, 18, 3, 1.5);
+                  ctx.fill();
+                  const poke = Math.sin(time * 3) * 3;
+                  ctx.strokeStyle = "#3d2b1a";
+                  ctx.lineWidth = 2.4;
+                  ctx.beginPath();
+                  ctx.moveTo(wx + 8 * face, wy - 4);
+                  ctx.lineTo(wx + (18 + poke) * face, wy - 18);
+                  ctx.stroke();
+                  // 棒先の赤い熱
+                  ctx.fillStyle = `rgba(255,140,60,${0.6 + Math.abs(Math.sin(time * 5)) * 0.4})`;
+                  ctx.beginPath();
+                  ctx.arc(wx + (18 + poke) * face, wy - 18, 2.2, 0, Math.PI * 2);
+                  ctx.fill();
+                } else {
+                  // コック帽
+                  ctx.fillStyle = "#fbf7ef";
+                  roundRect(ctx, wx - 7, wy - 32, 14, 9, 4);
+                  ctx.fill();
+                }
+              }
+              if (worker.kind === "logger") {
+                // 木こり: 毛皮のベストと、両手でかまえた斧
+                ctx.fillStyle = "#6b5030";
+                roundRect(ctx, wx - 9, wy - 13, 18, 10, 3);
                 ctx.fill();
+                const swing = worker.charge > 0 ? Math.abs(Math.sin(time * 9)) : 0;
+                ctx.save();
+                ctx.translate(wx + 8 * face, wy - 8);
+                ctx.rotate(face * (0.7 - swing * 1.6));
+                ctx.strokeStyle = "#8a6a44";
+                ctx.lineWidth = 2.6;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, -19);
+                ctx.stroke();
+                ctx.fillStyle = "#b9bec4";
+                ctx.beginPath();
+                ctx.moveTo(-1, -19);
+                ctx.lineTo(7, -23);
+                ctx.lineTo(7, -14);
+                ctx.lineTo(-1, -15);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+              }
+              if (worker.kind === "splitter") {
+                // 薪割り: 腕まくりの太い腕と、両手で振り下ろすくさび斧
+                ctx.fillStyle = "#e0c49a";
+                roundRect(ctx, wx - 12, wy - 11, 5, 9, 2.5);
+                ctx.fill();
+                roundRect(ctx, wx + 7, wy - 11, 5, 9, 2.5);
+                ctx.fill();
+                const chop = Math.abs(Math.sin(time * 5));
+                ctx.save();
+                ctx.translate(wx, wy - 14);
+                ctx.rotate(-1.1 + chop * 1.5);
+                ctx.strokeStyle = "#6b4a2b";
+                ctx.lineWidth = 2.6;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, -16);
+                ctx.stroke();
+                ctx.fillStyle = "#c8ced4";
+                ctx.beginPath();
+                ctx.moveTo(-4, -16);
+                ctx.lineTo(4, -16);
+                ctx.lineTo(2, -22);
+                ctx.lineTo(-2, -22);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
               }
               if (worker.kind === "hunter") {
-                // 手にした槍
+                // 狩人: 毛皮の肩あてと、手にした槍
+                ctx.fillStyle = "#4f3a22";
+                roundRect(ctx, wx - 10, wy - 16, 20, 6, 3);
+                ctx.fill();
                 ctx.strokeStyle = "#8a6a44";
                 ctx.lineWidth = 2.5;
                 ctx.beginPath();
-                ctx.moveTo(wx + 9, wy + 4);
-                ctx.lineTo(wx + 14, wy - 26);
+                ctx.moveTo(wx + 9 * face, wy + 4);
+                ctx.lineTo(wx + 14 * face, wy - 26);
                 ctx.stroke();
                 ctx.fillStyle = "#d8d2c4";
                 ctx.beginPath();
-                ctx.moveTo(wx + 14, wy - 26);
-                ctx.lineTo(wx + 10, wy - 20);
-                ctx.lineTo(wx + 17, wy - 21);
+                ctx.moveTo(wx + 14 * face, wy - 26);
+                ctx.lineTo(wx + 10 * face, wy - 20);
+                ctx.lineTo(wx + 17 * face, wy - 21);
                 ctx.closePath();
                 ctx.fill();
               }
@@ -4353,15 +5498,36 @@ export default function Shop({ onSample, paused }: Props) {
                 ctx.fill();
               }
               if (worker.kind === "waiter") {
-                // 前掛けとお盆
-                ctx.fillStyle = "rgba(255,255,255,0.75)";
-                roundRect(ctx, wx - 6, wy - 6, 12, 10, 2);
-                ctx.fill();
-                if (worker.carry === 0) {
-                  ctx.fillStyle = "#c9b79a";
-                  ctx.beginPath();
-                  ctx.ellipse(wx + 11, wy - 12, 6, 2.6, 0, 0, Math.PI * 2);
+                if (isFire) {
+                  // はこび手: 背負子（せおいこ）と、肩にかけた帯
+                  ctx.fillStyle = "#6b4a2b";
+                  roundRect(ctx, wx - 13 * face, wy - 20, 9, 18, 3);
                   ctx.fill();
+                  ctx.strokeStyle = "#a08858";
+                  ctx.lineWidth = 1.6;
+                  for (const sy of [-16, -10, -5]) {
+                    ctx.beginPath();
+                    ctx.moveTo(wx - 13 * face, wy + sy);
+                    ctx.lineTo(wx - 4 * face, wy + sy);
+                    ctx.stroke();
+                  }
+                  ctx.strokeStyle = "#c8a97a";
+                  ctx.lineWidth = 2;
+                  ctx.beginPath();
+                  ctx.moveTo(wx - 5 * face, wy - 18);
+                  ctx.quadraticCurveTo(wx + 3 * face, wy - 14, wx + 5 * face, wy - 4);
+                  ctx.stroke();
+                } else {
+                  // 前掛けとお盆
+                  ctx.fillStyle = "rgba(255,255,255,0.75)";
+                  roundRect(ctx, wx - 6, wy - 6, 12, 10, 2);
+                  ctx.fill();
+                  if (carryTotal(worker) === 0) {
+                    ctx.fillStyle = "#c9b79a";
+                    ctx.beginPath();
+                    ctx.ellipse(wx + 11, wy - 12, 6, 2.6, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                  }
                 }
               }
               if (worker.kind === "server") {
@@ -4375,14 +5541,35 @@ export default function Shop({ onSample, paused }: Props) {
                 ctx.fill();
               }
               if (worker.kind === "collector") {
-                // 集金かばん
-                ctx.fillStyle = "#2f3b4d";
-                roundRect(ctx, wx + 7, wy - 10, 9, 8, 2);
-                ctx.fill();
-                ctx.fillStyle = "#ffd166";
-                ctx.beginPath();
-                ctx.arc(wx + 11.5, wy - 6, 2, 0, Math.PI * 2);
-                ctx.fill();
+                if (isFire) {
+                  // 拾い手: 腰に下げた貝がら入れ（編みかご）と、拾う前かがみの手
+                  ctx.fillStyle = "#a98a52";
+                  roundRect(ctx, wx + 6, wy - 8, 12, 11, 3);
+                  ctx.fill();
+                  ctx.strokeStyle = "#7a6136";
+                  ctx.lineWidth = 1;
+                  for (const gy of [-5, -1, 3]) {
+                    ctx.beginPath();
+                    ctx.moveTo(wx + 6, wy + gy);
+                    ctx.lineTo(wx + 18, wy + gy);
+                    ctx.stroke();
+                  }
+                  // かごから顔を出す貝がら
+                  ctx.fillStyle = "#f4e3c2";
+                  ctx.beginPath();
+                  ctx.arc(wx + 10, wy - 9, 2.4, Math.PI, Math.PI * 2);
+                  ctx.arc(wx + 15, wy - 9, 2, Math.PI, Math.PI * 2);
+                  ctx.fill();
+                } else {
+                  // 集金かばん
+                  ctx.fillStyle = "#2f3b4d";
+                  roundRect(ctx, wx + 7, wy - 10, 9, 8, 2);
+                  ctx.fill();
+                  ctx.fillStyle = "#ffd166";
+                  ctx.beginPath();
+                  ctx.arc(wx + 11.5, wy - 6, 2, 0, Math.PI * 2);
+                  ctx.fill();
+                }
               }
               if (worker.kind === "busser") {
                 // ふきんとバケツ
@@ -4467,9 +5654,17 @@ export default function Shop({ onSample, paused }: Props) {
                 ctx.stroke();
               }
             }
-            for (let i = 0; i < worker.carry; i += 1) {
-              held(ctx, worker.item, worker.pos.x, worker.pos.y - 30 - i * 6, 0.85);
-            }
+            // 荷物は品種ごとに分けて見せる（異種を1本に混ぜない）
+            drawLoad(
+              ctx,
+              worker.bag,
+              worker.pos.x,
+              worker.kind === "robot" && isFire
+                ? worker.pos.y - 12
+                : worker.pos.y - 30,
+              worker.kind === "robot" && isFire ? (worker.face ?? 1) * -16 : 0,
+              time,
+            );
           },
         });
       }
@@ -4481,6 +5676,11 @@ export default function Shop({ onSample, paused }: Props) {
         y: player.pos.y,
         render: () => {
           if (stars > 0) drawShine(ctx, player.pos.x, player.pos.y, stars, time);
+          // 上位スキンの動く飾り。マントは体より先に、オーラはさらに奥に描く
+          if (skin.aura && skin.aura !== "none") {
+            drawAura(ctx, skin.aura, player.pos.x, player.pos.y, time);
+          }
+          if (skin.cape) drawCape(ctx, skin.cape, player.pos.x, player.pos.y, time);
           ctx.save();
           if (stars > 0) {
             // ★の数だけ、ふちが強く光る
@@ -4517,14 +5717,8 @@ export default function Shop({ onSample, paused }: Props) {
             );
           }
           ctx.restore();
-          // 持っているものを、種類ごとに積んで見せる（複数種類を同時に持てる）
-          let stackIndex = 0;
-          for (const [kind, count] of Object.entries(player.bag)) {
-            for (let i = 0; i < count; i += 1) {
-              held(ctx, kind, player.pos.x, player.pos.y - 34 - stackIndex * 6);
-              stackIndex += 1;
-            }
-          }
+          // 持っているものを、種類ごとに列を分けて見せる（異種を混ぜない）
+          drawLoad(ctx, player.bag, player.pos.x, player.pos.y - 34, 0, time);
         },
       });
 
@@ -4570,20 +5764,73 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.arc(to.x, to.y, 18 + ring * 5, 0, Math.PI * 2);
           ctx.stroke();
         }
+
+        /*
+         * 目的地が画面の外にあるときは、画面のへりに向きを出す（§7.2）。
+         * 広い区画では、次に行く先がどちらか分からなくならないように
+         */
+        const viewH = canvas.height / scale;
+        const pad = 26;
+        const outside =
+          to.x < camX + pad ||
+          to.x > camX + view - pad ||
+          to.y < camY + pad ||
+          to.y > camY + viewH - pad;
+        if (outside) {
+          const cx = camX + view / 2;
+          const cy = camY + viewH / 2;
+          const angle = Math.atan2(to.y - cy, to.x - cx);
+          // 画面の内側のふちに、矢印を貼りつける
+          const hx = view / 2 - pad;
+          const hy = viewH / 2 - pad;
+          const scaleT = Math.min(
+            Math.abs(hx / Math.cos(angle)),
+            Math.abs(hy / Math.sin(angle)),
+          );
+          const ax = cx + Math.cos(angle) * scaleT;
+          const ay = cy + Math.sin(angle) * scaleT;
+          const beat = 0.6 + Math.abs(Math.sin(time * 4)) * 0.4;
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(angle);
+          ctx.fillStyle = `rgba(255,209,102,${beat})`;
+          ctx.beginPath();
+          ctx.moveTo(13, 0);
+          ctx.lineTo(-8, -9);
+          ctx.lineTo(-4, 0);
+          ctx.lineTo(-8, 9);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = "rgba(10,8,6,0.7)";
+          ctx.lineWidth = 1.4;
+          ctx.stroke();
+          ctx.restore();
+          // どれくらい遠いか
+          const away = Math.round(Math.hypot(to.x - from.x, to.y - from.y));
+          ctx.font = SMALL;
+          ctx.fillStyle = "rgba(10,8,6,0.75)";
+          const tag = `${away}`;
+          const tw = ctx.measureText(tag).width + 8;
+          roundRect(ctx, ax - tw / 2, ay + 12, tw, 11, 5);
+          ctx.fill();
+          ctx.fillStyle = "#ffd166";
+          ctx.fillText(tag, ax, ay + 18);
+          ctx.font = FONT;
+        }
       }
 
       ctx.save();
       ctx.fillStyle = "rgba(0,0,0,0.6)";
       const width = ctx.measureText(objective.label).width + 26;
       const bannerY = camY + canvas.height / scale - 46;
-      roundRect(ctx, camX + WORLD.w / 2 - width / 2, bannerY, width, 24, 12);
+      roundRect(ctx, camX + view / 2 - width / 2, bannerY, width, 24, 12);
       ctx.fill();
       ctx.strokeStyle = "rgba(255,209,102,0.45)";
       ctx.lineWidth = 1;
-      roundRect(ctx, camX + WORLD.w / 2 - width / 2, bannerY, width, 24, 12);
+      roundRect(ctx, camX + view / 2 - width / 2, bannerY, width, 24, 12);
       ctx.stroke();
       ctx.fillStyle = "#ffd166";
-      ctx.fillText(objective.label, camX + WORLD.w / 2, bannerY + 13);
+      ctx.fillText(objective.label, camX + view / 2, bannerY + 13);
       ctx.restore();
 
       /* --- 長押しの説明 --- */
@@ -4600,7 +5847,7 @@ export default function Shop({ onSample, paused }: Props) {
           ) + 22;
         const height = 26 + lines.length * 15 + 15;
         const cx = Math.min(
-          camX + WORLD.w - width / 2 - 6,
+          camX + view - width / 2 - 6,
           Math.max(camX + width / 2 + 6, info.pos.x),
         );
         let top = info.pos.y - height - 30;
@@ -4679,7 +5926,7 @@ export default function Shop({ onSample, paused }: Props) {
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
       // 横幅にぴったり合わせ、縦は店の広さに応じてスクロールする
-      const fit = rect.width / WORLD.w;
+      const fit = rect.width / viewWidth();
       scale = fit * dpr;
       ox = 0;
       oy = 0;
@@ -4690,7 +5937,7 @@ export default function Shop({ onSample, paused }: Props) {
 
     const toWorld = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const fit = rect.width / WORLD.w;
+      const fit = rect.width / viewWidth();
       return {
         x: (event.clientX - rect.left) / fit + camera.current.x,
         y: (event.clientY - rect.top) / fit + camera.current.y,

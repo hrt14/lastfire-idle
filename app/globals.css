@@ -62,13 +62,23 @@ button {
   padding: max(0.55rem, env(safe-area-inset-top)) 0.7rem 0.5rem;
 }
 
+/*
+ * 金額の表示（§10）。
+ *
+ * 通常は短縮表記だけを出す。桁が増えても文字数がほぼ変わらないので、
+ * 右のボタンが押し出されない。正確な金額は、押すと出るポップオーバーで見せる。
+ */
+.wallet-slot {
+  position: relative;
+  /* 桁が増えても縮むだけ。右のボタン列は動かさない */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .wallet {
   display: flex;
   align-items: baseline;
   gap: 0.28rem;
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
   white-space: nowrap;
   padding: 0.4rem 0.6rem 0.4rem 0.5rem;
   border-radius: 999px;
@@ -77,19 +87,16 @@ button {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: none;
 }
 
-/* 長押し中は、正確な金額をぜんぶ見せる（はみ出しても縮めて全部出す） */
-.wallet.is-exact {
-  flex: 1 1 auto;
+.wallet.is-open {
   background: rgba(255, 209, 102, 0.16);
   border-color: rgba(255, 209, 102, 0.6);
 }
-.wallet.is-exact strong {
-  overflow: visible;
-  text-overflow: clip;
-  font-size: 0.92rem;
+
+.wallet:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 
 .wallet-icon {
@@ -99,9 +106,7 @@ button {
 }
 
 .wallet strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* 省略記号は出さない。短縮表記そのものを出しきる */
   font-size: 1.05rem;
   font-weight: 800;
   color: var(--gold);
@@ -116,11 +121,35 @@ button {
   opacity: 0.8;
 }
 
+/* 押すと出る、正確な金額のポップオーバー。HUD の高さも幅も変えない */
+.wallet-pop {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 30;
+  padding: 0.4rem 0.7rem;
+  border-radius: 12px;
+  white-space: nowrap;
+  background: rgba(14, 10, 8, 0.96);
+  border: 1px solid rgba(255, 209, 102, 0.55);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  color: var(--gold);
+  font-size: 0.82rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  animation: pop 0.16s ease-out;
+}
+
 .hud-right {
   display: flex;
   align-items: center;
   flex: none;
   gap: 0.3rem;
+}
+
+.chip-mark {
+  font-style: normal;
+  margin-right: 0.25rem;
 }
 
 .chip {
@@ -1108,4 +1137,309 @@ button {
   font-weight: 700;
   text-decoration: none;
   text-align: center;
+}
+
+/* ---------- 設定とリセット（§9） ---------- */
+
+.setting-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.setting-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+}
+
+.setting-list li > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.setting-list strong {
+  font-size: 0.88rem;
+  color: #f2e6d4;
+}
+
+.setting-list small {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.setting-list .ghost {
+  flex: none;
+}
+
+.ghost.is-danger {
+  border-color: rgba(232, 87, 74, 0.55);
+  color: #ffb4aa;
+}
+
+.notes-foot {
+  margin: 0.6rem 0 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.reset-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+  text-align: left;
+}
+
+@media (max-width: 360px) {
+  .reset-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+.reset-col {
+  padding: 0.6rem 0.65rem;
+  border-radius: 13px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--line);
+}
+
+.reset-col.is-lost {
+  border-color: rgba(232, 87, 74, 0.45);
+}
+
+.reset-col.is-kept {
+  border-color: rgba(126, 231, 168, 0.45);
+}
+
+.reset-col strong {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.78rem;
+}
+
+.reset-col.is-lost strong {
+  color: #ffb4aa;
+}
+
+.reset-col.is-kept strong {
+  color: #9fe6bd;
+}
+
+.reset-col ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.reset-col li {
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #e6d9c9;
+}
+
+.reset-note {
+  margin: 0 0 0.8rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modal-actions > button {
+  flex: 1;
+  padding: 0.7rem;
+  border-radius: 13px;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.modal-actions > .ghost {
+  border: 1px solid rgba(255, 209, 102, 0.5);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--gold);
+}
+
+.modal-actions > .is-danger {
+  border: none;
+  background: linear-gradient(180deg, #e8574a, #b83a2f);
+  color: #fff2ee;
+}
+
+/* ---------- 段階式のガチャ（§11） ---------- */
+
+.gacha-tiers {
+  list-style: none;
+  margin: 0 0 0.7rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+}
+
+.gacha-tier {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.5rem 0.35rem;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+
+.gacha-tier strong {
+  font-size: 0.76rem;
+  color: #f2e6d4;
+  line-height: 1.25;
+}
+
+.gacha-tier small {
+  font-size: 0.66rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.gacha-tier em {
+  font-style: normal;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.gacha-tier em.is-need {
+  color: var(--muted);
+}
+
+.gacha-tier.is-on {
+  border-color: rgba(255, 209, 102, 0.75);
+  background: rgba(255, 209, 102, 0.14);
+}
+
+.gacha-tier.is-locked {
+  opacity: 0.62;
+}
+
+.gacha-progress {
+  margin: 0 0 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: #e6d9c9;
+  font-variant-numeric: tabular-nums;
+}
+
+.gacha-unlocked {
+  margin-bottom: 0.6rem;
+  padding: 0.6rem;
+  border-radius: 13px;
+  text-align: center;
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: #2a1806;
+  background: linear-gradient(180deg, #ffd166, #f0a63a);
+  animation: pop 0.3s ease-out;
+}
+
+.skin-group {
+  margin-bottom: 0.8rem;
+}
+
+.skin-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  color: var(--gold);
+}
+
+.skin-group-head span {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.skin.rarity-UR .skin-rarity {
+  color: #c9a4ff;
+}
+
+.skin.rarity-LR .skin-rarity {
+  color: #ffb4d9;
+}
+
+.gacha-result.rarity-UR,
+.gacha-result.rarity-LR {
+  border-color: rgba(201, 164, 255, 0.65);
+  background: rgba(120, 90, 200, 0.18);
+}
+
+.gacha-foot {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/*
+ * 幅の狭い端末では、HUD を一段ちいさくする（§10.3）。
+ * 320px でも、金額とボタンが重ならないようにする
+ */
+@media (max-width: 400px) {
+  .hud {
+    gap: 0.35rem;
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+  }
+  .hud-right {
+    gap: 0.2rem;
+  }
+  .chip-button,
+  .fb-button {
+    width: 1.65rem;
+    height: 1.65rem;
+    font-size: 0.75rem;
+  }
+  .chip {
+    padding: 0.25rem 0.35rem;
+    font-size: 0.68rem;
+  }
+  /* 狭い画面では、絵文字を落として数字だけにする */
+  .chip-mark {
+    display: none;
+  }
+  .wallet {
+    padding: 0.35rem 0.45rem 0.35rem 0.4rem;
+  }
+  .wallet-icon {
+    font-size: 0.9rem;
+  }
+  .wallet strong {
+    font-size: 0.92rem;
+  }
+  .wallet small {
+    font-size: 0.66rem;
+  }
 }
