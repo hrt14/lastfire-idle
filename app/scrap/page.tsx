@@ -3,7 +3,8 @@ import ScrapPlanet from "@/components/ScrapPlanet";
 
 export const metadata: Metadata = {
   title: "SCRAP PLANET｜ワーキングプラネット",
-  description: "宇宙ゴミを加工し、ロボット工場を自動化する放置ゲーム。",
+  description:
+    "宇宙ゴミを資源へ変え、自動工場と作業ロボットで荒廃した惑星を再生するアーケードアイドルゲーム。",
 };
 
 export default function ScrapPage() {
