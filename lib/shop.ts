@@ -14,6 +14,25 @@
  */
 
 import type { SoundId } from "@/lib/sfx";
+import {
+  FINDS,
+  MARK_IDS,
+  createFire,
+  cutBeast,
+  fireLive,
+  fireMove,
+  fireWork,
+  firePriorityPads,
+  fromFire,
+  nightNeed,
+  nightShort,
+  storeKeep,
+  phaseLeft,
+  stockIn,
+  toFire,
+  updateFire,
+  type FireState,
+} from "@/lib/fire";
 
 export type Vec = { x: number; y: number };
 
@@ -68,6 +87,40 @@ export type StoveSpec = {
   reveal?: number;
   /** これだけ提供するまで出てこない */
   needServed?: number;
+
+  /* ---- 火のはじまり 第2区画以降 ---- */
+  /**
+   * 貯蔵庫（食料庫・薪倉庫）。takes のものを受け取るだけで、何も作らない。
+   * 夜の食事や暖房は、ここに積んであるものから減っていく。
+   */
+  store?: boolean;
+  /**
+   * 解体で出た資源の仮置き場。出し口（ready）にたまるだけで自分では作らない。
+   * 満杯になると解体が止まる。
+   */
+  pile?: boolean;
+  /**
+   * 建築予定地。この材料をぜんぶ運びこむと建物になる。
+   * 積んだ数は state.parts に品種ごとに残る。
+   */
+  needs?: Record<ItemKind, number>;
+  /** 建ったときの効き目（建築予定地だけ） */
+  gives?: {
+    /** 定住できる人数 +N */
+    houses?: number;
+    /** 集落を暖める強さ（第4区画の寒さをやわらげる） */
+    warm?: number;
+    /** 夜に薪を燃やして集落を照らす（共同たき火） */
+    hearth?: boolean;
+    /** 建つと探索に出られるようになる（いかだ） */
+    dock?: boolean;
+    /** 建つと「火のはじまり」が終わる（大型いかだ） */
+    sail?: boolean;
+    /** 建ったことを知らせる一言 */
+    note?: string;
+  };
+  /** 巨獣（マンモス）がうろつく谷 */
+  beast?: boolean;
 };
 
 export type SeatSpec = {
@@ -130,7 +183,17 @@ export type StaffKind =
   /** 森で立木を切り、丸太を出し口へ持ち帰る係 */
   | "logger"
   /** 薪割り場で丸太を薪に割る係 */
-  | "splitter";
+  | "splitter"
+  /** 倒したマンモスを解体して、資源を仮置き場へ出す係 */
+  | "butcher"
+  /** 建築予定地へ材料を運びこみ、建物を建てる係 */
+  | "builder"
+  /** 保存肉を食料庫へ入れ、夜のぶんを確保する係 */
+  | "keeper"
+  /** 夜に共同たき火へ薪を足す係 */
+  | "nightman"
+  /** いかだで川を下り、新しい土地を見つけてくる係 */
+  | "explorer";
 
 export type HireSpec = {
   id: string;
@@ -221,6 +284,15 @@ export type EquipSpec = {
   reveal?: number;
   /** これだけ提供するまで出てこない */
   needServed?: number;
+  /**
+   * 谷に置く罠。数字が大きいほど、マンモスを早く追い込める。
+   * 買うと、マップ上のその場所に実物が現れる。
+   */
+  trap?: number;
+  /** 貯蔵庫に積める数を増やす（食料庫拡張など） */
+  capacity?: { stove: string; plus: number };
+  /** 建物どうしをつなぐ道（通ると足が速くなる） */
+  road?: { from: Vec; to: Vec };
 };
 
 export type UpgradeId = "carry" | "speed" | "cook" | "price" | "gate";
@@ -288,8 +360,20 @@ export const cookBoost = () => currentStage.cookBoost ?? COOK_BOOST;
 /**
  * 同時に見せておく、まだ買っていない枠の数。
  * 指定のないステージは今までどおり、条件を満たしたものを全部出す。
+ *
+ * 1区画目は「いま覚えた仕事の次の改善」だけを出すので少ない。
+ * 区画が増えると revealLimitBy でこの数を増やし、
+ * 5〜10個のなかから選べる状態にする（仕様書 §2.1）。
  */
-export const revealLimit = () => currentStage.revealLimit ?? Infinity;
+export const revealLimit = (state: ShopState) => {
+  const base = currentStage.revealLimit;
+  if (base === undefined) return Infinity;
+  let limit = base;
+  for (const [id, value] of Object.entries(currentStage.revealLimitBy ?? {})) {
+    if (state.unlocked.includes(id)) limit = Math.max(limit, value);
+  }
+  return limit;
+};
 
 /** 入場券の値段（入口で受け取る）。ステージに入場料がないときは 0 */
 export const admissionValue = (state: ShopState) =>
@@ -357,6 +441,11 @@ const hireSub: Record<StaffKind, string> = {
   hunter: "狩り場の動物を狩ってくれる",
   logger: "森で木を切って丸太にしてくれる",
   splitter: "丸太を薪に割ってくれる",
+  butcher: "倒したマンモスを解体してくれる",
+  builder: "建築予定地へ材料を運んで建ててくれる",
+  keeper: "保存肉を食料庫へ入れてくれる",
+  nightman: "夜に共同たき火の薪を絶やさない",
+  explorer: "先まわりして、獲物や土地を見つけてくる",
 };
 
 const buildPads = (): Pad[] => [
@@ -650,6 +739,8 @@ export type Staff = {
   trips: number;
   /** 片づけ係が拭いているあいだの残り時間 */
   charge: number;
+  /** マンモスにはね飛ばされて、起き上がるまでの残り時間（死なない） */
+  down?: number;
   /** 次の相手を選び直すまでの待ち時間（くじ引き） */
   wait: number;
   /** いま担当している場所（ほかのスタッフと取り合わないように） */
@@ -756,11 +847,27 @@ export type Persisted = {
    * 一度出した枠は、買うまで引っこめない（見えたり消えたりさせない）。
    */
   revealed?: string[];
+  /** 建てあがった建築予定地 */
+  built?: string[];
+  /** 建築予定地に運びこんだ材料（まだ建っていないぶん） */
+  parts?: Record<string, Record<string, number>>;
+  /** 貯蔵庫に積んである数（食料庫・薪倉庫） */
+  stored?: Record<string, number>;
+  /** 火のはじまりの集落の様子（昼夜・人口・冬・谷） */
+  fire?: unknown;
 };
 
 export type ShopState = Persisted & {
   stageId: StageId;
   revealed: string[];
+  /** 建てあがった建築予定地 */
+  built: string[];
+  /** 建築予定地に運びこんだ材料 */
+  parts: Record<string, Record<string, number>>;
+  /** 火のはじまりの集落（昼夜・人口・冬・谷・川） */
+  fire: FireState;
+  /** 次に新しい枠を出すまでの間（一度に増やしすぎない） */
+  revealWait: number;
   player: Player;
   staff: Staff[];
   customers: Customer[];
@@ -834,6 +941,8 @@ export const TREE_REGROW = 14;
 export const CHOP_TIME = 1.2;
 /** はこび手が1回ぶんの積み下ろしにかける間（秒）。1人では運びきれない重さの源 */
 export const HAUL_PAUSE = 0.32;
+/** 解体係ひとりが、1秒でどれだけマンモスを削れるか（1.0 で1頭ぶん） */
+export const BUTCHER_RATE = 0.05;
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -915,6 +1024,10 @@ export const createState = (): ShopState => ({
   money: 0,
   unlocked: [...startUnlocked()],
   revealed: [],
+  built: [],
+  parts: {},
+  fire: createFire(),
+  revealWait: 0,
   padProgress: {},
   levels: { carry: 0, speed: 0, cook: 0, price: 0, gate: 0 },
   served: 0,
@@ -949,8 +1062,22 @@ export const createState = (): ShopState => ({
   sfx: [],
 });
 
+/** 探索で見つかる土地の合図（`found-village` のような形で unlocked に入る） */
+const FOUND_IDS = FINDS.map((item) => `found-${item.id}`);
+
 const finite = (value: unknown, fallback: number) =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+/** 貯蔵庫に積んであるぶんは、次に開いたときも残しておく */
+const storedNow = (state: ShopState) => {
+  const out: Record<string, number> = {};
+  for (const stove of stoves) {
+    if (!isStore(stove)) continue;
+    const have = state.hold[stove.id] ?? 0;
+    if (have > 0) out[stove.id] = have;
+  }
+  return out;
+};
 
 export const toPersisted = (state: ShopState): Persisted => ({
   version: SAVE_VERSION,
@@ -958,6 +1085,10 @@ export const toPersisted = (state: ShopState): Persisted => ({
   money: state.money,
   unlocked: state.unlocked,
   revealed: state.revealed,
+  built: state.built,
+  parts: state.parts,
+  stored: storedNow(state),
+  fire: toFire(state.fire),
   padProgress: state.padProgress,
   levels: state.levels,
   served: state.served,
@@ -982,6 +1113,10 @@ export const fromPersisted = (input: unknown): ShopState => {
     ...hires.map((item) => item.id),
     ...areas.map((item) => item.id),
     ...equipment.map((item) => `equip-${item.id}`),
+    // 建てあがった建物と、探索で見つけた土地も「開いたもの」として残す
+    ...stoves.filter((item) => item.needs).map((item) => `built-${item.id}`),
+    ...FOUND_IDS,
+    ...MARK_IDS,
   ]);
   const migrate = (id: string) =>
     id.replace(/^seat-a(\d+)$/, "seat-0-$1").replace(/^seat-b(\d+)$/, "seat-1-$1");
@@ -1033,11 +1168,47 @@ export const fromPersisted = (input: unknown): ShopState => {
     );
   }
 
+  // ただで付いてくる作業場は、読み込み直したときにも開いておく
+  for (const extra of stoves) {
+    if (extra.price !== 0 || !extra.unlockAfter) continue;
+    if (state.unlocked.includes(extra.id)) continue;
+    if (state.unlocked.includes(extra.unlockAfter)) state.unlocked.push(extra.id);
+  }
+
+  // 建てあがった建物と、積みかけの材料
+  if (Array.isArray(raw.built)) {
+    const sites = new Set(stoves.filter((item) => item.needs).map((item) => item.id));
+    state.built = Array.from(
+      new Set(
+        raw.built.filter((id): id is string => typeof id === "string" && sites.has(id)),
+      ),
+    );
+  }
+  if (raw.parts && typeof raw.parts === "object") {
+    for (const stove of stoves) {
+      if (!stove.needs) continue;
+      const saved = (raw.parts as Record<string, unknown>)[stove.id];
+      if (!saved || typeof saved !== "object") continue;
+      const bag: Record<string, number> = {};
+      for (const [kind, need] of Object.entries(stove.needs)) {
+        const value = finite((saved as Record<string, unknown>)[kind], 0);
+        if (value > 0) bag[kind] = clamp(Math.floor(value), 0, need);
+      }
+      if (Object.keys(bag).length > 0) state.parts[stove.id] = bag;
+    }
+  }
+  state.fire = fromFire(raw.fire);
+
   for (const stove of stoves) {
     if (state.unlocked.includes(stove.id)) {
       state.ready[stove.id] = 0;
       state.cooking[stove.id] = 0;
       if (isStation(stove)) state.hold[stove.id] = 0;
+      // 貯蔵庫に積んであったぶんは、そのまま残す（帰ってきたら空、をやらない）
+      if (isStore(stove)) {
+        const saved = finite((raw.stored ?? {})[stove.id], 0);
+        state.hold[stove.id] = clamp(Math.floor(saved), 0, holdCap(state, stove));
+      }
       if (stove.fuel) {
         // まだ一度も提供していない人には、1食目のぶんのまきをくべておく
         state.fuel[stove.id] =
@@ -1103,6 +1274,24 @@ const itemNames: Record<string, string> = {
   feast: "ごちそう",
   food: "料理",
   goods: "商品",
+  // 第2区画から
+  smoked: "保存肉",
+  // 第3区画（マンモス）
+  mmeat: "マンモス肉",
+  hide: "毛皮",
+  bone: "骨",
+  fat: "脂",
+  tusk: "牙",
+  // 第4区画から
+  coat: "防寒着",
+  // 第5区画
+  clay: "粘土",
+  pot: "土器",
+  tool: "道具",
+  // 第6区画
+  plank: "加工木材",
+  rope: "縄",
+  fish: "魚",
 };
 
 export const itemLabel = (kind: ItemKind): string =>
@@ -1111,9 +1300,36 @@ export const itemLabel = (kind: ItemKind): string =>
 /** 工程の作業場か（受け取ってから作る＝手前の工程が要る） */
 export const isStation = (stove: StoveSpec) => stove.takes !== undefined;
 
+/** 建築予定地か（材料をぜんぶ運びこむと建物になる） */
+export const isBuild = (stove: StoveSpec) => stove.needs !== undefined;
+
+/** 貯蔵庫か（受け取るだけで何も作らない） */
+export const isStore = (stove: StoveSpec) => stove.store === true;
+
+/** 解体で出た資源の仮置き場か（出し口にたまるだけ） */
+export const isPile = (stove: StoveSpec) => stove.pile === true;
+
+/** 何かを受け取る場所か（工程・貯蔵・建築予定地） */
+export const takesItems = (stove: StoveSpec) => isStation(stove) || isBuild(stove);
+
+/** 建てあがったか */
+export const isDone = (state: ShopState, id: string) => state.built.includes(id);
+
+/** 建築予定地に運びこんだ数 */
+export const partsAt = (state: ShopState, id: string, kind: ItemKind) =>
+  state.parts[id]?.[kind] ?? 0;
+
 /** 受け口・出し口に積める数 */
-export const holdCap = (state: ShopState, stove: StoveSpec) =>
-  stove.hold ?? stoveCapacity(state);
+export const holdCap = (state: ShopState, stove: StoveSpec) => {
+  const plus = equipment.reduce(
+    (sum, item) =>
+      item.capacity?.stove === stove.id && hasEquip(state, item.id)
+        ? sum + item.capacity.plus
+        : sum,
+    0,
+  );
+  return (stove.hold ?? stoveCapacity(state)) + plus;
+};
 
 /** 受け口にたまっている数 */
 export const heldAt = (state: ShopState, stoveId: string) =>
@@ -1123,22 +1339,84 @@ export const heldAt = (state: ShopState, stoveId: string) =>
 export const fuelAt = (state: ShopState, stoveId: string) =>
   state.fuel[stoveId] ?? 0;
 
+export type Slot = "hold" | "fuel" | "build";
+
 /**
- * この作業場が、その品をどちらの受け口で受け取れるか。
+ * この作業場が、その品をどの受け口で受け取れるか。
  * 空きがなければ null。
  */
 export const stationAccepts = (
   state: ShopState,
   stove: StoveSpec,
   item: ItemKind,
-): "hold" | "fuel" | null => {
+): Slot | null => {
   if (stove.takes === item && heldAt(state, stove.id) < holdCap(state, stove)) {
+    /*
+     * 貯蔵庫は、建てかけの建物があるあいだ、抱えこむ数に上限をつける。
+     * 夜のぶんを確保したら、余りは建築へ回す（でないと家が建たない）
+     */
+    if (
+      isStore(stove) &&
+      (state.fire.wants[item] ?? 0) > 0 &&
+      heldAt(state, stove.id) >= storeKeep(state, item)
+    ) {
+      return null;
+    }
     return "hold";
   }
   if (stove.fuel === item && fuelAt(state, stove.id) < holdCap(state, stove)) {
     return "fuel";
   }
+  // 建築予定地は、まだ足りていない材料だけを受け取る
+  const need = stove.needs?.[item];
+  if (need !== undefined && !isDone(state, stove.id)) {
+    if (partsAt(state, stove.id, item) < need) return "build";
+  }
   return null;
+};
+
+/** その受け口に、いまいくつ入っているか */
+export const slotHave = (
+  state: ShopState,
+  stove: StoveSpec,
+  item: ItemKind,
+  slot: Slot,
+) =>
+  slot === "fuel"
+    ? fuelAt(state, stove.id)
+    : slot === "build"
+      ? partsAt(state, stove.id, item)
+      : heldAt(state, stove.id);
+
+/** その受け口に、あと何個入るか */
+export const slotRoom = (
+  state: ShopState,
+  stove: StoveSpec,
+  item: ItemKind,
+  slot: Slot,
+) =>
+  slot === "build"
+    ? Math.max(0, (stove.needs?.[item] ?? 0) - partsAt(state, stove.id, item))
+    : holdCap(state, stove) - slotHave(state, stove, item, slot);
+
+/** その受け口に入れる */
+export const putSlot = (
+  state: ShopState,
+  stove: StoveSpec,
+  item: ItemKind,
+  slot: Slot,
+  count: number,
+) => {
+  const put = Math.min(count, slotRoom(state, stove, item, slot));
+  if (put <= 0) return 0;
+  if (slot === "fuel") state.fuel[stove.id] = fuelAt(state, stove.id) + put;
+  else if (slot === "hold") state.hold[stove.id] = heldAt(state, stove.id) + put;
+  else {
+    const bag = state.parts[stove.id] ?? {};
+    bag[item] = (bag[item] ?? 0) + put;
+    state.parts[stove.id] = bag;
+  }
+  return put;
 };
 
 /** このステージが工程（数珠つなぎ）を使うか */
@@ -1147,7 +1425,7 @@ export const isChainStage = () => stoves.some((stove) => isStation(stove));
 /** この種類を受け取る、まだ空きのある作業場（近い順に呼び出し側でならべる） */
 const stationsWanting = (state: ShopState, item: ItemKind) =>
   openStoves(state).filter(
-    (stove) => isStation(stove) && stationAccepts(state, stove, item) !== null,
+    (stove) => takesItems(stove) && stationAccepts(state, stove, item) !== null,
   );
 
 /** この種類を、待っている客か作業場のどちらかが求めているか */
@@ -1202,7 +1480,10 @@ export const setSkinShine = (stars: number) => {
 export const skinShineBonus = () => skinShine * 0.05;
 
 export const playerSpeed = (state: ShopState) =>
-  PLAYER_BASE_SPEED * (1 + state.levels.speed * 0.1) * (1 + skinShineBonus());
+  PLAYER_BASE_SPEED *
+  (1 + state.levels.speed * 0.1) *
+  (1 + skinShineBonus()) *
+  fireMove(state);
 
 export const hasEquip = (state: ShopState, id: EquipId) =>
   state.unlocked.includes(`equip-${id}`);
@@ -1337,7 +1618,7 @@ const eligiblePads = (state: ShopState) =>
  */
 export const availablePads = (state: ShopState) => {
   const eligible = eligiblePads(state);
-  if (!Number.isFinite(revealLimit())) return eligible;
+  if (!Number.isFinite(revealLimit(state))) return eligible;
   const seen = new Set(state.revealed);
   return eligible.filter(
     // 強化の枠は、効く相手を体験してから出る（数の上限には数えない）
@@ -1346,13 +1627,33 @@ export const availablePads = (state: ShopState) => {
 };
 
 /**
+ * いま「おすすめ」が付く枠（仕様書 §2.4）。
+ * つまっている工程から選ぶだけで、買わなくても進めなくならない。
+ */
+export const recommendedPad = (state: ShopState): string | null => {
+  if (state.stageId !== "fire" || !fireLive(state)) return null;
+  const open = new Set(availablePads(state).map((pad) => pad.id));
+  return firePriorityPads(state).find((id) => open.has(id)) ?? null;
+};
+
+/** 一度に新しく出す枠の数と、次に出すまでの間（秒） */
+const REVEAL_BURST = 2;
+const REVEAL_GAP = 10;
+
+/**
  * 新しい枠を出すかどうかを決める。
+ *
  * 出せる枠のうち、まだ見せていないものを reveal の順に、
  * 「いま出ていて、まだ買っていない枠」が上限に届くまで出す。
+ * ただし一度に出すのは2つまで（§2.1）。まとめて増えると、
+ * 何のための枠なのか分からなくなる。
  */
-const updateReveals = (state: ShopState) => {
-  const limit = revealLimit();
+const updateReveals = (state: ShopState, dt: number) => {
+  const limit = revealLimit(state);
   if (!Number.isFinite(limit)) return;
+  state.revealWait = Math.max(0, state.revealWait - dt);
+  if (state.revealWait > 0) return;
+
   const eligible = eligiblePads(state);
   const seen = new Set(state.revealed);
   // 買い切りの枠だけを数える。強化の枠は買っても消えないので数えない
@@ -1364,19 +1665,27 @@ const updateReveals = (state: ShopState) => {
     .filter((pad) => !seen.has(pad.id))
     .sort((a, b) => (a.reveal ?? 999) - (b.reveal ?? 999));
 
+  const added: Pad[] = [];
   for (const pad of queue) {
+    if (added.length >= REVEAL_BURST) break;
     if (pad.kind !== "upgrade") {
       if (showing >= limit) continue;
       showing += 1;
     }
     state.revealed.push(pad.id);
+    added.push(pad);
     const at = padPosOf(state, pad);
     pop(state, { x: at.x, y: at.y - 22 }, "NEW!");
-    state.toast = {
-      text: `${pad.label}が出せるようになった ― ${pad.hint ?? pad.sub}`,
-      at: Date.now(),
-    };
   }
+  if (added.length === 0) return;
+  state.revealWait = REVEAL_GAP;
+  state.toast = {
+    text:
+      added.length === 1
+        ? `${added[0].label}が出せるようになった ― ${added[0].hint ?? added[0].sub}`
+        : `${added.map((pad) => pad.label).join("・")}が出せるようになった`,
+    at: Date.now(),
+  };
 };
 
 /** 配膳口（丼を置く場所）の位置 */
@@ -1407,6 +1716,21 @@ const unlock = (state: ShopState, padId: string) => {
     state.cooking[padId] = 0;
     if (isStation(stove)) state.hold[padId] = 0;
     if (stove.fuel) state.fuel[padId] = 0;
+  }
+
+  /*
+   * ただで付いてくるもの（値段 0 で、これを買うと出てくる作業場）。
+   * 解体場の仮置き場は狩猟キャンプについてくる。買い忘れて
+   * 「毛皮の置き場がないから解体が止まる」が起きないようにするため
+   */
+  for (const extra of stoves) {
+    if (extra.price !== 0 || extra.unlockAfter !== padId) continue;
+    if (state.unlocked.includes(extra.id)) continue;
+    state.unlocked.push(extra.id);
+    state.ready[extra.id] = 0;
+    state.cooking[extra.id] = 0;
+    if (isStation(extra)) state.hold[extra.id] = 0;
+    if (extra.fuel) state.fuel[extra.id] = 0;
   }
   const hire = hireById.get(padId);
   if (hire) state.staff.push(makeStaff(hire, state.nextId++, hireHome(state, hire)));
@@ -1462,10 +1786,31 @@ const unlock = (state: ShopState, padId: string) => {
   }
 };
 
+/**
+ * 仲間が歩いてくる場所。
+ *
+ * 火のはじまりは区画が横に長いので、みんなが同じ入口から来ると
+ * 遠い区画のベンチにたどり着くだけで何十秒もかかる。
+ * その区画の野から来てもらう（帰るときも同じ方角へ帰る）。
+ */
+const guestEntry = (state: ShopState, seat: SeatSpec | null): Vec => {
+  const street = streetPos(state);
+  const fallback = { x: street.x + (Math.random() * 40 - 20), y: street.y };
+  if (state.stageId !== "fire" || !seat) return fallback;
+  const area = areaById.get(`area-${seat.area}`);
+  if (!area) return fallback;
+  return {
+    x: clamp(seat.pos.x + (Math.random() * 40 - 20), area.rect.x0 + 24, area.rect.x1 - 24),
+    y: Math.min(worldHeight(state) - 10, area.rect.y1 + 28),
+  };
+};
+
 const spawnCustomers = (state: ShopState, dt: number) => {
   state.spawnTimer -= dt;
   if (state.spawnTimer > 0) return;
   state.spawnTimer = spawnInterval(state);
+  // 夜は仲間が来ない。みんな広場と住居にいる（第2区画から）
+  if (fireLive(state) && state.fire.phase === "night") return;
 
   const taken = new Set(
     state.customers
@@ -1480,10 +1825,7 @@ const spawnCustomers = (state: ShopState, dt: number) => {
     id: state.nextId++,
     seatId: "",
     state: "walking",
-    pos: {
-      x: streetPos(state).x + (Math.random() * 40 - 20),
-      y: streetPos(state).y,
-    },
+    pos: guestEntry(state, over.seatId ? (seatById.get(over.seatId) ?? null) : null),
     timer: 0,
     budget: 1,
     visits: 0,
@@ -1552,6 +1894,9 @@ const updateStoves = (state: ShopState, dt: number) => {
   for (const stove of openStoves(state)) {
     // 狩り場と森は勝手に作らない。動物を狩る・木を切ると出し口にたまる
     if (isHunt(stove) || isForest(stove)) continue;
+    // 貯蔵庫・仮置き場・建築予定地は、受け取るだけで自分では作らない。
+    // 谷は、マンモスを倒して解体しないと何も出ない
+    if (isStore(stove) || isPile(stove) || isBuild(stove) || stove.beast) continue;
     const ready = state.ready[stove.id] ?? 0;
     const cap = holdCap(state, stove);
     if (ready >= cap) continue;
@@ -1567,10 +1912,14 @@ const updateStoves = (state: ShopState, dt: number) => {
     // 人の手が要る作業場（薪割り場）は、担当者かプレイヤーがそばにいるあいだだけ進む。
     // 途中まで割った進みは残しておく（近づき直せば続きから）
     if (stove.manual && !isManned(state, stove)) continue;
+    // 夜と吹雪は外の仕事を止める。寒いとみんな遅くなる（第2・第4区画）
+    const weather = fireWork(state, stove);
+    if (weather <= 0) continue;
     const boost = stoveHasCook(state, stove.id) ? cookBoost() : 1;
     const work = stove.work ?? 1;
     const progress =
-      (state.cooking[stove.id] ?? 0) + (dt * boost) / (cookTime() * work * factor);
+      (state.cooking[stove.id] ?? 0) +
+      (dt * boost * weather) / (cookTime() * work * factor);
     if (progress >= 1) {
       state.ready[stove.id] = ready + 1;
       state.cooking[stove.id] = progress - 1;
@@ -1598,12 +1947,12 @@ const flowLinks = (state: ShopState, dt: number) => {
     if (!fromStove || !toStove) continue;
     if ((state.ready[from] ?? 0) <= 0) continue;
     // 送り先の、正しい受け口（材料 or まき）へ入れる
-    const slot = stationAccepts(state, toStove, stoveItem(fromStove));
+    const made = stoveItem(fromStove);
+    const slot = stationAccepts(state, toStove, made);
     if (!slot) continue;
-    const buffer = slot === "fuel" ? state.fuel : state.hold;
     state.autoTimer[key] = 0;
     state.ready[from] -= 1;
-    buffer[to] = (buffer[to] ?? 0) + 1;
+    putSlot(state, toStove, made, slot, 1);
   }
 };
 
@@ -1943,7 +2292,12 @@ const updateCustomers = (state: ShopState, dt: number) => {
         );
       }
     } else if (customer.state === "leaving") {
-      if (moveToward(customer.pos, streetPos(state), 112, dt)) customer.id = -1;
+      // 来た方角へ帰る（火のはじまりは区画ごとに野へ戻っていく）
+      const away =
+        state.stageId === "fire"
+          ? { x: seat.pos.x, y: Math.min(worldHeight(state) - 10, seat.pos.y + 120) }
+          : streetPos(state);
+      if (moveToward(customer.pos, away, 112, dt)) customer.id = -1;
     }
   }
   state.customers = state.customers.filter((customer) => customer.id !== -1);
@@ -2047,17 +2401,17 @@ const dropAtStation = (
 ) => {
   if (!holding || carry <= 0) return 0;
   for (const stove of openStoves(state)) {
-    if (!isStation(stove)) continue;
+    if (!takesItems(stove)) continue;
     const slot = stationAccepts(state, stove, holding);
     if (!slot) continue;
     if (dist(pos, stove.pos) > SERVE_RADIUS) continue;
-    const buffer = slot === "fuel" ? state.fuel : state.hold;
-    const cap = holdCap(state, stove);
-    const room = cap - (buffer[stove.id] ?? 0);
-    const put = Math.min(room, carry);
+    const put = putSlot(state, stove, holding, slot, carry);
     if (put <= 0) continue;
-    buffer[stove.id] = (buffer[stove.id] ?? 0) + put;
-    pop(state, { x: stove.pos.x, y: stove.pos.y - 12 }, slot === "fuel" ? "くべた！" : "セット！");
+    pop(
+      state,
+      { x: stove.pos.x, y: stove.pos.y - 12 },
+      slot === "fuel" ? "くべた！" : slot === "build" ? "積んだ！" : "セット！",
+    );
     state.sfx.push("serve");
     return put;
   }
@@ -2213,6 +2567,12 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
   catchPrey(state, player.pos);
   // 森の立木に近づいたら、自分で切る（少しずつ切り進む）
   chopTree(state, player.pos, dt);
+  // 倒れたマンモスに近づいたら、自分でも解体する（1頭目は自分が主役）
+  if (state.fire.beast?.state === "down") {
+    if (dist(player.pos, state.fire.beast.pos) <= 56) {
+      cutBeast(state, BUTCHER_RATE * 1.2, dt);
+    }
+  }
 
   // 近くの出し口から受け取る（複数の種類を同時に持てる）
   // 上限は種類ごとに別なので、生肉を持っていてもまきを拾える
@@ -2332,8 +2692,16 @@ export const carrierLimit = (state: ShopState, worker: Staff) =>
     ? Math.max(5, maxCarry(state))
     : 3 + Math.floor(state.levels.carry / 2);
 
+/** 敷いた道のぶんの足の速さ（村の道は、通る人みんなが速くなる） */
+export const roadBonus = (state: ShopState) =>
+  equipment.reduce(
+    (total, item) => (item.road && hasEquip(state, item.id) ? total + 0.08 : total),
+    1,
+  );
+
 /** スタッフの足の速さ。強化（厨房シューズ／園内カート）の半分だけ効く */
-export const staffSpeedFactor = (state: ShopState) => 1 + state.levels.speed * 0.05;
+export const staffSpeedFactor = (state: ShopState) =>
+  (1 + state.levels.speed * 0.05) * fireMove(state) * roadBonus(state);
 
 const staffSpeed = (state: ShopState) => STAFF_SPEED * staffSpeedFactor(state);
 
@@ -2438,9 +2806,46 @@ type HaulJob = {
   stalled: boolean;
   /** 同じ仕事に何人まで向かってよいか */
   slots: number;
+  /**
+   * 仕事の色分け。専門の係は自分の色の仕事しか取らない。
+   *   work  = ふつうの工程あいだの運び
+   *   store = 貯蔵庫へ入れる（食料番）
+   *   build = 建築予定地へ積む（建築係）
+   *   serve = 待っている仲間へ渡す
+   *   pick  = 出し口から拾う
+   */
+  tag?: "work" | "store" | "build" | "serve" | "pick";
+  /** 拾う仕事のとき、その品を待っているのが建築予定地か */
+  forBuild?: boolean;
+  /** 拾う仕事のとき、その品を待っているのが貯蔵庫か */
+  forStore?: boolean;
+  /** 今夜の食べものにつながる仕事か（足りない夜は、これを先に回す） */
+  night?: boolean;
   /** 実行する。動かした数を返す */
   run: () => number;
 };
+
+/**
+ * 専門の係が受け持つ仕事。
+ * はこび手と犬ぞりは何でも運ぶが、食料番・建築係は自分の持ち場だけを見る。
+ * （名前が違う人は、動きも違う）
+ */
+const jobAllowed = (worker: Staff, job: HaulJob) => {
+  if (worker.kind === "builder") {
+    return job.tag === "build" || (job.tag === "pick" && job.forBuild === true);
+  }
+  // 食料番は食べもの、夜番は薪。同じ「貯蔵庫へ入れる」でも持ち場が違う
+  if (worker.kind === "keeper" || worker.kind === "nightman") {
+    const mine = worker.kind === "nightman" ? job.kind === "wood" : job.kind !== "wood";
+    const store = job.tag === "store" || (job.tag === "pick" && job.forStore === true);
+    return mine && store;
+  }
+  return true;
+};
+
+/** 今夜の食事につながる場所か（燻製小屋と、保存肉の貯蔵庫） */
+const feedsNight = (stove: StoveSpec) =>
+  stove.item === "smoked" || (isStore(stove) && stove.takes === "smoked");
 
 /** その仕事に、いま何人が向かっているか */
 const claimCount = (state: ShopState, worker: Staff, id: string) =>
@@ -2459,23 +2864,20 @@ const dropJobs = (state: ShopState, worker: Staff): HaulJob[] => {
     for (const stove of stationsWanting(state, kind)) {
       const slot = stationAccepts(state, stove, kind);
       if (!slot) continue;
-      const buffer = slot === "fuel" ? state.fuel : state.hold;
-      const room = holdCap(state, stove) - (buffer[stove.id] ?? 0);
+      const room = slotRoom(state, stove, kind, slot);
       jobs.push({
         id: `${kind}@${stove.id}`,
         kind,
         at: stove.pos,
         drop: true,
         // 受け口が空＝その工程は止まっている。まっさきに助ける
-        stalled: (buffer[stove.id] ?? 0) <= 0,
+        stalled: slotHave(state, stove, kind, slot) <= 0,
+        tag: slot === "build" ? "build" : isStore(stove) ? "store" : "work",
+        night: feedsNight(stove),
         slots: Math.max(1, Math.ceil(room / carrierLimit(state, worker))),
         run: () => {
-          const put = Math.min(
-            holdCap(state, stove) - (buffer[stove.id] ?? 0),
-            carryOf(worker, kind),
-          );
+          const put = putSlot(state, stove, kind, slot, carryOf(worker, kind));
           if (put <= 0) return 0;
-          buffer[stove.id] = (buffer[stove.id] ?? 0) + put;
           takeFromBag(worker, kind, put);
           return put;
         },
@@ -2493,6 +2895,7 @@ const dropJobs = (state: ShopState, worker: Staff): HaulJob[] => {
         drop: true,
         // 待たせている仲間も「止まっている先」として先に回る
         stalled: true,
+        tag: "serve",
         slots: 1,
         run: () => {
           const used = serve(state, worker.pos, kind, carryOf(worker, kind));
@@ -2519,13 +2922,12 @@ const pickJobs = (state: ShopState, worker: Staff): HaulJob[] => {
     if (roomFor(state, worker, kind) <= 0) continue;
     if (!itemHasDemand(state, kind)) continue;
     // その品を待って止まっている先があるか
+    const wanting = stationsWanting(state, kind);
     const stalled =
-      stationsWanting(state, kind).some(
-        (stove) =>
-          (stationAccepts(state, stove, kind) === "fuel"
-            ? fuelAt(state, stove.id)
-            : heldAt(state, stove.id)) <= 0,
-      ) ||
+      wanting.some((stove) => {
+        const slot = stationAccepts(state, stove, kind);
+        return !!slot && slotHave(state, stove, kind, slot) <= 0;
+      }) ||
       state.customers.some((customer) => {
         if (customer.state !== "waiting") return false;
         const seat = seatById.get(customer.seatId);
@@ -2537,6 +2939,10 @@ const pickJobs = (state: ShopState, worker: Staff): HaulJob[] => {
       at: source.pos,
       drop: false,
       stalled,
+      tag: "pick",
+      forBuild: wanting.some((stove) => isBuild(stove)),
+      forStore: wanting.some((stove) => isStore(stove)),
+      night: wanting.some(feedsNight),
       slots: Math.max(1, Math.ceil(stock / carrierLimit(state, worker))),
       run: () => {
         let took = 0;
@@ -2576,7 +2982,7 @@ const updateHauler = (state: ShopState, worker: Staff, dt: number) => {
   }
 
   const jobs = [...dropJobs(state, worker), ...pickJobs(state, worker)].filter(
-    (job) => claimCount(state, worker, job.id) < job.slots,
+    (job) => jobAllowed(worker, job) && claimCount(state, worker, job.id) < job.slots,
   );
 
   if (jobs.length === 0) {
@@ -2586,8 +2992,19 @@ const updateHauler = (state: ShopState, worker: Staff, dt: number) => {
     return;
   }
 
+  /*
+   * どの仕事から回すか。
+   *   1. 今夜のぶんが足りていない日は、保存肉づくりを何より先に
+   *   2. 次に、建てかけの建物へ材料を入れる（貯蔵庫にため込むより先）
+   *   3. あとは、止まっている工程 → 届ける仕事 → 近いもの
+   */
+  const short = nightShort(state);
   const score = (job: HaulJob) =>
-    dist(worker.pos, job.at) - (job.stalled ? 260 : 0) - (job.drop ? 70 : 0);
+    dist(worker.pos, job.at) -
+    (job.stalled ? 260 : 0) -
+    (job.drop ? 70 : 0) -
+    (job.night && short ? 620 : 0) -
+    (job.tag === "build" || (job.tag === "pick" && job.forBuild) ? 240 : 0);
 
   // いま向かっている仕事を続けて、目移りしない
   const keep = jobs.find((job) => job.id === worker.target);
@@ -2669,14 +3086,105 @@ const updateAuto = (state: ShopState, dt: number) => {
 
 const updateStaff = (state: ShopState, dt: number) => {
   for (const worker of state.staff) {
+    // マンモスにはね飛ばされた人は、しばらく起き上がれない（死なない）
+    if ((worker.down ?? 0) > 0) {
+      worker.down = Math.max(0, (worker.down ?? 0) - dt);
+      worker.settled = true;
+      worker.moving = false;
+      continue;
+    }
+
     if (worker.kind === "cook") {
       go(state, worker, cookPost(worker), staffSpeed(state), dt);
+      continue;
+    }
+
+    if (worker.kind === "butcher") {
+      // 解体係: 倒れたマンモスへ行き、削って仮置き場へ出していく
+      const beast = state.fire.beast;
+      const post = worker.stoveId ? stoveById.get(worker.stoveId) : null;
+      if (!beast || beast.state !== "down") {
+        go(state, worker, post ? { x: post.pos.x, y: post.pos.y + 30 } : worker.home, staffSpeed(state) * 0.6, dt);
+        worker.charge = 0;
+        continue;
+      }
+      const stand = { x: beast.pos.x + (worker.id % 2 === 0 ? 34 : -34), y: beast.pos.y + 18 };
+      if (go(state, worker, stand, staffSpeed(state), dt)) {
+        worker.charge = 0.3; // 描画側が「刻んでいる」しるしに使う
+        cutBeast(state, BUTCHER_RATE, dt);
+      }
+      continue;
+    }
+
+    if (worker.kind === "explorer") {
+      // 先まわりして見つけてくる人。
+      // 谷では追跡者としてマンモスを離れて追い、川では船着き場から探索に出る
+      const beast = state.fire.beast;
+      const valley = openStoves(state).find((stove) => stove.beast);
+      if (beast && beast.state !== "down" && valley?.area === worker.area) {
+        go(
+          state,
+          worker,
+          {
+            x: beast.pos.x - beast.face * 130,
+            y: beast.pos.y - 60,
+          },
+          staffSpeed(state) * 0.95,
+          dt,
+        );
+        worker.target = "beast";
+        continue;
+      }
+      const dock = openStoves(state).find((stove) => stove.gives?.dock);
+      const at = dock
+        ? { x: dock.pos.x + ((worker.id % 3) - 1) * 22, y: dock.pos.y + 34 }
+        : worker.home;
+      go(state, worker, at, staffSpeed(state) * 0.7, dt);
       continue;
     }
 
     if (worker.kind === "hunter") {
       // 狩人: 担当の狩り場で、いちばん近い動物を追って狩る
       const ground = worker.stoveId ? stoveById.get(worker.stoveId) : null;
+      if (ground?.beast) {
+        // 谷の狩人は、群れでマンモスを追い込む（1人では倒れない）
+        const beast = state.fire.beast;
+        const speed = staffSpeed(state);
+        if (!beast || beast.state === "down" || beast.state === "falling") {
+          const zone = huntZone(state, ground);
+          const t = state.playTime * 0.3 + worker.id;
+          go(
+            state,
+            worker,
+            {
+              x: (zone.x0 + zone.x1) / 2 + Math.cos(t) * (zone.x1 - zone.x0) * 0.3,
+              y: (zone.y0 + zone.y1) / 2 + Math.sin(t * 1.3) * (zone.y1 - zone.y0) * 0.3,
+            },
+            speed * 0.5,
+            dt,
+          );
+          continue;
+        }
+        // 同じ場所に重ならないよう、まわりを取り囲む
+        const mates = state.staff.filter(
+          (item) => item.kind === "hunter" && item.stoveId === ground.id,
+        );
+        const slot = mates.indexOf(worker);
+        const angle = (slot / Math.max(1, mates.length)) * Math.PI * 2;
+        const reach = beast.stamina > 0 ? 62 : 40;
+        go(
+          state,
+          worker,
+          {
+            x: beast.pos.x + Math.cos(angle) * reach,
+            y: beast.pos.y + Math.sin(angle) * reach * 0.6,
+          },
+          speed * 1.05,
+          dt,
+        );
+        worker.charge = dist(worker.pos, beast.pos) < 90 ? 0.3 : 0;
+        continue;
+      }
       const zone = ground ? huntZone(state, ground) : null;
       const speed = staffSpeed(state);
       const targets = worker.stoveId ? preyOf(state, worker.stoveId) : [];
@@ -2939,10 +3447,15 @@ const updateStaff = (state: ShopState, dt: number) => {
       continue;
     }
 
-    // 工程のあるステージでは、はこび手は「作業場から作業場へ」も運ぶ
+    // 工程のあるステージでは、はこび手は「作業場から作業場へ」も運ぶ。
+    // 建築係・食料番・夜番は、同じ運びかたで持ち場だけが違う
     if (
       isChainStage() &&
-      (worker.kind === "waiter" || worker.kind === "robot")
+      (worker.kind === "waiter" ||
+        worker.kind === "robot" ||
+        worker.kind === "builder" ||
+        worker.kind === "keeper" ||
+        worker.kind === "nightman")
     ) {
       updateHauler(state, worker, dt);
       continue;
@@ -3125,6 +3638,8 @@ const updateStaff = (state: ShopState, dt: number) => {
 
 export const update = (state: ShopState, input: Input, dt: number) => {
   state.playTime += dt;
+  // 昼夜・天気・住民・谷・探索は、ほかの何より先に決める
+  updateFire(state, dt, coinValue(state.levels.price));
   updateStoves(state, dt);
   updateHunt(state, dt);
   updateForest(state, dt);
@@ -3134,7 +3649,7 @@ export const update = (state: ShopState, input: Input, dt: number) => {
   updateAuto(state, dt);
   updateStaff(state, dt);
   spread(state, dt);
-  updateReveals(state);
+  updateReveals(state, dt);
   updatePads(state, dt);
   for (const coin of state.coins) coin.age += dt;
   for (const item of state.pops) item.age += dt;
@@ -3162,6 +3677,65 @@ const chainObjective = (state: ShopState): Objective | null => {
     (stove) => isStation(stove) && stove.fuel,
   );
   if (fires.length === 0) return null;
+
+  // 集落ができてからは、その日その時間にいちばん大事なことを先に出す
+  if (fireLive(state)) {
+    const fire = state.fire;
+    const beast = fire.beast;
+    if (beast?.state === "down") {
+      return {
+        kind: "serve",
+        pos: beast.pos,
+        label: beast.stuck
+          ? "仮置き場が満杯だ。運び出さないと解体が進まない"
+          : "倒れたマンモスを解体しよう",
+      };
+    }
+    if (beast && beast.state !== "falling") {
+      const hunters = state.staff.filter(
+        (worker) => worker.kind === "hunter" && worker.stoveId,
+      ).length;
+      if (hunters + 1 >= 3) {
+        return {
+          kind: "serve",
+          pos: beast.pos,
+          label:
+            beast.stamina > 0
+              ? "みんなでマンモスを追い立てよう"
+              : "疲れている。いまなら仕留められる",
+        };
+      }
+      return {
+        kind: "wait",
+        pos: beast.pos,
+        label: "3人そろわないとマンモスには挑めない",
+      };
+    }
+    if (fire.phase === "dusk") {
+      const need = nightNeed(state);
+      const have = stockIn(state, "smoked");
+      if (need > 0 && have < need) {
+        const smoker = openStoves(state)
+          .filter((stove) => stove.takes === "roast")
+          .sort((a, b) => dist(player.pos, a.pos) - dist(player.pos, b.pos))[0];
+        return {
+          kind: "serve",
+          pos: smoker?.pos ?? null,
+          label: `日暮れまであと${Math.ceil(phaseLeft(fire))}秒 ― 保存肉 ${have}/${need}`,
+        };
+      }
+    }
+    if (fire.phase === "night") {
+      return {
+        kind: "wait",
+        pos: null,
+        label:
+          fire.shortfall > 0
+            ? `保存肉が${fire.shortfall}こ足りなかった。明日は燻製を増やそう`
+            : `${fire.day}日目の夜 ― 広場で朝を待とう`,
+      };
+    }
+  }
 
   const near = <T,>(list: T[], at: (item: T) => Vec): T | null =>
     list.length === 0
@@ -3520,6 +4094,8 @@ export const applyOffline = (
   const staffed = (kind: StaffKind, stoveId: string) =>
     state.staff.some((w) => w.kind === kind && w.stoveId === stoveId);
   const cookRate = openStoves(state).reduce((sum, stove) => {
+    // 貯蔵庫・仮置き場・建築予定地・谷は、それ自体は何も作らない
+    if (isStore(stove) || isPile(stove) || isBuild(stove) || stove.beast) return sum;
     // 草原と森は、狩人・木こりがいるあいだだけ実る（留守は本人が動けない）
     if (isHunt(stove)) {
       return sum + (staffed("hunter", stove.id) ? 1 / HUNT_SPAWN : 0);

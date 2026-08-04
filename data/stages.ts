@@ -86,6 +86,11 @@ export type StageDef = {
    * 指定すると、条件を満たした枠を順ぐりに少しずつ出す
    */
   revealLimit?: number;
+  /**
+   * ここに書いたものを開くと、同時に見せる枠の数がこの数まで増える。
+   * 1区画目は「次の一手」だけ、2区画目からは 5〜10個から選べるようにする。
+   */
+  revealLimitBy?: Record<string, number>;
   /** 入口とお客さんの来る通りの横位置（省略で 306） */
   entranceX?: number;
   /** はじめる位置（省略で x180 y250） */
@@ -323,7 +328,7 @@ const ramenHires: HireSpec[] = [
   { id: "robot-1", kind: "robot", pos: { x: 310, y: 394 }, price: 4000, label: "配膳ロボ", area: 0, unlockAfter: "waiter-2" },
   { id: "waiter-3", kind: "waiter", pos: { x: 60, y: 700 }, price: 9000, label: "ホール店員", area: 1 },
   { id: "collector-2", kind: "collector", pos: { x: 180, y: 704 }, price: 14000, label: "レジ係", area: 1, unlockAfter: "waiter-3" },
-  { id: "robot-2", kind: "robot", pos: { x: 300, y: 700 }, price: 26000, label: "配膳ロボ", area: 1, unlockAfter: "waiter-3" },
+  { id: "robot-2", kind: "robot", pos: { x: 300, y: 700 }, price: 15000, label: "配膳ロボ", area: 1, unlockAfter: "waiter-3" },
   { id: "master-1", kind: "master", pos: { x: 430, y: 700 }, price: 180000, label: "板前", area: 3 },
   { id: "robot-3", kind: "robot", pos: { x: 560, y: 700 }, price: 260000, label: "配膳ロボ", area: 3, unlockAfter: "waiter-4" },
   { id: "waiter-4", kind: "waiter", pos: { x: 680, y: 700 }, price: 90000, label: "ホール店員", area: 3 },
@@ -509,7 +514,7 @@ const parkSeats: SeatSpec[] = [
     { x: 300, price: 420, label: "ミニ観覧車", cost: 2, art: "wheel", detail: "広場を見下ろす小さな観覧車" },
   ]),
   ...rideRow(1, 294, [
-    { x: 432, price: 1200, label: "メリーゴーラウンド", art: "carousel", detail: "白馬がゆっくり上下する" },
+    { x: 432, price: 700, label: "メリーゴーラウンド", art: "carousel", detail: "白馬がゆっくり上下する" },
     { x: 540, price: 3000, label: "ゆめの気球", cost: 2, art: "balloonride", detail: "気球のゴンドラで空へ" },
     { x: 648, price: 7000, label: "おとぎの城ツアー", cost: 2, art: "castleride", detail: "城の中をトロッコで巡る" },
   ]),
@@ -691,9 +696,11 @@ const benchRow = (
   value: number,
   label: string,
   benches: { x: number; price: number; unlockAfter?: string; reveal?: number }[],
+  /** 同じ区画に二種類のベンチを置くときの区別（id に入る） */
+  tag = "",
 ): SeatSpec[] =>
   benches.map((bench, i) => ({
-    id: `seat-${area}-${i + 1}`,
+    id: `seat-${area}-${tag}${i + 1}`,
     pos: { x: bench.x, y: baseY + 64 },
     serve: { x: bench.x, y: baseY },
     tray: { x: bench.x, y: baseY + 24 },
@@ -704,7 +711,10 @@ const benchRow = (
     needs,
     value,
     reveal: bench.reveal,
-    unlockAfter: bench.unlockAfter ?? (i > 0 ? `seat-${area}-${i}` : undefined),
+    // 席の列と同じで、ふたつ先まで並べて見せる
+    unlockAfter:
+      bench.unlockAfter ??
+      (i >= AHEAD ? `seat-${area}-${tag}${i + 1 - AHEAD}` : undefined),
   }));
 
 /**
@@ -725,23 +735,60 @@ const fireAreas: AreaSpec[] = [
   },
   {
     id: "area-1",
-    label: "南の草原をひらく",
+    label: "東に集落をひらく",
     price: 2400,
-    rect: { x0: 0, y0: 520, x1: 720, y1: 1040 },
-    padPos: { x: 360, y: 492 },
+    rect: { x0: 720, y0: 0, x1: 1620, y1: 760 },
+    padPos: { x: 690, y: 300 },
     palette: { floor: "#26301c", deep: "#182010", prop: "none" },
-    // 1区画目が自動でまわるようになってから、はじめて外の話が出てくる
+    // 1区画目が自動でまわるようになってから、はじめて外の話が出てくる。
+    // 便利にする設備（樋・石おの）より先に見せて、
+    //「いまを楽にするか、東へ広げるか」を選べるようにする
     unlockAfter: "robot-1",
-    reveal: 22,
+    reveal: 11.6,
   },
   {
     id: "area-2",
     label: "マンモスの谷へ下りる",
-    price: 40000,
-    rect: { x0: 720, y0: 0, x1: 1440, y1: 520 },
-    padPos: { x: 690, y: 260 },
-    palette: { floor: "#2a2320", deep: "#1a1512", prop: "none" },
-    reveal: 30,
+    price: 18000,
+    rect: { x0: 1620, y0: 0, x1: 2860, y1: 760 },
+    padPos: { x: 1590, y: 300 },
+    palette: { floor: "#3a3128", deep: "#241d17", prop: "none" },
+    // 集会所ができて、みんなが集まってはじめて足跡の話が出る
+    unlockAfter: "built-build-hall",
+    reveal: 40,
+  },
+  {
+    id: "area-3",
+    label: "冬ごもりの丘へうつる",
+    price: 180000,
+    rect: { x0: 2860, y0: 0, x1: 3760, y1: 760 },
+    padPos: { x: 2830, y: 300 },
+    palette: { floor: "#44505c", deep: "#2a343e", prop: "snow" },
+    // 大宴会のあと、雪雲が近づいてくる
+    unlockAfter: "built-build-feast",
+    reveal: 60,
+  },
+  {
+    id: "area-4",
+    label: "村をつくる",
+    price: 700000,
+    rect: { x0: 3760, y0: 0, x1: 4660, y1: 760 },
+    padPos: { x: 3730, y: 300 },
+    palette: { floor: "#3c4230", deep: "#252a1c", prop: "none" },
+    // 寒い夜を3回越えると、雪が解けはじめる
+    unlockAfter: "mark-cold-3",
+    reveal: 80,
+  },
+  {
+    id: "area-5",
+    label: "川へ下りる",
+    price: 3000000,
+    rect: { x0: 4660, y0: 0, x1: 5560, y1: 760 },
+    padPos: { x: 4630, y: 300 },
+    palette: { floor: "#2f4247", deep: "#1b2a2f", prop: "ship" },
+    // 村がひととおりそろってから、探索者が川を見つける
+    unlockAfter: "mark-pop-24",
+    reveal: 100,
   },
 ];
 
@@ -818,18 +865,178 @@ const fireStoves: StoveSpec[] = [
     reveal: 20,
   },
 
-  /* --- area-1: 同じ工程がもう一式 --- */
-  { id: "hunt-2", pos: { x: 150, y: 842 }, price: 5000, area: 1, item: "meat", art: "hunt", label: "狩り場", zone: { x0: 26, y0: 586, x1: 268, y1: 808 }, hold: 6, reveal: 23 },
-  { id: "forest-2", pos: { x: 574, y: 842 }, price: 6000, area: 1, item: "log", art: "forest", label: "森", zone: { x0: 452, y0: 586, x1: 694, y1: 808 }, hold: 6, reveal: 24 },
-  { id: "split-2", pos: { x: 544, y: 920 }, price: 7000, area: 1, item: "wood", takes: "log", art: "split", label: "薪割り場", manual: true, work: 0.5, reveal: 25 },
-  { id: "fire-2", pos: { x: 344, y: 716 }, price: 9000, area: 1, item: "roast", takes: "meat", fuel: "wood", art: "fire", label: "たき火", reveal: 26 },
+  /* ============ area-1 第2区画「集落のはじまり」 ============
+   *
+   * その場で食べるだけの生活から、蓄えて、仲間が暮らす集落へ。
+   *
+   *   1区画目の生肉 ─┐
+   *                   ├─▶ たき火 ──(焼き肉)─┬─▶ ベンチの仲間（貝がら）
+   *   森 ─(丸太)─┬─ 薪割り場 ─(薪)─┘        └─▶ 燻製小屋 ─(保存肉)─▶ 食料庫 ─▶ 夜の食事
+   *              └──────────────────────────────▶ 建築予定地（住居・集会所）
+   *
+   * 丸太をぜんぶ薪にすると家が建たない。ぜんぶ建築に回すと火が消える。
+   * この配分が第2区画のいちばんの判断になる。
+   */
+  { id: "store-1", pos: { x: 1200, y: 300 }, price: 1200, area: 1, takes: "smoked", store: true, hold: 8, art: "store", label: "食料庫", reveal: 22 },
+  { id: "smoke-1", pos: { x: 1040, y: 196 }, price: 1500, area: 1, item: "smoked", takes: "roast", fuel: "wood", art: "smoke", label: "燻製小屋", work: 1.5, reveal: 24 },
+  { id: "fire-2", pos: { x: 880, y: 196 }, price: 1000, area: 1, item: "roast", takes: "meat", fuel: "wood", art: "fire", label: "たき火", reveal: 23 },
+  { id: "forest-2", pos: { x: 1470, y: 330 }, price: 1700, area: 1, item: "log", art: "forest", label: "東の森", zone: { x0: 1330, y0: 80, x1: 1596, y1: 300 }, hold: 6, reveal: 25 },
+  { id: "split-2", pos: { x: 1420, y: 430 }, price: 1900, area: 1, item: "wood", takes: "log", art: "split", label: "薪割り場", manual: true, work: 0.5, reveal: 26 },
+  // 建築予定地: 買うと予定地が立ち、材料を運びこむと建物になる
+  {
+    id: "build-hut-1", pos: { x: 800, y: 600 }, price: 600, area: 1,
+    art: "hut", label: "最初の住居", needs: { log: 6, smoked: 4 },
+    gives: { houses: 2, note: "住居ができた！ 仲間が住みはじめる" }, reveal: 28,
+  },
+  {
+    id: "build-hearth", pos: { x: 1120, y: 590 }, price: 1300, area: 1,
+    art: "hearth", label: "共同たき火", needs: { log: 4, wood: 4 },
+    gives: { hearth: true, warm: 2, note: "共同たき火に火が入った。夜の広場が明るい" },
+    unlockAfter: "built-build-hut-1", reveal: 31,
+  },
+  {
+    id: "build-hut-2", pos: { x: 950, y: 650 }, price: 1800, area: 1,
+    art: "hut", label: "2軒目の住居", needs: { log: 8, smoked: 6 },
+    gives: { houses: 2, note: "2軒目の住居ができた" },
+    unlockAfter: "built-build-hut-1", reveal: 33,
+  },
+  {
+    id: "build-hut-3", pos: { x: 1270, y: 650 }, price: 3400, area: 1,
+    art: "hut", label: "3軒目の住居", needs: { log: 10, smoked: 6 },
+    gives: { houses: 3, note: "3軒目の住居ができた" },
+    unlockAfter: "built-build-hut-2", reveal: 36,
+  },
+  {
+    id: "build-hall", pos: { x: 1420, y: 590 }, price: 5000, area: 1,
+    art: "hall", label: "集会所", needs: { log: 14, wood: 6, smoked: 6 },
+    gives: { warm: 1, note: "集会所ができた ― 谷でマンモスの足跡が見つかった" },
+    unlockAfter: "built-build-hut-2", reveal: 38,
+  },
 
-  /* --- area-2: さばく工程が1つ増える（生肉 → 切り身 → ごちそう） --- */
-  { id: "hunt-3", pos: { x: 870, y: 322 }, price: 40000, area: 2, item: "meat", art: "hunt", label: "マンモスの原", zone: { x0: 746, y0: 66, x1: 988, y1: 288 }, hold: 6 },
-  { id: "forest-3", pos: { x: 1294, y: 322 }, price: 52000, area: 2, item: "log", art: "forest", label: "大森林", zone: { x0: 1172, y0: 66, x1: 1414, y1: 288 }, hold: 6 },
-  { id: "split-3", pos: { x: 1264, y: 400 }, price: 60000, area: 2, item: "wood", takes: "log", art: "split", label: "薪割り場", manual: true, work: 0.5 },
-  { id: "butcher-1", pos: { x: 1060, y: 130 }, price: 80000, area: 2, item: "cut", takes: "meat", art: "cut", label: "さばき台" },
-  { id: "grill-1", pos: { x: 1064, y: 300 }, price: 140000, area: 2, item: "feast", takes: "cut", fuel: "wood", art: "fire", label: "大かまど" },
+  /* ============ area-2 第3区画「マンモスの谷」 ============
+   *
+   * 一定時間ごとに肉を出す設備ではなく、
+   * 歩き、警戒し、逃げ、突進してくる一頭を、みんなで追い込んで倒す。
+   * 倒したあとは解体と大量輸送がはじまる。
+   */
+  {
+    id: "mammoth-1", pos: { x: 2150, y: 470 }, price: 9000, area: 2,
+    art: "valley", label: "狩猟キャンプ", beast: true, hold: 1,
+    zone: { x0: 1700, y0: 80, x1: 2620, y1: 400 }, reveal: 41,
+  },
+  // 解体場は狩猟キャンプについてくる（買い忘れで解体が止まらないように）
+  { id: "pile-meat", pos: { x: 2060, y: 640 }, price: 0, area: 2, item: "mmeat", pile: true, hold: 8, art: "pile", label: "肉置き場", unlockAfter: "mammoth-1" },
+  { id: "pile-hide", pos: { x: 2200, y: 640 }, price: 0, area: 2, item: "hide", pile: true, hold: 6, art: "pile", label: "毛皮置き場", unlockAfter: "mammoth-1" },
+  { id: "pile-bone", pos: { x: 2340, y: 640 }, price: 0, area: 2, item: "bone", pile: true, hold: 6, art: "pile", label: "骨置き場", unlockAfter: "mammoth-1" },
+  { id: "pile-fat", pos: { x: 2480, y: 640 }, price: 0, area: 2, item: "fat", pile: true, hold: 6, art: "pile", label: "脂置き場", unlockAfter: "mammoth-1" },
+  { id: "pile-tusk", pos: { x: 2620, y: 640 }, price: 0, area: 2, item: "tusk", pile: true, hold: 4, art: "pile", label: "牙置き場", unlockAfter: "mammoth-1" },
+  { id: "grill-1", pos: { x: 1760, y: 600 }, price: 26000, area: 2, item: "feast", takes: "mmeat", fuel: "wood", art: "grill", label: "大かまど", reveal: 48 },
+  { id: "bone-1", pos: { x: 1920, y: 600 }, price: 30000, area: 2, item: "tool", takes: "bone", art: "bonework", label: "骨細工場", work: 1.2, reveal: 52 },
+  {
+    id: "build-feast", pos: { x: 2760, y: 600 }, price: 40000, area: 2,
+    art: "feast", label: "大宴会場", needs: { mmeat: 30, wood: 16, fat: 4 },
+    gives: { warm: 1, note: "大宴会がはじまった ― 火の粉が夜空へ上がる" },
+    unlockAfter: "mark-kills-2", reveal: 57,
+  },
+
+  /* ============ area-3 第4区画「冬を越す」 ============
+   *
+   * 集めるだけでなく、集落全体が生きられる環境をつくる。
+   * 気温・吹雪・保温・防寒着。人は死なないが、寒いと何もかも遅くなる。
+   */
+  { id: "tan-1", pos: { x: 2960, y: 210 }, price: 60000, area: 3, item: "coat", takes: "hide", art: "tan", label: "皮なめし場", work: 1.2, reveal: 61 },
+  { id: "store-coat", pos: { x: 3100, y: 210 }, price: 30000, area: 3, takes: "coat", store: true, hold: 10, art: "rack", label: "衣装棚", reveal: 62 },
+  { id: "store-wood", pos: { x: 3250, y: 210 }, price: 45000, area: 3, takes: "wood", store: true, hold: 20, art: "woodstore", label: "大型薪倉庫", reveal: 63 },
+  { id: "store-food2", pos: { x: 3400, y: 210 }, price: 70000, area: 3, takes: "smoked", store: true, hold: 16, art: "store", label: "保存肉倉庫", reveal: 66 },
+  {
+    id: "build-hearth-2", pos: { x: 3120, y: 570 }, price: 40000, area: 3,
+    art: "hearth", label: "丘の共同たき火", needs: { log: 6, wood: 8 },
+    gives: { hearth: true, warm: 3, note: "丘にも火が入った" }, reveal: 64,
+  },
+  {
+    id: "build-hut-4", pos: { x: 2960, y: 570 }, price: 50000, area: 3,
+    art: "furhut", label: "毛皮の住居", needs: { log: 10, hide: 4 },
+    gives: { houses: 4, warm: 2, note: "毛皮の住居ができた。夜が寒くない" }, reveal: 65,
+  },
+  {
+    id: "build-lamp", pos: { x: 3280, y: 570 }, price: 60000, area: 3,
+    art: "lamp", label: "脂のランプ", needs: { fat: 4, bone: 2 },
+    gives: { warm: 2, note: "脂のランプがともった。夜も手もとが見える" }, reveal: 68,
+  },
+  {
+    id: "build-hut-5", pos: { x: 3440, y: 570 }, price: 90000, area: 3,
+    art: "furhut", label: "大きな毛皮の住居", needs: { log: 14, hide: 6, coat: 2 },
+    gives: { houses: 4, warm: 1, note: "大きな住居ができた" },
+    unlockAfter: "built-build-hut-4", reveal: 70,
+  },
+
+  /* ============ area-4 第5区画「村の誕生」 ============
+   *
+   * 仮の集落から、長く暮らす村へ。ここからは人口が主な進み具合になる。
+   */
+  // 村と川辺には、それぞれの森を置く。
+  // ここまで来て第1・第2区画から丸太を運ばせると、道のりが長すぎて
+  // 土器も、いかだも、公共設備も、いつまでも建たない（素振りで詰まった）
+  { id: "forest-4", pos: { x: 4570, y: 300 }, price: 90000, area: 4, item: "log", art: "forest", label: "村はずれの森", zone: { x0: 4400, y0: 90, x1: 4645, y1: 250 }, hold: 6, reveal: 80.5 },
+  { id: "split-4", pos: { x: 4430, y: 300 }, price: 110000, area: 4, item: "wood", takes: "log", art: "split", label: "薪割り場", manual: true, work: 0.5, reveal: 80.7 },
+  { id: "claypit-1", pos: { x: 3860, y: 230 }, price: 120000, area: 4, item: "clay", art: "clay", label: "粘土穴", manual: true, work: 0.8, hold: 6, reveal: 81 },
+  { id: "pottery-1", pos: { x: 4010, y: 230 }, price: 160000, area: 4, item: "pot", takes: "clay", fuel: "wood", art: "pottery", label: "土器工房", reveal: 82 },
+  { id: "tool-1", pos: { x: 4160, y: 230 }, price: 200000, area: 4, item: "tool", takes: "bone", art: "toolshop", label: "道具工房", work: 0.8, reveal: 85 },
+  {
+    id: "build-well", pos: { x: 3860, y: 570 }, price: 100000, area: 4,
+    art: "well", label: "井戸", needs: { log: 8, wood: 6 },
+    gives: { note: "井戸ができた。水くみが village の仕事になる" }, reveal: 83,
+  },
+  {
+    id: "build-gate", pos: { x: 4020, y: 570 }, price: 220000, area: 4,
+    art: "gate", label: "村の門", needs: { log: 16, tusk: 2 },
+    gives: { note: "村の門が立った" }, reveal: 87,
+  },
+  {
+    id: "build-watch", pos: { x: 4180, y: 570 }, price: 260000, area: 4,
+    art: "watch", label: "見張り台", needs: { log: 12, wood: 8, tool: 2 },
+    gives: { note: "見張り台から遠くが見える" }, reveal: 89,
+  },
+  {
+    id: "build-hut-6", pos: { x: 4340, y: 570 }, price: 300000, area: 4,
+    art: "bighut", label: "大きな住居", needs: { log: 16, hide: 8, pot: 2 },
+    gives: { houses: 6, warm: 1, note: "大きな住居ができた" }, reveal: 90,
+  },
+  {
+    id: "build-hut-7", pos: { x: 4340, y: 660 }, price: 380000, area: 4,
+    art: "bighut", label: "もう一軒の大きな住居", needs: { log: 18, hide: 8, pot: 4 },
+    gives: { houses: 6, warm: 1, note: "村の住居がそろった" },
+    unlockAfter: "built-build-hut-6", reveal: 92.5,
+  },
+  {
+    id: "build-hall2", pos: { x: 4500, y: 570 }, price: 400000, area: 4,
+    art: "hall", label: "集会所の拡張", needs: { log: 20, pot: 6, tusk: 2 },
+    gives: { warm: 1, note: "集会所が広がった。村じゅうが集まれる" },
+    unlockAfter: "built-build-gate", reveal: 93,
+  },
+
+  /* ============ area-5 第6区画「川への道」 ============
+   *
+   * 村の内側を整える段階から、遠くの土地を探し、交易をはじめる段階へ。
+   */
+  { id: "forest-5", pos: { x: 5080, y: 250 }, price: 300000, area: 5, item: "log", art: "forest", label: "川辺の林", zone: { x0: 4995, y0: 100, x1: 5180, y1: 225 }, hold: 6, reveal: 100.5 },
+  { id: "split-5", pos: { x: 5080, y: 330 }, price: 340000, area: 5, item: "wood", takes: "log", art: "split", label: "薪割り場", manual: true, work: 0.5, reveal: 100.7 },
+  { id: "plank-1", pos: { x: 4770, y: 230 }, price: 600000, area: 5, item: "plank", takes: "log", art: "plank", label: "木材加工場", reveal: 101 },
+  { id: "rope-1", pos: { x: 4920, y: 230 }, price: 500000, area: 5, item: "rope", takes: "log", art: "rope", label: "縄工房", work: 0.8, reveal: 102 },
+  { id: "fish-1", pos: { x: 5330, y: 250 }, price: 400000, area: 5, item: "fish", art: "fish", label: "川の瀬", manual: true, hold: 6, zone: { x0: 5200, y0: 110, x1: 5530, y1: 360 }, reveal: 103 },
+  { id: "store-river", pos: { x: 4920, y: 400 }, price: 800000, area: 5, takes: "smoked", store: true, hold: 20, art: "store", label: "川辺の倉庫", reveal: 106 },
+  {
+    id: "build-raft-s", pos: { x: 5090, y: 520 }, price: 700000, area: 5,
+    art: "raft", label: "小型いかだ", needs: { plank: 6, rope: 4 },
+    gives: { dock: true, note: "小型いかだができた ― 探索に出られる" }, reveal: 104,
+  },
+  {
+    id: "build-raft-l", pos: { x: 5290, y: 560 }, price: 2000000, area: 5,
+    art: "bigraft", label: "大型いかだ",
+    needs: { plank: 14, rope: 8, smoked: 12, hide: 6, tool: 4, pot: 4 },
+    gives: { sail: true, note: "大型いかだができた" },
+    unlockAfter: "found-river", reveal: 110,
+  },
 ];
 
 const fireSeats: SeatSpec[] = [
@@ -839,15 +1046,42 @@ const fireSeats: SeatSpec[] = [
     { x: 248, price: 76, unlockAfter: "waiter-1", reveal: 5 },
     { x: 376, price: 90, unlockAfter: "waiter-2", reveal: 7.5 },
   ]),
-  ...benchRow(1, 944, "roast", 1.4, "草原のベンチ", [
-    { x: 120, price: 12000, reveal: 27 },
-    { x: 248, price: 24000, reveal: 28 },
-    { x: 376, price: 48000, reveal: 29 },
+  // 第2区画: 集落の広場に面したベンチ。焼き肉を渡すと貝がらが落ちる
+  ...benchRow(1, 420, "roast", 1.6, "集落のベンチ", [
+    { x: 790, price: 1400, reveal: 27 },
+    { x: 910, price: 3400, reveal: 34 },
+    { x: 1030, price: 8000, reveal: 37 },
   ]),
-  ...benchRow(2, 424, "feast", 3, "谷の宴席", [
-    { x: 830, price: 90000 },
-    { x: 980, price: 200000 },
+  // 第3区画: マンモスのごちそうを配る宴席
+  ...benchRow(2, 690, "feast", 3.2, "谷の宴席", [
+    { x: 1760, price: 24000, reveal: 49 },
+    { x: 1920, price: 52000, reveal: 53 },
+    { x: 2080, price: 110000, reveal: 58 },
   ]),
+  // 第4区画: 冬のたき火席。保存肉は夜の食事でもあるので、配ると夜が細る
+  ...benchRow(3, 390, "smoked", 2.2, "冬のたき火席", [
+    { x: 2960, price: 60000, reveal: 67 },
+    { x: 3110, price: 110000, reveal: 69 },
+    { x: 3260, price: 200000, reveal: 72 },
+  ]),
+  // 第5区画: 村の食卓（土器）と、道具の市
+  ...benchRow(4, 390, "pot", 3, "村の食卓", [
+    { x: 3880, price: 150000, reveal: 84 },
+    { x: 4020, price: 280000, reveal: 88 },
+  ]),
+  ...benchRow(4, 390, "tool", 3.4, "道具の市", [
+    { x: 4300, price: 420000, reveal: 91 },
+    { x: 4440, price: 700000, reveal: 94 },
+  ], "t"),
+  // 第6区画: 川辺の魚と、別の集落との交易
+  ...benchRow(5, 390, "fish", 2.6, "川辺の席", [
+    { x: 4770, price: 500000, reveal: 105 },
+    { x: 4910, price: 900000, reveal: 108 },
+  ]),
+  ...benchRow(5, 390, "hide", 5, "交易の席", [
+    { x: 5060, price: 1500000, unlockAfter: "found-village", reveal: 109 },
+    { x: 5200, price: 2600000, reveal: 111 },
+  ], "t"),
 ];
 
 /**
@@ -868,22 +1102,58 @@ const fireHires: HireSpec[] = [
   // 2つ目のたき火を足したら、その火の番も雇える
   { id: "fireman-1b", kind: "cook", pos: { x: 114, y: 196 }, price: 2400, label: "火の番", stoveId: "fire-1b", area: 0, unlockAfter: "fire-1b", reveal: 20.5 },
 
-  /* --- area-1 --- */
-  { id: "hunter-2", kind: "hunter", pos: { x: 150, y: 892 }, price: 6000, label: "狩人", stoveId: "hunt-2", area: 1, reveal: 23.5 },
-  { id: "logger-2", kind: "logger", pos: { x: 574, y: 892 }, price: 7000, label: "木こり", stoveId: "forest-2", area: 1, reveal: 24.5 },
-  { id: "splitter-2", kind: "splitter", pos: { x: 610, y: 966 }, price: 8000, label: "薪割り", stoveId: "split-2", area: 1, reveal: 25.5 },
-  { id: "fireman-2", kind: "cook", pos: { x: 268, y: 716 }, price: 12000, label: "火の番", stoveId: "fire-2", area: 1, reveal: 26.5 },
-  { id: "waiter-3", kind: "waiter", pos: { x: 344, y: 820 }, price: 14000, label: "はこび手", area: 1, reveal: 27.5 },
-  { id: "robot-2", kind: "robot", pos: { x: 464, y: 1000 }, price: 60000, label: "犬ぞり", area: 1, reveal: 29.5 },
+  /* --- area-1 第2区画: 集落を回す人たち --- */
+  { id: "fireman-2", kind: "cook", pos: { x: 810, y: 150 }, price: 2800, label: "火の番", stoveId: "fire-2", area: 1, reveal: 23.5 },
+  { id: "smoker-1", kind: "cook", pos: { x: 1110, y: 150 }, price: 3400, label: "燻製係", stoveId: "smoke-1", area: 1, reveal: 24.5 },
+  { id: "logger-2", kind: "logger", pos: { x: 1540, y: 380 }, price: 2000, label: "木こり", stoveId: "forest-2", area: 1, reveal: 25.5 },
+  { id: "splitter-2", kind: "splitter", pos: { x: 1490, y: 470 }, price: 2400, label: "薪割り", stoveId: "split-2", area: 1, reveal: 26.5 },
+  { id: "waiter-3", kind: "waiter", pos: { x: 1160, y: 430 }, price: 3200, label: "はこび手", area: 1, reveal: 29 },
+  { id: "builder-1", kind: "builder", pos: { x: 870, y: 510 }, price: 4000, label: "建築係", area: 1, reveal: 30 },
+  { id: "keeper-1", kind: "keeper", pos: { x: 1280, y: 360 }, price: 4600, label: "食料番", area: 1, reveal: 32 },
+  { id: "nightman-1", kind: "nightman", pos: { x: 1180, y: 680 }, price: 7000, label: "夜番", area: 1, unlockAfter: "built-build-hearth", reveal: 35 },
+  { id: "robot-2", kind: "robot", pos: { x: 1330, y: 470 }, price: 26000, label: "犬ぞり", area: 1, reveal: 39 },
 
-  /* --- area-2 --- */
-  { id: "hunter-3", kind: "hunter", pos: { x: 870, y: 372 }, price: 60000, label: "狩人", stoveId: "hunt-3", area: 2 },
-  { id: "logger-3", kind: "logger", pos: { x: 1294, y: 372 }, price: 70000, label: "木こり", stoveId: "forest-3", area: 2 },
-  { id: "splitter-3", kind: "splitter", pos: { x: 1330, y: 446 }, price: 80000, label: "薪割り", stoveId: "split-3", area: 2 },
-  { id: "butcher-1c", kind: "cook", pos: { x: 990, y: 130 }, price: 120000, label: "さばき手", stoveId: "butcher-1", area: 2 },
-  { id: "fireman-3", kind: "cook", pos: { x: 990, y: 300 }, price: 180000, label: "火の番", stoveId: "grill-1", area: 2 },
-  { id: "waiter-4", kind: "waiter", pos: { x: 900, y: 470 }, price: 150000, label: "はこび手", area: 2 },
-  { id: "robot-3", kind: "robot", pos: { x: 1010, y: 470 }, price: 400000, label: "犬ぞり", area: 2 },
+  /* --- area-2 第3区画: 狩猟隊と解体場 --- */
+  { id: "hunter-v1", kind: "hunter", pos: { x: 1700, y: 490 }, price: 12000, label: "狩人", stoveId: "mammoth-1", area: 2, reveal: 42 },
+  { id: "hunter-v2", kind: "hunter", pos: { x: 1790, y: 490 }, price: 16000, label: "狩人", stoveId: "mammoth-1", area: 2, unlockAfter: "hunter-v1", reveal: 43 },
+  { id: "tracker-1", kind: "explorer", pos: { x: 1880, y: 490 }, price: 18000, label: "追跡者", area: 2, unlockAfter: "hunter-v2", reveal: 44 },
+  { id: "butcher-1", kind: "butcher", pos: { x: 2340, y: 490 }, price: 20000, label: "解体係", stoveId: "mammoth-1", area: 2, unlockAfter: "mark-kills-1", reveal: 45 },
+  { id: "waiter-4", kind: "waiter", pos: { x: 2460, y: 490 }, price: 24000, label: "はこび手", area: 2, reveal: 46 },
+  { id: "hunter-v3", kind: "hunter", pos: { x: 1970, y: 490 }, price: 22000, label: "狩人", stoveId: "mammoth-1", area: 2, unlockAfter: "tracker-1", reveal: 47 },
+  { id: "fireman-3", kind: "cook", pos: { x: 1700, y: 560 }, price: 34000, label: "火の番", stoveId: "grill-1", area: 2, reveal: 50 },
+  { id: "butcher-2", kind: "butcher", pos: { x: 2420, y: 560 }, price: 34000, label: "解体係", stoveId: "mammoth-1", area: 2, unlockAfter: "butcher-1", reveal: 51 },
+  { id: "hunter-v4", kind: "hunter", pos: { x: 2060, y: 490 }, price: 30000, label: "狩人", stoveId: "mammoth-1", area: 2, unlockAfter: "hunter-v3", reveal: 54 },
+  { id: "chief-1", kind: "master", pos: { x: 2150, y: 560 }, price: 90000, label: "狩猟隊長", area: 2, unlockAfter: "hunter-v4", reveal: 55 },
+  { id: "robot-3", kind: "robot", pos: { x: 2560, y: 490 }, price: 60000, label: "犬ぞり", area: 2, reveal: 56 },
+
+  /* --- area-3 第4区画: 冬を越す人たち --- */
+  { id: "tanner-1", kind: "cook", pos: { x: 2960, y: 160 }, price: 80000, label: "皮なめし職人", stoveId: "tan-1", area: 3, reveal: 71 },
+  { id: "builder-2", kind: "builder", pos: { x: 2900, y: 660 }, price: 65000, label: "建築係", area: 3, reveal: 73 },
+  { id: "nightman-2", kind: "nightman", pos: { x: 3120, y: 670 }, price: 70000, label: "夜番", area: 3, reveal: 74 },
+  { id: "keeper-2", kind: "keeper", pos: { x: 3400, y: 300 }, price: 90000, label: "食料番", area: 3, reveal: 75 },
+  { id: "robot-4", kind: "robot", pos: { x: 3600, y: 300 }, price: 160000, label: "雪用犬ぞり", area: 3, reveal: 76 },
+
+  /* --- area-4 第5区画: 村の職業 --- */
+  { id: "logger-4", kind: "logger", pos: { x: 4620, y: 370 }, price: 130000, label: "木こり", stoveId: "forest-4", area: 4, reveal: 80.6 },
+  { id: "splitter-4", kind: "splitter", pos: { x: 4370, y: 350 }, price: 140000, label: "薪割り", stoveId: "split-4", area: 4, reveal: 80.8 },
+  { id: "digger-1", kind: "cook", pos: { x: 3860, y: 175 }, price: 180000, label: "井戸番", stoveId: "claypit-1", area: 4, reveal: 86 },
+  { id: "potter-1", kind: "cook", pos: { x: 4010, y: 175 }, price: 240000, label: "土器職人", stoveId: "pottery-1", area: 4, reveal: 92 },
+  { id: "smith-1", kind: "cook", pos: { x: 4160, y: 175 }, price: 280000, label: "道具職人", stoveId: "tool-1", area: 4, reveal: 95 },
+  { id: "builder-3", kind: "builder", pos: { x: 3800, y: 660 }, price: 260000, label: "建築係", area: 4, reveal: 96 },
+  { id: "waiter-5", kind: "waiter", pos: { x: 4460, y: 300 }, price: 200000, label: "はこび手", area: 4, reveal: 97 },
+  { id: "robot-5", kind: "robot", pos: { x: 4560, y: 300 }, price: 500000, label: "犬ぞり", area: 4, reveal: 98 },
+  { id: "elder-1", kind: "master", pos: { x: 4340, y: 300 }, price: 900000, label: "村長", area: 4, unlockAfter: "built-build-hall2", reveal: 99 },
+
+  /* --- area-5 第6区画: 川の人たち --- */
+  { id: "logger-5", kind: "logger", pos: { x: 4990, y: 300 }, price: 380000, label: "木こり", stoveId: "forest-5", area: 5, reveal: 100.6 },
+  { id: "splitter-5", kind: "splitter", pos: { x: 5150, y: 330 }, price: 420000, label: "薪割り", stoveId: "split-5", area: 5, reveal: 100.8 },
+  { id: "sawyer-1", kind: "cook", pos: { x: 4770, y: 175 }, price: 900000, label: "船大工", stoveId: "plank-1", area: 5, reveal: 107 },
+  { id: "roper-1", kind: "cook", pos: { x: 4920, y: 175 }, price: 800000, label: "縄職人", stoveId: "rope-1", area: 5, reveal: 112 },
+  { id: "fisher-1", kind: "cook", pos: { x: 5330, y: 195 }, price: 700000, label: "漁師", stoveId: "fish-1", area: 5, reveal: 113 },
+  { id: "explorer-1", kind: "explorer", pos: { x: 5060, y: 620 }, price: 1200000, label: "探索者", area: 5, unlockAfter: "built-build-raft-s", reveal: 114 },
+  { id: "explorer-2", kind: "explorer", pos: { x: 5150, y: 620 }, price: 2000000, label: "探索者", area: 5, unlockAfter: "explorer-1", reveal: 115 },
+  { id: "loader-1", kind: "builder", pos: { x: 5290, y: 660 }, price: 1500000, label: "積み込み係", area: 5, reveal: 116 },
+  { id: "robot-6", kind: "robot", pos: { x: 4700, y: 400 }, price: 1800000, label: "水運の犬ぞり", area: 5, reveal: 117 },
 ];
 
 const fireEquipment: EquipSpec[] = [
@@ -891,15 +1161,41 @@ const fireEquipment: EquipSpec[] = [
   { id: "chute-meat", name: "肉はこびそり", detail: "生肉を、たき火へ直接おくる", pos: { x: 250, y: 260 }, price: 6000, area: 0, link: { from: "hunt-1", to: "fire-1" }, unlockAfter: "robot-1", reveal: 12 },
   { id: "chute-log", name: "丸太ころがし", detail: "丸太を、薪割り場へ直接おくる", pos: { x: 618, y: 360 }, price: 9000, area: 0, link: { from: "forest-1", to: "split-1" }, unlockAfter: "equip-chute-meat", reveal: 13 },
   { id: "chute-wood", name: "薪のとい", detail: "薪を、たき火へ直接おくる", pos: { x: 444, y: 300 }, price: 14000, area: 0, link: { from: "split-1", to: "fire-1" }, unlockAfter: "equip-chute-log", reveal: 14 },
-  { id: "chute-cut", name: "石のすべり台", detail: "切り身を、大かまどへ直接おくる", pos: { x: 1124, y: 216 }, price: 600000, area: 2, link: { from: "butcher-1", to: "grill-1" }, unlockAfter: "fireman-3" },
   // 道具の強化・集客
   { id: "noodle", name: "石おの", detail: "すべての作業場が +30%速くなる", pos: { x: 660, y: 480 }, price: 24000, area: 0, unlockAfter: "equip-chute-wood", reveal: 15 },
   { id: "fridge", name: "ほぞ穴の倉", detail: "受け口・出し口に積める数 +4", pos: { x: 660, y: 220 }, price: 45000, area: 0, unlockAfter: "equip-noodle", reveal: 16 },
   { id: "ticket", name: "貝がら入れ", detail: "貝がらが自動でサイフに入る・拾い手は運びへ", pos: { x: 250, y: 0 }, price: 30000, area: 0, outside: true, unlockAfter: "equip-noodle", reveal: 17 },
   { id: "flag", name: "けむりのろし", detail: "遠くの仲間を呼ぶ。集まりが 1.25倍", pos: { x: 120, y: 0 }, price: 1200, area: 0, outside: true, row: 1, draw: 1.25, unlockAfter: "collector-1", reveal: 18 },
   { id: "sign", name: "物見やぐら", detail: "仲間が 1.5倍のはやさで来る", pos: { x: 380, y: 0 }, price: 60000, area: 0, outside: true, unlockAfter: "equip-ticket", reveal: 19 },
-  { id: "lantern", name: "たいこ", detail: "音で人を集める。集まりが 1.4倍", pos: { x: 470, y: 0 }, price: 90000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-1", reveal: 31 },
-  { id: "queue", name: "かがり火", detail: "夜通し明るい。集まりが 1.6倍", pos: { x: 590, y: 0 }, price: 240000, area: 0, outside: true, row: 1, draw: 1.6, unlockAfter: "area-2", reveal: 32 },
+
+  /* --- 第2区画: 蓄えを増やす --- */
+  { id: "store-plus-1", name: "食料庫の棚", detail: "食料庫に積める数 +4", pos: { x: 1280, y: 250 }, price: 2400, area: 1, capacity: { stove: "store-1", plus: 4 }, unlockAfter: "store-1", reveal: 30.5 },
+  { id: "smoke-rack", name: "大型燻製棚", detail: "燻製小屋に積める数 +4", pos: { x: 1040, y: 130 }, price: 9000, area: 1, capacity: { stove: "smoke-1", plus: 4 }, unlockAfter: "smoker-1", reveal: 34.5 },
+  { id: "store-plus-2", name: "石づくりの食料庫", detail: "食料庫に積める数 +6", pos: { x: 1330, y: 250 }, price: 17000, area: 1, capacity: { stove: "store-1", plus: 6 }, unlockAfter: "equip-store-plus-1", reveal: 38.5 },
+  { id: "lantern", name: "たいこ", detail: "音で人を集める。集まりが 1.4倍", pos: { x: 470, y: 0 }, price: 90000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-1", reveal: 36.5 },
+
+  /* --- 第3区画: 罠と狩りの支度。買うと谷に実物が現れる --- */
+  { id: "spear-rack", name: "槍置き場", detail: "狩人の追い込みが強くなる", pos: { x: 1700, y: 430 }, price: 9000, area: 2, trap: 1, reveal: 42.5 },
+  { id: "rope-stake", name: "ロープ杭", detail: "マンモスの向きを変えさせる", pos: { x: 1860, y: 150 }, price: 14000, area: 2, trap: 1, unlockAfter: "equip-spear-rack", reveal: 44.5 },
+  { id: "mud-lure", name: "ぬかるみ", detail: "足を取られて速さが落ちる", pos: { x: 2340, y: 130 }, price: 20000, area: 2, trap: 1, unlockAfter: "equip-rope-stake", reveal: 47.5 },
+  { id: "pit-trap", name: "落とし穴", detail: "落ちると持久力が大きく減る", pos: { x: 2500, y: 280 }, price: 40000, area: 2, trap: 2, unlockAfter: "equip-mud-lure", reveal: 51.5 },
+  { id: "stone-spear", name: "石槍", detail: "狩人の一撃が重くなる", pos: { x: 1780, y: 430 }, price: 45000, area: 2, trap: 1.5, unlockAfter: "mark-kills-1", reveal: 54.5 },
+  { id: "fire-ring", name: "火の囲い", detail: "逃げ道をせばめて追い込む", pos: { x: 2050, y: 350 }, price: 60000, area: 2, trap: 1.5, unlockAfter: "equip-pit-trap", reveal: 56.5 },
+  { id: "rock-drop", name: "岩落とし", detail: "一度だけ大きく効く", pos: { x: 2560, y: 160 }, price: 90000, area: 2, trap: 2, unlockAfter: "equip-fire-ring", reveal: 58.5 },
+  { id: "queue", name: "かがり火", detail: "夜通し明るい。集まりが 1.6倍", pos: { x: 590, y: 0 }, price: 240000, area: 0, outside: true, row: 1, draw: 1.6, unlockAfter: "area-2", reveal: 59 },
+
+  /* --- 第4区画: 冬じたく --- */
+  { id: "pile-plus", name: "肉置き場の拡張", detail: "肉置き場に積める数 +6", pos: { x: 2060, y: 700 }, price: 50000, area: 2, capacity: { stove: "pile-meat", plus: 6 }, unlockAfter: "mark-kills-1", reveal: 59.5 },
+  { id: "lookout", name: "見張り小屋", detail: "遠くの仲間まで見える。集まりが 1.5倍", pos: { x: 3600, y: 150 }, price: 120000, area: 3, draw: 1.5, reveal: 77 },
+  { id: "wood-plus", name: "薪倉庫の増し積み", detail: "大型薪倉庫に積める数 +10", pos: { x: 3250, y: 150 }, price: 90000, area: 3, capacity: { stove: "store-wood", plus: 10 }, unlockAfter: "store-wood", reveal: 78 },
+
+  /* --- 第5区画: 道。通ると足が速くなる --- */
+  { id: "road-1", name: "村の道", detail: "村じゅうの足が速くなる", pos: { x: 4100, y: 460 }, price: 300000, area: 4, road: { from: { x: 3830, y: 460 }, to: { x: 4560, y: 460 } }, reveal: 93.5 },
+  { id: "road-2", name: "川への道", detail: "村と川がつながる。さらに足が速くなる", pos: { x: 4620, y: 460 }, price: 900000, area: 4, road: { from: { x: 4560, y: 460 }, to: { x: 5100, y: 460 } }, unlockAfter: "equip-road-1", reveal: 100.5 },
+
+  /* --- 第6区画: 川の道具 --- */
+  { id: "net-1", name: "網", detail: "川の瀬でとれる魚が増える", pos: { x: 5330, y: 380 }, price: 700000, area: 5, capacity: { stove: "fish-1", plus: 6 }, reveal: 106.5 },
+  { id: "map-1", name: "地図作り", detail: "探索が 1.6倍のはやさで帰ってくる", pos: { x: 5090, y: 400 }, price: 1600000, area: 5, unlockAfter: "built-build-raft-s", reveal: 113.5 },
 ];
 
 /**
@@ -959,6 +1255,11 @@ export const stageDefs: Record<StageId, StageDef> = {
         hunter: "狩人",
         logger: "木こり",
         splitter: "薪割り",
+        butcher: "解体係",
+        builder: "建築係",
+        keeper: "食料番",
+        nightman: "夜番",
+        explorer: "探索者",
       },
       objective: {
         pickup: "厨房で丼を受け取ろう",
@@ -1008,6 +1309,11 @@ export const stageDefs: Record<StageId, StageDef> = {
         hunter: "狩人",
         logger: "木こり",
         splitter: "薪割り",
+        butcher: "解体係",
+        builder: "建築係",
+        keeper: "食料番",
+        nightman: "夜番",
+        explorer: "探索者",
       },
       objective: {
         pickup: "券売所でチケットを受け取ろう",
@@ -1049,6 +1355,16 @@ export const stageDefs: Record<StageId, StageDef> = {
     // 覚えたての仕事の周りだけを見せる。少なすぎると選ぶ楽しみがなくなるので、
     // 手を付けられる先を何本か並べておく
     revealLimit: 4,
+    // 集落ができたら、さらに増やして 5〜10個のなかから選べるようにする（仕様書 §2.1）。
+    // 強化の枠（編みかご・火をあおぐ・わらじ・石塩）は買っても消えないので、
+    // ここの数＋4 が実際に見えている候補の数になる。合わせて 10個までに収める
+    revealLimitBy: {
+      "area-1": 6,
+      "area-2": 7,
+      "area-3": 7,
+      "area-4": 7,
+      "area-5": 7,
+    },
     // 1食目は「狩る → 置く → 渡す」だけ。まきは最初からくべてある
     startFuel: { "fire-1": 3 },
     // 草原・森・薪割り場・たき火・最初のベンチだけ見えている
@@ -1073,6 +1389,11 @@ export const stageDefs: Record<StageId, StageDef> = {
         hunter: "狩人",
         logger: "木こり",
         splitter: "薪割り",
+        butcher: "解体係",
+        builder: "建築係",
+        keeper: "食料番",
+        nightman: "夜番",
+        explorer: "探索者",
       },
       objective: {
         pickup: "出し口でしなものを受け取ろう",
