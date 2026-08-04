@@ -17,7 +17,6 @@ import {
   gachaTiers,
   rollSkin,
   skinById,
-  skinTier,
   tierNeed,
   tierPool,
   type Skin,
@@ -58,6 +57,30 @@ let vault: Vault = emptyVault();
 let state: ShopState | null = null;
 let loaded = false;
 
+/** その段で、いくつの種類を持っているか（ダブりと★は数えない） */
+const countInTier = (owned: string[], tier: Tier) =>
+  tierPool(tier).filter((skin) => owned.includes(skin.id)).length;
+
+/**
+ * 持っている見た目から、開いているべき段を数え直す。
+ *
+ * 引いた瞬間だけで判定すると、下の段を集めきったあと
+ * （引いてもダブりしか出ない）に上の段が永久に開かなくなる。
+ * 読み込みのたびに持ち物から数え直して、条件を満たしていれば開ける。
+ * 一度開いた段は、あとでスキンが増えて割合が下がっても閉じない
+ */
+const openedTiers = (owned: string[], saved: Tier[]): Tier[] => {
+  const open = new Set<Tier>([1, ...saved]);
+  for (let i = 0; i < gachaTiers.length - 1; i += 1) {
+    const from = gachaTiers[i].tier;
+    const next = gachaTiers[i + 1].tier;
+    if (!open.has(from)) continue;
+    if (countInTier(owned, from) >= tierNeed(from)) open.add(next);
+  }
+  // 段の順に並べる（下から上へ）
+  return gachaTiers.map((item) => item.tier).filter((tier) => open.has(tier));
+};
+
 const readVault = (): Vault => {
   try {
     const raw = window.localStorage.getItem(SAVE_KEY);
@@ -78,6 +101,10 @@ const readVault = (): Vault => {
         }
       }
     }
+    const skins = Array.from(new Set(["default", ...owned]));
+    const savedTiers = Array.isArray(parsed.gacha)
+      ? parsed.gacha.filter((tier): tier is Tier => gachaTierById.has(tier as Tier))
+      : [];
     return {
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : 0,
       active: parsed.active === "park" ? "park" : "ramen",
@@ -86,22 +113,14 @@ const readVault = (): Vault => {
         parsed.scrap && typeof parsed.scrap === "object"
           ? (parsed.scrap as Record<string, unknown>)
           : undefined,
-      skins: Array.from(new Set(["default", ...owned])),
+      skins,
       stars,
       equipped:
         typeof parsed.equipped === "string" && skinById.has(parsed.equipped)
           ? parsed.equipped
           : "default",
-      gacha: Array.from(
-        new Set<Tier>([
-          1,
-          ...(Array.isArray(parsed.gacha)
-            ? parsed.gacha.filter((tier): tier is Tier =>
-                gachaTierById.has(tier as Tier),
-              )
-            : []),
-        ]),
-      ),
+      // 集めきったあとで足された段も、ここで開き直す
+      gacha: openedTiers(skins, savedTiers),
     };
   } catch {
     return emptyVault();
@@ -293,8 +312,7 @@ export const equipSkin = (id: string) => {
 };
 
 /** その段で、いくつの種類を持っているか（ダブりと★は数えない） */
-const ownedInTier = (tier: Tier) =>
-  tierPool(tier).filter((skin) => vault.skins.includes(skin.id)).length;
+const ownedInTier = (tier: Tier) => countInTier(vault.skins, tier);
 
 export const tierProgress = (tier: Tier): TierProgress => {
   getState();
@@ -322,17 +340,13 @@ export const tierOpen = (tier: Tier): boolean => {
 
 /**
  * 下の段が70%そろっていたら、上の段を開ける。
- * 一度開いた段は、あとでスキンが増えて割合が下がっても閉じない
+ * 新しく取ったときだけでなく、引くたびに数え直す
+ * （すでに集めきっている持ち物でも開くように）
  */
-const openNextTier = (from: Tier): Tier | null => {
-  const index = gachaTiers.findIndex((item) => item.tier === from);
-  const next = gachaTiers[index + 1];
-  if (!next) return null;
-  if (!vault.gacha) vault.gacha = [1];
-  if (vault.gacha.includes(next.tier)) return null;
-  if (ownedInTier(from) < tierNeed(from)) return null;
-  vault.gacha.push(next.tier);
-  return next.tier;
+const openNextTier = (): Tier | null => {
+  const before = new Set<Tier>(vault.gacha ?? [1]);
+  vault.gacha = openedTiers(vault.skins, Array.from(before));
+  return vault.gacha.find((tier) => !before.has(tier)) ?? null;
 };
 
 export const gachaCost = (tier: Tier): number =>
@@ -368,8 +382,8 @@ export const pullGacha = (tier: Tier = 1): GachaResult | null => {
     vault.skins.push(skin.id);
     vault.equipped = skin.id;
   }
-  // 新しく取ったことで、上の段が開くことがある
-  const unlockedTier = duplicate ? null : openNextTier(skinTier(skin));
+  // この抽選で、上の段が開くことがある
+  const unlockedTier = openNextTier();
   syncShine();
   save();
   return {
