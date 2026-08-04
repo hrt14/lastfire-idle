@@ -95,10 +95,19 @@ export type StageDef = {
 };
 
 /**
- * 席は左から順に出す。ひとつ買うと、その隣が出てくる。
- * （最初から全部見えていると、やることが多すぎて選べない）
+ * 一列のうち、先まで見せておく枠の数。
+ *
+ * 1 だと「ひとつ買うと隣がひとつ出る」だけで、どれから手を付けるか選べない。
+ * かといって全部見えていると多すぎて分からなくなるので、少し先まで見せる
  */
-const chain = (id: string | undefined, i: number) => (i > 0 ? id : undefined);
+const AHEAD = 2;
+
+/**
+ * 席は左から順に出す。AHEAD 個先まで並んで見えていて、
+ * ひとつ買うと、そのぶん先の枠が出てくる
+ */
+const chain = (prefix: string, area: number, i: number) =>
+  i >= AHEAD ? `${prefix}-${area}-${i + 1 - AHEAD}` : undefined;
 
 const seatRow = (
   area: number,
@@ -106,20 +115,24 @@ const seatRow = (
   baseY: number,
   prices: number[],
   label: string,
-  cost = 1,
+  /** 一度に必要な数。席ごとに変えるときは配列で渡す */
+  cost: number | number[] = 1,
 ): SeatSpec[] =>
-  xs.map((x, i) => ({
-    id: `seat-${area}-${i + 1}`,
-    pos: { x, y: baseY + 64 },
-    serve: { x, y: baseY },
-    tray: { x, y: baseY + 24 },
-    price: prices[i],
-    area,
-    label,
-    cost,
-    value: cost * 1.25,
-    unlockAfter: chain(`seat-${area}-${i}`, i),
-  }));
+  xs.map((x, i) => {
+    const need = Array.isArray(cost) ? cost[i] : cost;
+    return {
+      id: `seat-${area}-${i + 1}`,
+      pos: { x, y: baseY + 64 },
+      serve: { x, y: baseY },
+      tray: { x, y: baseY + 24 },
+      price: prices[i],
+      area,
+      label,
+      cost: need,
+      value: need * 1.25,
+      unlockAfter: chain("seat", area, i),
+    };
+  });
 
 /** レストランのテーブル。料理を運び、食べ終わったら皿を片づける */
 const tableRow = (
@@ -147,7 +160,7 @@ const tableRow = (
     mode: "table" as const,
     needs: "food" as const,
     value: 4,
-    unlockAfter: table.unlockAfter ?? chain(`table-${area}-${i}`, i),
+    unlockAfter: table.unlockAfter ?? chain("table", area, i),
   }));
 
 /** お土産の棚。並べておくと客が自分で取り、レジでお金を払う */
@@ -178,7 +191,7 @@ const shelfRow = (
     needs: "goods" as const,
     value: 2.4,
     pay: till,
-    unlockAfter: shelf.unlockAfter ?? chain(`shelf-${area}-${i}`, i),
+    unlockAfter: shelf.unlockAfter ?? chain("shelf", area, i),
   }));
 
 /* ==================== ステージ1: ラーメン屋 ==================== */
@@ -218,6 +231,22 @@ const ramenAreas: AreaSpec[] = [
     padPos: { x: 540, y: 452 },
     palette: { floor: "#3c3128", deep: "#282018", prop: "none" },
   },
+  /**
+   * 最後の区画。ここだけ桁がひとつもふたつも違う。
+   * 席は一度に何杯もまとめて出す注文ばかりで、
+   * 運ぶ数（両手鍋）と作る速さを上げきらないと、まともに回らない
+   */
+  {
+    id: "area-4",
+    label: "幻の総本店をつくる",
+    price: 50000000,
+    // 屋台の街区と同じ高さをまるごと使う、いちばん大きな建物
+    rect: { x0: 720, y0: 0, x1: 1080, y1: 790 },
+    padPos: { x: 658, y: 250 },
+    palette: { floor: "#332a2c", deep: "#221a1c", prop: "none" },
+    // 宣伝トラックが町を回るくらい有名になってから、はじめて話が来る
+    unlockAfter: "equip-truck",
+  },
 ];
 
 const ramenStoves: StoveSpec[] = [
@@ -228,6 +257,9 @@ const ramenStoves: StoveSpec[] = [
   { id: "stove-5", pos: { x: 610, y: 176 }, price: 60000, area: 2 },
   // 宴会場まで開くと、製麺所に持ち帰りの倉庫が出せるようになる
   { id: "store-r1", pos: { x: 400, y: 380 }, price: 900000, area: 2, item: "goods", art: "stock", label: "みやげ倉庫", unlockAfter: "area-3" },
+  // 総本店の厨房。ここの寸胴だけ桁が違う
+  { id: "stove-6", pos: { x: 800, y: 176 }, price: 90000000, area: 4, label: "秘伝の寸胴" },
+  { id: "stove-7", pos: { x: 940, y: 176 }, price: 260000000, area: 4, label: "大釜" },
 ];
 
 const ramenSeats: SeatSpec[] = [
@@ -253,10 +285,22 @@ const ramenSeats: SeatSpec[] = [
       unlockAfter: "shelf-2-1",
     },
   ]),
+  // 総本店の席。一度に 4杯・5杯・6杯 とまとめて出す大口の注文ばかり
+  ...seatRow(
+    4,
+    [790, 900, 1010],
+    294,
+    [400000000, 1400000000, 5000000000],
+    "特上座敷",
+    [4, 5, 6],
+  ),
 ];
 
-/** 調理人は、担当の寸胴を買ったあと、ひとりずつ出てくる */
-const ramenCookAfter = ["stove-2", "cook-1", "cook-2"];
+/**
+ * 調理人は、担当の寸胴を買えば出てくる（寸胴は engine 側で必ず要る）。
+ * 1人目だけ、2つ目の寸胴を買ってから ―「まず自分で回してみる」を挟むため
+ */
+const ramenCookAfter = ["stove-2"];
 
 const ramenHires: HireSpec[] = [
   ...ramenStoves
@@ -265,7 +309,7 @@ const ramenHires: HireSpec[] = [
       id: `cook-${i + 1}`,
       kind: "cook" as const,
       pos: { x: stove.pos.x + 40, y: 130 },
-      price: [600, 1800, 4500, 30000, 70000][i],
+      price: [600, 1800, 4500, 30000, 70000, 110000000, 320000000][i],
       label: "調理人",
       stoveId: stove.id,
       area: stove.area,
@@ -285,6 +329,10 @@ const ramenHires: HireSpec[] = [
   { id: "waiter-4", kind: "waiter", pos: { x: 680, y: 700 }, price: 90000, label: "ホール店員", area: 3 },
   // 持ち帰りコーナーができると、製麺所に品出しが立てられる
   { id: "stocker-r1", kind: "stocker", pos: { x: 450, y: 440 }, price: 1800000, label: "品出し", area: 2, unlockAfter: "area-3" },
+  // 総本店の面々
+  { id: "waiter-5", kind: "waiter", pos: { x: 780, y: 560 }, price: 200000000, label: "ホール店員", area: 4 },
+  { id: "robot-4", kind: "robot", pos: { x: 900, y: 560 }, price: 700000000, label: "配膳ロボ", area: 4, unlockAfter: "waiter-5" },
+  { id: "collector-3", kind: "collector", pos: { x: 1020, y: 560 }, price: 1600000000, label: "レジ係", area: 4 },
 ];
 
 const ramenEquipment: EquipSpec[] = [
@@ -298,6 +346,7 @@ const ramenEquipment: EquipSpec[] = [
   { id: "queue", name: "行列の整理棒", detail: "並ぶ人が見えて人を呼ぶ。集客 1.4倍", pos: { x: 330, y: 0 }, price: 900000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-3" },
   { id: "screen", name: "街頭ビジョン", detail: "でかい映像で宣伝する。集客 1.6倍", pos: { x: 470, y: 0 }, price: 4000000, area: 2, outside: true, draw: 1.6, unlockAfter: "area-2" },
   { id: "truck", name: "宣伝トラック", detail: "町じゅうを回ってくる。集客 1.8倍", pos: { x: 620, y: 0 }, price: 18000000, area: 3, outside: true, draw: 1.8, unlockAfter: "area-3" },
+  { id: "blimp", name: "飛行船の広告", detail: "空から町ぜんぶに知らせる。集客 2.2倍", pos: { x: 790, y: 0 }, price: 1200000000, area: 4, outside: true, draw: 2.2, unlockAfter: "area-4" },
 ];
 
 const ramenUpgrades: Upgrade[] = [
@@ -384,6 +433,22 @@ const parkAreas: AreaSpec[] = [
     padPos: { x: 900, y: 932 },
     palette: { floor: "#6a5a86", deep: "#443a5c", prop: "market" },
   },
+  /**
+   * 最後の区画。生きている火山のふもとに作る、いちばん過激なエリア。
+   * 乗り物はどれも 4枚・5枚・6枚 とチケットをまとめて要求するので、
+   * 発券の速さも、運べる枚数も、上げきらないと客がさばけない
+   */
+  {
+    id: "area-9",
+    label: "火山の秘境をひらく",
+    price: 5000000000,
+    // 山のふもとを縦にまるごと使う、園でいちばん広い区画
+    rect: { x0: 1080, y0: 0, x1: 1440, y1: 1440 },
+    padPos: { x: 1018, y: 250 },
+    palette: { floor: "#5c3a30", deep: "#3a221c", prop: "volcano" },
+    // おみやげ通りを最後まで並べきった園にだけ、開拓の許可が下りる
+    unlockAfter: "shelf-8-3",
+  },
 ];
 
 const parkStoves: StoveSpec[] = [
@@ -398,6 +463,9 @@ const parkStoves: StoveSpec[] = [
   // おみやげ通りの倉庫
   { id: "store-1", pos: { x: 800, y: 1100 }, price: 300000000, area: 8, item: "goods", art: "stock", label: "倉庫" },
   { id: "store-2", pos: { x: 1000, y: 1100 }, price: 700000000, area: 8, item: "goods", art: "stock", label: "倉庫" },
+  // 火山の秘境の券売所。乗り物が一度に4〜6枚食うので、二軒めがいる
+  { id: "crater-1", pos: { x: 1160, y: 176 }, price: 6000000000, area: 9, label: "火口の券売所" },
+  { id: "crater-2", pos: { x: 1290, y: 880 }, price: 14000000000, area: 9, label: "溶岩原の券売所" },
   // 区画が増えると、前の区画にも新しい店が出せるようになる
   { id: "kitchen-0", pos: { x: 300, y: 250 }, price: 90000000, area: 0, item: "food", art: "kitchen", label: "広場のキッチンカー", unlockAfter: "area-7" },
   { id: "store-0", pos: { x: 620, y: 250 }, price: 320000000, area: 1, item: "goods", art: "stock", label: "丘のみやげ倉庫", unlockAfter: "area-8" },
@@ -430,7 +498,7 @@ const rideRow = (
     cost: ride.cost,
     // 枚数の多い乗り物は、そのぶん高く売れる
     value: ride.cost ? ride.cost * 1.25 : 1,
-    unlockAfter: chain(`seat-${area}-${i}`, i),
+    unlockAfter: chain("seat", area, i),
   }));
 
 const parkSeats: SeatSpec[] = [
@@ -471,6 +539,13 @@ const parkSeats: SeatSpec[] = [
     { x: 1008, price: 20000000, label: "翼竜フライト", cost: 3, art: "ptera", detail: "翼竜にぶら下がって旋回" },
   ]),
 
+  /* 火山の秘境: 園でいちばん過激な3つ。チケットもまとめて要る */
+  ...rideRow(9, 294, [
+    { x: 1152, price: 10000000000, label: "マグマコースター", cost: 4, art: "coaster", detail: "火口すれすれを一気に落ちる" },
+    { x: 1260, price: 26000000000, label: "溶岩ラフト", cost: 5, art: "lava", detail: "煮えたぎる流れをいかだで下る" },
+    { x: 1368, price: 60000000000, label: "大噴火タワー", cost: 6, art: "blast", detail: "噴火に合わせて空へ打ち上がる" },
+  ]),
+
   /* レストラン街: 厨房の料理を運ぶ。食べ終わると皿が残るので片づける */
   ...tableRow(7, 774, [
     { x: 792, price: 80000000, label: "パスタ食堂", art: "pasta", detail: "湯気の立つパスタが名物" },
@@ -508,12 +583,17 @@ const parkSeats: SeatSpec[] = [
   ]),
 ];
 
-/** 券売スタッフは、担当の券売所を買ったあと、ひとりずつ出てくる */
-const parkCookAfter = ["stove-2", "cook-1", "cook-2"];
+/** 券売スタッフは、担当の券売所を買えば出てくる（1人目だけ2つ目の券売所から） */
+const parkCookAfter = ["stove-2"];
 
 const parkHires: HireSpec[] = [
+  // 券売所（stove-N）に付くスタッフは cook-1…と順に作る。
+  // 火口の券売所は番号がぶつかるので、下で名前を付けて足す
   ...parkStoves
-    .filter((stove) => (stove.item ?? "main") === "main")
+    .filter(
+      (stove) =>
+        (stove.item ?? "main") === "main" && stove.id.startsWith("stove-"),
+    )
     .map((stove, i) => ({
       id: `cook-${i + 1}`,
       kind: "cook" as const,
@@ -559,6 +639,13 @@ const parkHires: HireSpec[] = [
   { id: "stocker-2", kind: "stocker", pos: { x: 1036, y: 1402 }, price: 1200000000, label: "品出しスタッフ", area: 8 },
   { id: "collector-3", kind: "collector", pos: { x: 900, y: 1172 }, price: 700000000, label: "レジ係", area: 8 },
 
+  // 火山の秘境
+  { id: "cook-12", kind: "cook", pos: { x: 1200, y: 130 }, price: 8000000000, label: "券売スタッフ", stoveId: "crater-1", area: 9 },
+  { id: "cook-13", kind: "cook", pos: { x: 1330, y: 834 }, price: 18000000000, label: "券売スタッフ", stoveId: "crater-2", area: 9 },
+  { id: "waiter-6", kind: "waiter", pos: { x: 1140, y: 640 }, price: 9000000000, label: "案内係", area: 9 },
+  { id: "robot-6", kind: "robot", pos: { x: 1260, y: 640 }, price: 24000000000, label: "案内ロボ", area: 9, unlockAfter: "waiter-6" },
+  { id: "collector-4", kind: "collector", pos: { x: 1380, y: 640 }, price: 32000000000, label: "集金係", area: 9 },
+
   // あとから前の区画に出てくるスタッフ
   { id: "server-3", kind: "server", pos: { x: 300, y: 434 }, price: 160000000, label: "料理係", area: 0, unlockAfter: "area-7" },
   { id: "busser-3", kind: "busser", pos: { x: 380, y: 434 }, price: 200000000, label: "テーブル係", area: 0, unlockAfter: "area-7" },
@@ -576,6 +663,7 @@ const parkEquipment: EquipSpec[] = [
   { id: "greet", name: "キャラクターグリーティング", detail: "着ぐるみが出迎える。集客 1.5倍", pos: { x: 520, y: 0 }, price: 6000000, area: 1, outside: true, draw: 1.5, unlockAfter: "area-2" },
   { id: "parade", name: "パレードカー", detail: "毎日パレードが出る。集客 1.7倍", pos: { x: 660, y: 0 }, price: 40000000, area: 3, outside: true, draw: 1.7, unlockAfter: "area-3" },
   { id: "firework", name: "花火の打ち上げ台", detail: "夜空に花火が上がる。集客 2倍", pos: { x: 800, y: 0 }, price: 600000000, area: 5, outside: true, draw: 2, unlockAfter: "area-5" },
+  { id: "crater", name: "噴火ショー", detail: "夜ごと山が火を噴く園の目玉。集客 2.6倍", pos: { x: 940, y: 0 }, price: 40000000000, area: 9, outside: true, draw: 2.6, unlockAfter: "area-9" },
   // 入場まわりの自動化（最初は自分で売って、自分で通す）
   { id: "vend", name: "自動入場券売機", detail: "入場券が自動で売れる。何人でも同時に", pos: { x: 400, y: 0 }, price: 900000, area: 0, outside: true, row: 1, unlockAfter: "equip-sign" },
   { id: "turnstile", name: "自動改札機", detail: "お客さんが自動で入場する。何人でも同時に", pos: { x: 520, y: 0 }, price: 3600000, area: 0, outside: true, row: 1, unlockAfter: "equip-vend" },
@@ -958,8 +1046,9 @@ export const stageDefs: Record<StageId, StageDef> = {
     // たき火は 4.0秒に1つ。火の番が付くと 2.0秒（§6）
     cookTime: 4.0,
     cookBoost: 2.0,
-    // 「いま覚えた仕事の次の改善」だけを見せる
-    revealLimit: 2,
+    // 覚えたての仕事の周りだけを見せる。少なすぎると選ぶ楽しみがなくなるので、
+    // 手を付けられる先を何本か並べておく
+    revealLimit: 4,
     // 1食目は「狩る → 置く → 渡す」だけ。まきは最初からくべてある
     startFuel: { "fire-1": 3 },
     // 草原・森・薪割り場・たき火・最初のベンチだけ見えている

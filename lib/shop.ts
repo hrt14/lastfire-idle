@@ -173,7 +173,8 @@ export type AreaPalette = {
     | "star"
     | "fossil"
     | "diner"
-    | "market";
+    | "market"
+    | "volcano";
 };
 
 export type AreaSpec = {

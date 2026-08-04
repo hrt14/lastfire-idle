@@ -114,6 +114,13 @@ const roundRect = (
   ctx.closePath();
 };
 
+/** 区画の名前。「〜をつくる」などの語尾を落として、看板に出す形にする */
+const areaTitle = (label: string) =>
+  label.replace(/(をつくる|をひらく|へ下りる)$/, "");
+
+/** 看板の文字を一字ずつ空ける（ら ー め ん） */
+const spaced = (text: string) => [...text].join(" ");
+
 const shadow = (ctx: CanvasRenderingContext2D, x: number, y: number, r: number) => {
   ctx.fillStyle = "rgba(0,0,0,0.32)";
   ctx.beginPath();
@@ -469,6 +476,90 @@ const sideDecor = (
       ctx.fill();
     }
     return;
+  }
+};
+
+/**
+ * 火山の秘境の山。
+ * 券売所の帯（画面のいちばん奥）に重なる位置なので、帯を塗ったあとに呼ぶ
+ */
+const drawVolcano = (
+  ctx: CanvasRenderingContext2D,
+  rect: { x0: number; y0: number; x1: number; y1: number },
+  time: number,
+) => {
+  const cx = (rect.x0 + rect.x1) / 2;
+  const top = rect.y0 + 74;
+  const foot = rect.y0 + 196;
+  const beat = 0.55 + Math.abs(Math.sin(time * 1.6)) * 0.45;
+
+  // 火口のまわりのぼんやりした明かり
+  const halo = ctx.createRadialGradient(cx, top, 4, cx, top, 70);
+  halo.addColorStop(0, `rgba(255,140,60,${0.22 * beat})`);
+  halo.addColorStop(1, "rgba(255,140,60,0)");
+  ctx.fillStyle = halo;
+  ctx.fillRect(cx - 70, top - 70, 140, 140);
+
+  // 山（左が明るい面、右が影）
+  ctx.fillStyle = "#3f2b28";
+  ctx.beginPath();
+  ctx.moveTo(cx - 84, foot);
+  ctx.lineTo(cx - 20, top);
+  ctx.lineTo(cx + 20, top);
+  ctx.lineTo(cx + 84, foot);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.beginPath();
+  ctx.moveTo(cx - 84, foot);
+  ctx.lineTo(cx - 20, top);
+  ctx.lineTo(cx - 2, top);
+  ctx.lineTo(cx - 18, foot);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,0.16)";
+  ctx.beginPath();
+  ctx.moveTo(cx + 84, foot);
+  ctx.lineTo(cx + 20, top);
+  ctx.lineTo(cx + 8, top);
+  ctx.lineTo(cx + 40, foot);
+  ctx.closePath();
+  ctx.fill();
+
+  // 火口。脈打つように光る
+  ctx.fillStyle = "#2b1d1b";
+  ctx.beginPath();
+  ctx.ellipse(cx, top, 20, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(255,150,60,${beat})`;
+  ctx.beginPath();
+  ctx.ellipse(cx, top, 15, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 流れ落ちる溶岩
+  ctx.lineWidth = 2.4;
+  for (const [i, side] of [-1, 1].entries()) {
+    ctx.strokeStyle = `rgba(255,${110 + i * 30},50,${0.4 + beat * 0.4})`;
+    ctx.beginPath();
+    ctx.moveTo(cx + side * 6, top + 3);
+    ctx.quadraticCurveTo(
+      cx + side * 26,
+      top + 54,
+      cx + side * 40 + Math.sin(time + i) * 3,
+      foot - 6,
+    );
+    ctx.stroke();
+  }
+
+  // 火口から跳ねる火の粉
+  for (let i = 0; i < 6; i += 1) {
+    const t = (time * 0.7 + i / 6) % 1;
+    const ex = cx + Math.sin(i * 2.1) * 16 * t;
+    const ey = top - 4 - t * 34 + t * t * 18;
+    ctx.fillStyle = `rgba(255,190,90,${(1 - t) * 0.9})`;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 2.2 - t, 0, Math.PI * 2);
+    ctx.fill();
   }
 };
 
@@ -829,6 +920,60 @@ const drawProps = (
         roundRect(ctx, x - 14 + (i % 2) * 10, baseY - 14 - i * 12, 22, 12, 2);
         ctx.fill();
       }
+    }
+    return;
+  }
+  if (palette.prop === "volcano") {
+    // 山は券売所の帯にかかるので、帯を塗ったあとに別で描く（drawVolcano）。
+    // ここは足もと ― 溶岩の固まった原っぱ
+    const rows = Math.floor((rect.y1 - 90 - (rect.y0 + 840)) / 150) + 1;
+    for (let row = 0; row < rows; row += 1) {
+      const y = rect.y0 + 840 + row * 150;
+      const shift = (row % 2) * 34;
+      for (const [k, at] of [rect.x0 + 56, cx + 26, rect.x1 - 62].entries()) {
+        const x = at - shift;
+        const seed = row * 3 + k;
+        if (seed % 4 === 1) {
+          // 噴気孔（湯気が立つ）
+          ctx.fillStyle = "#33211d";
+          ctx.beginPath();
+          ctx.ellipse(x, y, 15, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
+          for (let i = 0; i < 3; i += 1) {
+            const t = (time * 0.4 + i / 3 + k * 0.2) % 1;
+            ctx.fillStyle = `rgba(210,200,196,${0.22 * (1 - t)})`;
+            ctx.beginPath();
+            ctx.arc(x + Math.sin(t * 4 + k) * 6, y - 6 - t * 34, 5 + t * 9, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else {
+          // ごつごつした溶岩の岩（高さと向きを少しずつ変える）
+          const tall = 8 + (seed % 3) * 6;
+          ctx.fillStyle = "#33211d";
+          ctx.beginPath();
+          ctx.moveTo(x - 20, y + 8);
+          ctx.lineTo(x - 10, y - tall);
+          ctx.lineTo(x + 3, y - tall * 0.4);
+          ctx.lineTo(x + 15, y - tall * 1.2);
+          ctx.lineTo(x + 22, y + 8);
+          ctx.closePath();
+          ctx.fill();
+          // ふちに残る熱
+          ctx.fillStyle = "rgba(255,120,50,0.2)";
+          ctx.fillRect(x - 16, y + 5, 34, 3);
+        }
+      }
+    }
+    // ふもとの溶岩だまり
+    for (const x of spots) {
+      ctx.fillStyle = "#3a221c";
+      ctx.beginPath();
+      ctx.ellipse(x, baseY, 27, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,120,40,${0.5 + Math.abs(Math.sin(time * 2 + x)) * 0.4})`;
+      ctx.beginPath();
+      ctx.ellipse(x, baseY, 19, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
     return;
   }
@@ -2614,6 +2759,101 @@ const drawRide = (
       }
       return;
     }
+
+    /* ---------- 火山の秘境 ---------- */
+    case "coaster": {
+      // マグマコースター: 急な下りをトロッコが繰り返し落ちる
+      const glow = 0.5 + Math.abs(Math.sin(time * 2)) * 0.5;
+      ctx.fillStyle = `rgba(255,110,40,${0.35 * glow})`;
+      roundRect(ctx, x - 30, y + 6, 60, 8, 4);
+      ctx.fill();
+      // 支柱
+      ctx.fillStyle = "#4a3a3a";
+      for (const px of [x - 22, x - 4, x + 16]) ctx.fillRect(px, y - 10, 4, 24);
+      // レール（登って落ちる）
+      ctx.strokeStyle = "#c8b9a8";
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(x - 30, y + 6);
+      ctx.lineTo(x - 12, y - 34);
+      ctx.quadraticCurveTo(x + 2, y - 46, x + 12, y - 20);
+      ctx.lineTo(x + 22, y + 6);
+      ctx.stroke();
+      // トロッコ
+      const run = (time * 0.55) % 1;
+      const cxp = x - 30 + run * 52;
+      const cyp =
+        run < 0.45 ? y + 6 - (run / 0.45) * 44 : y - 38 + ((run - 0.45) / 0.55) * 44;
+      ctx.fillStyle = "#c2402f";
+      roundRect(ctx, cxp - 9, cyp - 8, 18, 10, 3);
+      ctx.fill();
+      rider(ctx, cxp, cyp - 8, "#ffd166", 0.7);
+      return;
+    }
+    case "lava": {
+      // 溶岩ラフト: 光る流れを丸いいかだが回りながら下る
+      const flow = 0.55 + Math.abs(Math.sin(time * 1.8)) * 0.45;
+      ctx.fillStyle = "#3a221c";
+      roundRect(ctx, x - 32, y - 12, 64, 26, 12);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,120,40,${flow})`;
+      roundRect(ctx, x - 28, y - 8, 56, 18, 9);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,220,140,${flow * 0.7})`;
+      for (let i = 0; i < 3; i += 1) {
+        const wx = x - 20 + ((time * 26 + i * 22) % 44);
+        ctx.beginPath();
+        ctx.ellipse(wx, y - 2 + Math.sin(time * 3 + i) * 3, 5, 2.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // いかだ
+      const spin = time * 1.2;
+      const rx = x + Math.cos(spin) * 12;
+      const ry = y + Math.sin(spin) * 4;
+      ctx.fillStyle = "#8a6440";
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, 13, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#6b4a2f";
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, 9, 4.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      rider(ctx, rx, ry - 2, "#6bd3ff", 0.7);
+      return;
+    }
+    case "blast": {
+      // 大噴火タワー: 噴火に合わせてゴンドラが一気に上がって落ちる
+      const cycle = (time * 0.42) % 1;
+      // 上がるのは一瞬、降りるのはゆっくり
+      const lift = cycle < 0.18 ? cycle / 0.18 : Math.max(0, 1 - (cycle - 0.18) / 0.82);
+      ctx.fillStyle = "#4a3a3a";
+      roundRect(ctx, x - 7, y - 44, 14, 58, 4);
+      ctx.fill();
+      ctx.fillStyle = "#6b5450";
+      roundRect(ctx, x - 20, y + 6, 40, 10, 4);
+      ctx.fill();
+      // 噴き上がる火柱
+      if (cycle < 0.3) {
+        const burst = 1 - cycle / 0.3;
+        ctx.fillStyle = `rgba(255,150,50,${burst * 0.8})`;
+        ctx.beginPath();
+        ctx.moveTo(x - 9, y - 44);
+        ctx.lineTo(x, y - 44 - 22 * burst);
+        ctx.lineTo(x + 9, y - 44);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // ゴンドラ
+      const gy = y + 2 - lift * 40;
+      ctx.fillStyle = "#2f3b4d";
+      roundRect(ctx, x - 17, gy - 8, 34, 12, 4);
+      ctx.fill();
+      ctx.fillStyle = "#ffd166";
+      ctx.fillRect(x - 17, gy - 2, 34, 2);
+      rider(ctx, x - 7, gy - 6, "#e8574a", 0.7);
+      rider(ctx, x + 7, gy - 6, "#7ee7a8", 0.7);
+      return;
+    }
     default: {
       // 予備のベンチ
       ctx.fillStyle = "#6b7a8c";
@@ -2988,6 +3228,81 @@ const drawEquip = (
         }
       }
     }
+    return;
+  }
+  if (id === "blimp") {
+    // 飛行船の広告: 看板を提げた船体が、ゆっくり漂う
+    const drift = Math.sin(time * 0.6) * 4;
+    ctx.fillStyle = "#7a6a86";
+    ctx.fillRect(x - 1, y - 4, 2, 18);
+    ctx.fillStyle = "#d8dee8";
+    ctx.beginPath();
+    ctx.ellipse(x + drift, y - 22, 30, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#c2402f";
+    ctx.beginPath();
+    ctx.ellipse(x + drift - 12, y - 22, 8, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e8eef7";
+    ctx.beginPath();
+    ctx.moveTo(x + drift + 26, y - 22);
+    ctx.lineTo(x + drift + 36, y - 30);
+    ctx.lineTo(x + drift + 34, y - 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#3a3128";
+    roundRect(ctx, x + drift - 9, y - 11, 18, 7, 2);
+    ctx.fill();
+    // ぶら下げた電光看板
+    const glow = 0.45 + Math.abs(Math.sin(time * 2.4)) * 0.55;
+    ctx.fillStyle = `rgba(255,209,102,${glow})`;
+    roundRect(ctx, x + drift - 22, y - 3, 44, 13, 3);
+    ctx.fill();
+    ctx.fillStyle = "#2b2118";
+    ctx.font = `800 9px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+    ctx.fillText("総本店", x + drift, y + 4);
+    ctx.font = FONT;
+    return;
+  }
+  if (id === "crater") {
+    // 噴火ショー: 小さな山が周期で火を噴く
+    const cycle = (time * 0.5) % 1;
+    const burst = cycle < 0.32 ? 1 - cycle / 0.32 : 0;
+    ctx.fillStyle = "#4a3129";
+    ctx.beginPath();
+    ctx.moveTo(x - 26, y + 14);
+    ctx.lineTo(x - 8, y - 16);
+    ctx.lineTo(x + 8, y - 16);
+    ctx.lineTo(x + 26, y + 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,150,60,${0.5 + burst * 0.5})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 16, 9, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (burst > 0) {
+      ctx.fillStyle = `rgba(255,120,40,${burst * 0.85})`;
+      ctx.beginPath();
+      ctx.moveTo(x - 8, y - 16);
+      ctx.lineTo(x, y - 18 - 30 * burst);
+      ctx.lineTo(x + 8, y - 16);
+      ctx.closePath();
+      ctx.fill();
+      // 飛び散る火の粉
+      for (let i = 0; i < 5; i += 1) {
+        const a = -Math.PI / 2 + (i - 2) * 0.42;
+        const d = 16 + (1 - burst) * 26;
+        ctx.fillStyle = `rgba(255,190,90,${burst})`;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(a) * d, y - 18 + Math.sin(a) * d, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // ふもとを照らす明かり
+    ctx.fillStyle = `rgba(255,120,40,${0.18 + burst * 0.25})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 15, 34, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
     return;
   }
   if (id === "noodle") {
@@ -4317,6 +4632,9 @@ export default function Shop({ onSample, paused }: Props) {
             if (((x + y) / 22) % 2 === 0) ctx.fillRect(x, y, 22, 22);
           }
         }
+        // 山は帯より手前（奥の景色）として描く
+        if (area.palette.prop === "volcano") drawVolcano(ctx, area.rect, time);
+
         ctx.strokeStyle = "rgba(246,231,207,0.16)";
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -4351,9 +4669,7 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fillStyle = "#ffd166";
           ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
           ctx.fillText(
-            area.price === 0
-              ? "D R E A M   P A R K"
-              : area.label.replace("をつくる", ""),
+            area.price === 0 ? "D R E A M   P A R K" : areaTitle(area.label),
             mid,
             33,
           );
@@ -4388,9 +4704,7 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fillStyle = "#f6d9a8";
           ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
           ctx.fillText(
-            area.price === 0
-              ? "火 の は じ ま り"
-              : area.label.replace("をひらく", "").replace("へ下りる", ""),
+            area.price === 0 ? "火 の は じ ま り" : areaTitle(area.label),
             mid,
             20,
           );
@@ -4401,7 +4715,11 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fill();
           ctx.fillStyle = "#f6e7cf";
           ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
-          ctx.fillText(area.price === 0 ? "ら ー め ん" : "製 麺 所", mid, 20);
+          ctx.fillText(
+            spaced(area.price === 0 ? "らーめん" : areaTitle(area.label)),
+            mid,
+            20,
+          );
           ctx.font = FONT;
           ctx.fillStyle = "rgba(0,0,0,0.25)";
           for (let i = 1; i < 5; i += 1) {
@@ -4893,7 +5211,7 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.font = SMALL;
         ctx.fillStyle = "rgba(246,231,207,0.4)";
         ctx.fillText(
-          area.label.replace("をつくる", ""),
+          areaTitle(area.label),
           (area.rect.x0 + area.rect.x1) / 2,
           area.rect.y0 + 14,
         );
