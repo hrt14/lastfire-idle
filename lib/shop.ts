@@ -468,7 +468,8 @@ const buildPads = (): Pad[] => [
       pos: stove.pos,
       price: stove.price,
       label: stove.label ?? currentStage.labels.producer,
-      sub: "同時に作れる数が増える",
+      // 建築予定地は「同時に作れる数が増える」だと意味が通らないので分ける
+      sub: stove.needs !== undefined ? "資材を運びこむと建つ" : "同時に作れる数が増える",
       reveal: stove.reveal,
       needServed: stove.needServed,
     })),
@@ -4205,6 +4206,16 @@ const padInspect = (state: ShopState, pad: Pad): Inspect => {
     if (pad.id === "equip-ticket") {
       lines.push(chain ? "雇っていた拾い手ははこび手になる" : "雇っていたレジ係はホール店員になる");
     }
+    // 建築予定地は、要る資材を名前つきで出す（アイコンだけでは分からないため）
+    const buildStove = stoveById.get(pad.id);
+    if (buildStove?.needs) {
+      lines.push(
+        Object.entries(buildStove.needs)
+          .map(([kind, need]) => `${itemLabel(kind)} ${need}`)
+          .join("・"),
+      );
+      if (buildStove.gives?.note) lines.push(buildStove.gives.note);
+    }
   }
 
   lines.push(paid > 0 ? `残り ${yen(price - paid)}（${yen(price)}）` : yen(price));
@@ -4304,6 +4315,20 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
       const item = stoveItem(stove);
       const made = state.ready[stove.id] ?? 0;
       const full = made >= holdCap(state, stove);
+
+      // 建てている途中の建築予定地。工程の作業場とは説明を分ける
+      if (isBuild(stove) && !isDone(state, stove.id)) {
+        return {
+          title: stove.label ?? "建築予定地",
+          lines: [
+            ...Object.entries(stove.needs ?? {}).map(
+              ([kind, need]) => `${itemLabel(kind)} ${partsAt(state, stove.id, kind)} / ${need}`,
+            ),
+            "はこび手が資材を運びこむと建つ",
+          ],
+          pos: stove.pos,
+        };
+      }
 
       // 草原と森は「取りに行く場所」。作業場とは説明を分ける
       if (isHunt(stove)) {

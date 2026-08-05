@@ -2001,7 +2001,9 @@ const drawSettlement = (
       chainItem(ctx, kind, sx, y + 26, 0.6, time);
       ctx.font = SMALL;
       ctx.fillStyle = done ? "#7ee7a8" : "rgba(255,180,150,0.95)";
-      ctx.fillText(`${got}/${need}`, sx, y + 38);
+      // アイコンだけだと何の資材か分かりにくいので、名前も添える
+      ctx.fillText(itemLabel(kind), sx, y + 37);
+      ctx.fillText(`${got}/${need}`, sx, y + 48);
       ctx.font = FONT;
     });
     ctx.font = SMALL;
