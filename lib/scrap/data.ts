@@ -18,6 +18,7 @@ export type MachineId =
   | "robot";
 
 export type Vec = { x: number; y: number };
+export type Rect = { x0: number; y0: number; x1: number; y1: number };
 
 export type MachineDef = {
   id: MachineId;
@@ -53,19 +54,34 @@ export type OfflineReport = {
   bottleneck: string;
 };
 
-export const SCRAP_WORLD = { w: 1180, h: 820 };
+/** 既存ステージと同じく、スマホ横幅360を1画面の基準にする。 */
+export const SCRAP_VIEW_WIDTH = 360;
+export const SCRAP_WORLD = { w: 720, h: 960 };
 export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
-export const SOURCE_POS: Vec = { x: 88, y: 245 };
-export const HQ_POS: Vec = { x: 310, y: 470 };
+
+/** 第一区画は1画面に収める。 */
+export const SOURCE_POS: Vec = { x: 70, y: 170 };
+export const HQ_POS: Vec = { x: 180, y: 318 };
+
+export const sourcePickupPos = (): Vec => ({ x: SOURCE_POS.x, y: SOURCE_POS.y + 66 });
+export const machineInputPos = (machine: MachineDef): Vec => ({
+  x: machine.pos.x - 48,
+  y: machine.pos.y + 34,
+});
+export const machineOutputPos = (machine: MachineDef): Vec => ({
+  x: machine.pos.x + 48,
+  y: machine.pos.y + 34,
+});
+export const hqDropPos = (): Vec => ({ x: HQ_POS.x, y: HQ_POS.y + 64 });
 
 export const resources: Record<
   ResourceId,
   { name: string; short: string; icon: string; color: string }
 > = {
   raw: { name: "宇宙ゴミ", short: "ゴミ", icon: "🗑️", color: "#9ca3af" },
-  sorted: { name: "選別材", short: "選別", icon: "🧲", color: "#7dd3fc" },
-  crushed: { name: "破砕材", short: "破砕", icon: "🪨", color: "#c4b5a5" },
-  washed: { name: "洗浄材", short: "洗浄", icon: "💧", color: "#67e8f9" },
+  sorted: { name: "外壁補修材", short: "補修材", icon: "🪨", color: "#c4b5fd" },
+  crushed: { name: "破砕材", short: "破砕材", icon: "🔩", color: "#c4b5a5" },
+  washed: { name: "再生資材", short: "再生材", icon: "💎", color: "#67e8f9" },
   molten: { name: "溶融金属", short: "溶融", icon: "🔥", color: "#fb923c" },
   ingot: { name: "再生インゴット", short: "鋼材", icon: "🧱", color: "#cbd5e1" },
   parts: { name: "機械部品", short: "部品", icon: "⚙️", color: "#fde68a" },
@@ -80,10 +96,10 @@ export const machines: MachineDef[] = [
     icon: "🧲",
     input: "raw",
     output: "sorted",
-    pos: { x: 285, y: 245 },
-    cycleMs: 1050,
+    pos: { x: 250, y: 170 },
+    cycleMs: 1000,
     unlockCost: 0,
-    autoCost: 90,
+    autoCost: 120,
     district: 1,
     art: "sort",
   },
@@ -94,11 +110,11 @@ export const machines: MachineDef[] = [
     icon: "⚒️",
     input: "sorted",
     output: "crushed",
-    pos: { x: 505, y: 245 },
-    cycleMs: 2200,
-    unlockCost: 60,
-    autoCost: 220,
-    district: 1,
+    pos: { x: 115, y: 635 },
+    cycleMs: 2100,
+    unlockCost: 900,
+    autoCost: 1200,
+    district: 2,
     art: "crusher",
   },
   {
@@ -108,10 +124,10 @@ export const machines: MachineDef[] = [
     icon: "🚿",
     input: "crushed",
     output: "washed",
-    pos: { x: 725, y: 245 },
-    cycleMs: 2700,
-    unlockCost: 260,
-    autoCost: 650,
+    pos: { x: 275, y: 635 },
+    cycleMs: 2500,
+    unlockCost: 0,
+    autoCost: 1800,
     district: 2,
     art: "washer",
   },
@@ -122,11 +138,11 @@ export const machines: MachineDef[] = [
     icon: "🔥",
     input: "washed",
     output: "molten",
-    pos: { x: 945, y: 245 },
-    cycleMs: 3200,
-    unlockCost: 900,
-    autoCost: 1800,
-    district: 2,
+    pos: { x: 485, y: 170 },
+    cycleMs: 3100,
+    unlockCost: 12000,
+    autoCost: 18000,
+    district: 3,
     art: "furnace",
   },
   {
@@ -136,10 +152,10 @@ export const machines: MachineDef[] = [
     icon: "🧪",
     input: "molten",
     output: "ingot",
-    pos: { x: 945, y: 565 },
-    cycleMs: 3800,
-    unlockCost: 3000,
-    autoCost: 4800,
+    pos: { x: 635, y: 170 },
+    cycleMs: 3700,
+    unlockCost: 0,
+    autoCost: 28000,
     district: 3,
     art: "refinery",
   },
@@ -150,11 +166,11 @@ export const machines: MachineDef[] = [
     icon: "⚙️",
     input: "ingot",
     output: "parts",
-    pos: { x: 725, y: 565 },
-    cycleMs: 4300,
-    unlockCost: 9500,
-    autoCost: 13500,
-    district: 3,
+    pos: { x: 485, y: 635 },
+    cycleMs: 4200,
+    unlockCost: 140000,
+    autoCost: 220000,
+    district: 4,
     art: "press",
   },
   {
@@ -164,10 +180,10 @@ export const machines: MachineDef[] = [
     icon: "🤖",
     input: "parts",
     output: "robots",
-    pos: { x: 505, y: 565 },
-    cycleMs: 5000,
-    unlockCost: 30000,
-    autoCost: 36000,
+    pos: { x: 635, y: 635 },
+    cycleMs: 4900,
+    unlockCost: 0,
+    autoCost: 360000,
     district: 4,
     art: "assembly",
   },
@@ -175,8 +191,22 @@ export const machines: MachineDef[] = [
 
 export const machineById = new Map(machines.map((machine) => [machine.id, machine]));
 
+export const districtBounds = (unlocked: number): Rect => {
+  if (unlocked >= 6) return { x0: 360, y0: 480, x1: 720, y1: 960 };
+  if (unlocked >= 4) return { x0: 360, y0: 0, x1: 720, y1: 480 };
+  if (unlocked >= 3) return { x0: 0, y0: 480, x1: 360, y1: 960 };
+  return { x0: 0, y0: 0, x1: 360, y1: 480 };
+};
+
+export const worldBounds = (unlocked: number): Rect => {
+  if (unlocked >= 6) return { x0: 0, y0: 0, x1: 720, y1: 960 };
+  if (unlocked >= 4) return { x0: 0, y0: 0, x1: 720, y1: 480 };
+  if (unlocked >= 3) return { x0: 0, y0: 0, x1: 360, y1: 960 };
+  return { x0: 0, y0: 0, x1: 360, y1: 480 };
+};
+
 export const resourceRecord = (): Record<ResourceId, number> => ({
-  raw: 6,
+  raw: 12,
   sorted: 0,
   crushed: 0,
   washed: 0,
