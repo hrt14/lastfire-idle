@@ -18,7 +18,6 @@ import {
   buyOceanPurchase,
   carryCapacity,
   collectProduct,
-  collectSource,
   deliverProduct,
   depositSource,
   dismissOfflineReport,
@@ -32,6 +31,8 @@ import {
   processCycle,
   selectOceanArea,
   type OceanAreaId,
+  type OceanPurchase,
+  type OceanResourceId,
   type OceanState,
 } from "@/lib/ocean";
 import { loadOcean, resetOcean, saveOcean } from "@/lib/oceanStore";
@@ -50,6 +51,8 @@ type Joystick = {
   dx: number;
   dy: number;
 };
+type Gather = { key: string; ms: number; index: number };
+type Guidance = { pos: Vec; label: string; kind: "work" | "buy" | "wait" };
 
 const WORLD = { w: 720, h: 660 };
 const SOURCE = { x: 112, y: 205 };
@@ -66,8 +69,26 @@ const PURCHASE_POSITIONS = [
   { x: 515, y: 548 },
 ];
 const INTERACT_RADIUS = 48;
+const GATHER_RADIUS = 43;
 const PURCHASE_RADIUS = 34;
 const MOVE_SPEED = 150;
+
+const FISH_BASES: Vec[] = [
+  { x: 82, y: 190 },
+  { x: 137, y: 206 },
+  { x: 101, y: 248 },
+  { x: 148, y: 267 },
+  { x: 67, y: 270 },
+  { x: 126, y: 165 },
+];
+const STATIC_BASES: Vec[] = [
+  { x: 78, y: 188 },
+  { x: 132, y: 194 },
+  { x: 102, y: 236 },
+  { x: 148, y: 260 },
+  { x: 68, y: 274 },
+  { x: 126, y: 167 },
+];
 
 const emptyJoystick = (): Joystick => ({
   active: false,
@@ -80,6 +101,7 @@ const emptyJoystick = (): Joystick => ({
   dy: 0,
 });
 
+const emptyGather = (): Gather => ({ key: "", ms: 0, index: -1 });
 const distance = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -138,6 +160,236 @@ const drawRing = (
   ctx.fillText(label, at.x, at.y + 43);
 };
 
+const isSwimmingSource = (kind: OceanResourceId) =>
+  kind === "fish" || kind === "tuna" || kind === "iceFish";
+
+const gatherDuration = (areaIndex: number, swimming: boolean) =>
+  swimming ? 720 + areaIndex * 85 : 560 + areaIndex * 70;
+
+const sourceTargets = (state: OceanState, time: number): Vec[] => {
+  const def = oceanArea(state.currentArea);
+  const line = state.lines[state.currentArea];
+  const count = Math.min(6, Math.max(0, Math.floor(line.wild)));
+  const swimming = isSwimmingSource(def.source);
+  const bases = swimming ? FISH_BASES : STATIC_BASES;
+  return bases.slice(0, count).map((base, index) => {
+    if (!swimming) {
+      const pulse = Math.sin(time * 0.0015 + index * 1.7) * 2;
+      return { x: base.x, y: base.y + pulse };
+    }
+    const speed = def.source === "tuna" ? 0.00085 : def.source === "iceFish" ? 0.00055 : 0.0007;
+    const phase = time * speed + index * 1.31 + def.index * 0.4;
+    return {
+      x: clamp(base.x + Math.sin(phase) * (18 + (index % 2) * 8), 62, 160),
+      y: clamp(base.y + Math.cos(phase * 0.83) * (13 + (index % 3) * 4), 160, 282),
+    };
+  });
+};
+
+const nearestTarget = (player: Vec, targets: Vec[]) => {
+  let best = -1;
+  let bestDistance = Infinity;
+  targets.forEach((target, index) => {
+    const d = distance(player, target);
+    if (d < bestDistance) {
+      best = index;
+      bestDistance = d;
+    }
+  });
+  return { index: best, distance: bestDistance, pos: best >= 0 ? targets[best] : SOURCE_PICKUP };
+};
+
+const collectOneSource = (state: OceanState, id: OceanAreaId): OceanState => {
+  const def = oceanArea(id);
+  const line = state.lines[id];
+  const compatible = state.carry.amount <= 0 || state.carry.kind === def.source;
+  const room = carryCapacity(state) - state.carry.amount;
+  const available = line.sourceAuto ? line.harvested : line.wild;
+  if (!compatible || room <= 0 || available < 1) return state;
+  const nextLine = { ...line };
+  if (line.sourceAuto) nextLine.harvested -= 1;
+  else nextLine.wild -= 1;
+  return {
+    ...state,
+    lines: { ...state.lines, [id]: nextLine },
+    carry: { kind: def.source, amount: state.carry.amount + 1 },
+    totalActions: state.totalActions + 1,
+    totalFishCaught: state.totalFishCaught + 1,
+  };
+};
+
+const purchasePosition = (purchases: OceanPurchase[], purchase: OceanPurchase) => {
+  const index = purchases.findIndex((item) => item.id === purchase.id);
+  return PURCHASE_POSITIONS[Math.max(0, index)] ?? PURCHASE_POSITIONS[0];
+};
+
+const guidance = (state: OceanState, player: Vec, time: number): Guidance => {
+  const def = oceanArea(state.currentArea);
+  const line = state.lines[state.currentArea];
+  const purchases = availablePurchases(state, state.currentArea);
+
+  if (state.carry.kind === def.source && state.carry.amount > 0) {
+    return { pos: INPUT, label: `${def.processorName}へ運ぶ`, kind: "work" };
+  }
+  if (state.carry.kind === def.product && state.carry.amount > 0) {
+    return { pos: HQ_DROP, label: `${def.productName}を納品`, kind: "work" };
+  }
+  if (line.output >= 1) {
+    return { pos: OUTPUT, label: `${def.productName}を受け取る`, kind: "work" };
+  }
+
+  const affordable = purchases.find((purchase) => state.shells >= purchase.cost);
+  if (affordable) {
+    return {
+      pos: purchasePosition(purchases, affordable),
+      label: affordable.label,
+      kind: "buy",
+    };
+  }
+
+  if (line.input > 0) {
+    return { pos: OUTPUT, label: "加工完了を待つ", kind: "wait" };
+  }
+  if (line.sourceAuto && line.harvested >= 1) {
+    return { pos: SOURCE_PICKUP, label: `${def.sourceName}の水揚げを受け取る`, kind: "work" };
+  }
+  if (!line.sourceAuto && line.wild >= 1) {
+    const target = nearestTarget(player, sourceTargets(state, time)).pos;
+    return { pos: target, label: `${oceanResources[def.source].name}を採る`, kind: "work" };
+  }
+  if (line.sourceAuto && line.harvested < 1) {
+    return { pos: SOURCE_PICKUP, label: "水揚げを待つ", kind: "wait" };
+  }
+  return { pos: SOURCE_PICKUP, label: "資源の再出現を待つ", kind: "wait" };
+};
+
+const drawGuidance = (
+  ctx: CanvasRenderingContext2D,
+  from: Vec,
+  next: Guidance,
+  time: number,
+) => {
+  const to = next.pos;
+  if (distance(from, to) > 42) {
+    ctx.save();
+    ctx.setLineDash([6, 8]);
+    ctx.lineDashOffset = -((time * 0.04) % 14);
+    ctx.strokeStyle = next.kind === "buy" ? "rgba(126,240,194,0.75)" : "rgba(255,225,112,0.72)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y - 8);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const pulse = 0.5 + Math.sin(time * 0.006) * 0.5;
+  ctx.strokeStyle = next.kind === "buy"
+    ? `rgba(126,240,194,${0.55 + pulse * 0.4})`
+    : `rgba(255,225,112,${0.5 + pulse * 0.45})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(to.x, to.y, 22 + pulse * 6, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.font = "800 10px system-ui";
+  const label = `NEXT  ${next.label}`;
+  const width = ctx.measureText(label).width + 18;
+  const x = clamp(to.x, width / 2 + 8, WORLD.w - width / 2 - 8);
+  const y = Math.max(92, to.y - 52);
+  ctx.fillStyle = "rgba(3,24,34,0.82)";
+  roundRect(ctx, x - width / 2, y - 12, width, 22, 11);
+  ctx.fill();
+  ctx.strokeStyle = next.kind === "buy" ? "rgba(126,240,194,0.8)" : "rgba(255,225,112,0.7)";
+  ctx.lineWidth = 1.3;
+  roundRect(ctx, x - width / 2, y - 12, width, 22, 11);
+  ctx.stroke();
+  ctx.fillStyle = next.kind === "buy" ? "#9ff5d1" : "#fff0a8";
+  ctx.textAlign = "center";
+  ctx.fillText(label, x, y + 3);
+};
+
+const drawFish = (
+  ctx: CanvasRenderingContext2D,
+  pos: Vec,
+  kind: OceanResourceId,
+  index: number,
+  time: number,
+  active: boolean,
+) => {
+  const scale = kind === "tuna" ? 1.35 : kind === "iceFish" ? 1.05 : 0.9;
+  const phase = time * 0.003 + index;
+  const face = Math.cos(phase * 0.23 + index) >= 0 ? 1 : -1;
+  ctx.save();
+  ctx.translate(pos.x, pos.y);
+  ctx.scale(face * scale, scale);
+  if (active) {
+    ctx.shadowColor = "rgba(255,232,130,0.95)";
+    ctx.shadowBlur = 14;
+  }
+  ctx.fillStyle = kind === "iceFish" ? "#b8f4ff" : kind === "tuna" ? "#5ea3e8" : "#74d8f5";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 13, 7.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-11, 0);
+  ctx.lineTo(-21, -8);
+  ctx.lineTo(-19, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.65)";
+  ctx.beginPath();
+  ctx.ellipse(4, -2, 4, 2.2, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#102b3b";
+  ctx.beginPath();
+  ctx.arc(8, -1, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
+
+const drawStaticSource = (
+  ctx: CanvasRenderingContext2D,
+  pos: Vec,
+  kind: OceanResourceId,
+  active: boolean,
+  time: number,
+) => {
+  ctx.save();
+  ctx.translate(pos.x, pos.y + Math.sin(time * 0.002 + pos.x) * 1.5);
+  if (active) {
+    ctx.shadowColor = "rgba(255,232,130,0.95)";
+    ctx.shadowBlur = 13;
+  }
+  ctx.font = kind === "plankton" ? "700 20px system-ui" : "700 26px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fff";
+  ctx.fillText(oceanResources[kind].icon, 0, 7);
+  ctx.restore();
+};
+
+const drawGatherProgress = (
+  ctx: CanvasRenderingContext2D,
+  pos: Vec,
+  progress: number,
+  swimming: boolean,
+) => {
+  ctx.strokeStyle = "rgba(5,24,34,0.65)";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 24, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = "#ffe37e";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 24, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+  ctx.stroke();
+  ctx.font = "800 9px system-ui";
+  ctx.fillStyle = "#fff0a8";
+  ctx.textAlign = "center";
+  ctx.fillText(swimming ? "つかまえる" : "採集", pos.x, pos.y + 38);
+};
+
 const drawPlayer = (
   ctx: CanvasRenderingContext2D,
   player: Vec,
@@ -189,6 +441,7 @@ const drawScene = (
   player: Vec,
   joystick: Joystick,
   hold: { id: string; ms: number },
+  gather: Gather,
   skin: Skin,
   time: number,
 ) => {
@@ -197,6 +450,9 @@ const drawScene = (
   const purchases = availablePurchases(state, state.currentArea);
   const sourceInfo = oceanResources[def.source];
   const productInfo = oceanResources[def.product];
+  const targets = sourceTargets(state, time);
+  const nearest = nearestTarget(player, targets);
+  const swimming = isSwimmingSource(def.source);
   const scale = Math.min(width / WORLD.w, height / WORLD.h);
   const ox = (width - WORLD.w * scale) / 2;
   const oy = (height - WORLD.h * scale) / 2;
@@ -246,29 +502,55 @@ const drawScene = (
   ctx.fillStyle = "#f5fdff";
   ctx.font = "800 12px system-ui";
   ctx.fillText(def.sourceName, SOURCE.x, 145);
-  ctx.font = "700 38px system-ui";
-  ctx.fillText(sourceInfo.icon, SOURCE.x, 215);
   ctx.font = "700 11px system-ui";
   ctx.fillStyle = "rgba(240,252,255,0.78)";
   ctx.fillText(
     line.sourceAuto
       ? `自然 ${Math.floor(line.wild)} / 水揚げ ${Math.floor(line.harvested)}`
-      : `資源 ${Math.floor(line.wild)}`,
+      : `残り ${Math.floor(line.wild)}`,
     SOURCE.x,
-    246,
+    156,
   );
+
   if (line.sourceAuto) {
     ctx.font = "700 22px system-ui";
-    ctx.fillText("🧑‍✈️", 76 + Math.sin(time * 0.003) * 13, 274);
+    ctx.fillText("🧑‍✈️", 76 + Math.sin(time * 0.003) * 13, 244);
+    ctx.fillStyle = "rgba(7,35,45,0.76)";
+    roundRect(ctx, 84, 265, 56, 32, 8);
+    ctx.fill();
+    ctx.font = "700 16px system-ui";
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`${sourceInfo.icon} ${Math.floor(line.harvested)}`, SOURCE_PICKUP.x, 286);
+    drawRing(
+      ctx,
+      SOURCE_PICKUP,
+      sourceInfo.icon,
+      "水揚げ",
+      distance(player, SOURCE_PICKUP) < INTERACT_RADIUS,
+      time,
+    );
+  } else {
+    targets.forEach((target, index) => {
+      const active = nearest.index === index && nearest.distance < GATHER_RADIUS;
+      if (swimming) drawFish(ctx, target, def.source, index, time, active);
+      else drawStaticSource(ctx, target, def.source, active, time);
+      if (gather.index === index && gather.ms > 0) {
+        drawGatherProgress(
+          ctx,
+          target,
+          Math.min(1, gather.ms / gatherDuration(def.index, swimming)),
+          swimming,
+        );
+      }
+    });
+    if (targets.length === 0) {
+      ctx.font = "700 24px system-ui";
+      ctx.fillStyle = "rgba(224,250,255,0.5)";
+      ctx.fillText("○  ○  ○", SOURCE.x, 222);
+      ctx.font = "700 10px system-ui";
+      ctx.fillText("再出現を待っています", SOURCE.x, 249);
+    }
   }
-  drawRing(
-    ctx,
-    SOURCE_PICKUP,
-    sourceInfo.icon,
-    line.sourceAuto ? "水揚げ" : "拾う",
-    distance(player, SOURCE_PICKUP) < INTERACT_RADIUS,
-    time,
-  );
 
   ctx.fillStyle = "#194b5c";
   roundRect(ctx, PROCESSOR.x - 72, PROCESSOR.y - 52, 144, 104, 18);
@@ -379,6 +661,7 @@ const drawScene = (
     ctx.fillText(`🐚 ${short(purchase.cost)}`, at.x, at.y + 13);
   });
 
+  drawGuidance(ctx, player, guidance(state, player, time), time);
   drawPlayer(ctx, player, skin, state, time);
   ctx.restore();
 
@@ -411,6 +694,7 @@ export default function OceanPlanet() {
   const joystickRef = useRef<Joystick>(emptyJoystick());
   const interactionRef = useRef(0);
   const purchaseHoldRef = useRef({ id: "", ms: 0 });
+  const gatherRef = useRef<Gather>(emptyGather());
   const skinRef = useRef<Skin | null>(null);
   const [display, setDisplay] = useState<OceanState | null>(null);
   const [help, setHelp] = useState(false);
@@ -480,15 +764,50 @@ export default function OceanPlanet() {
         }
       }
 
-      interactionRef.current += dt;
       const id = next.currentArea;
+      const def = oceanArea(id);
+      const line = next.lines[id];
       const player = playerRef.current;
+      const carryCompatible =
+        next.carry.amount <= 0 || next.carry.kind === def.source;
+      const canGather =
+        !line.sourceAuto &&
+        line.wild >= 1 &&
+        carryCompatible &&
+        next.carry.amount < carryCapacity(next);
+
+      if (canGather) {
+        const targets = sourceTargets(next, time);
+        const nearest = nearestTarget(player, targets);
+        if (nearest.index >= 0 && nearest.distance < GATHER_RADIUS) {
+          const key = `${id}:${nearest.index}`;
+          if (gatherRef.current.key !== key) {
+            gatherRef.current = { key, ms: 0, index: nearest.index };
+          }
+          gatherRef.current.ms += dt;
+          if (gatherRef.current.ms >= gatherDuration(def.index, isSwimmingSource(def.source))) {
+            next = collectOneSource(next, id);
+            gatherRef.current = emptyGather();
+          }
+        } else {
+          gatherRef.current = emptyGather();
+        }
+      } else {
+        gatherRef.current = emptyGather();
+      }
+
+      interactionRef.current += dt;
       if (interactionRef.current >= 230) {
         let changed = next;
-        if (distance(player, SOURCE_PICKUP) < INTERACT_RADIUS) changed = collectSource(changed, id);
-        else if (distance(player, INPUT) < INTERACT_RADIUS) changed = depositSource(changed, id);
-        else if (distance(player, OUTPUT) < INTERACT_RADIUS) changed = collectProduct(changed, id);
-        else if (distance(player, HQ_DROP) < INTERACT_RADIUS) changed = deliverProduct(changed, id);
+        if (line.sourceAuto && distance(player, SOURCE_PICKUP) < INTERACT_RADIUS) {
+          changed = collectOneSource(changed, id);
+        } else if (distance(player, INPUT) < INTERACT_RADIUS) {
+          changed = depositSource(changed, id);
+        } else if (distance(player, OUTPUT) < INTERACT_RADIUS) {
+          changed = collectProduct(changed, id);
+        } else if (distance(player, HQ_DROP) < INTERACT_RADIUS) {
+          changed = deliverProduct(changed, id);
+        }
         if (changed !== next) next = changed;
         interactionRef.current = 0;
       }
@@ -508,6 +827,7 @@ export default function OceanPlanet() {
             const beforeArea = next.currentArea;
             next = buyOceanPurchase(next, purchase);
             purchaseHoldRef.current = { id: "", ms: 0 };
+            gatherRef.current = emptyGather();
             if (next.currentArea !== beforeArea) playerRef.current = { ...PLAYER_START };
           }
         }
@@ -543,6 +863,7 @@ export default function OceanPlanet() {
           playerRef.current,
           joystickRef.current,
           purchaseHoldRef.current,
+          gatherRef.current,
           skin,
           time,
         );
@@ -552,7 +873,7 @@ export default function OceanPlanet() {
 
     frame = window.requestAnimationFrame(run);
     return () => window.cancelAnimationFrame(frame);
-  }, [commit, ready]);
+  }, [ready]);
 
   const switchArea = (id: OceanAreaId) => {
     const current = stateRef.current;
@@ -560,12 +881,14 @@ export default function OceanPlanet() {
     const next = selectOceanArea(current, id);
     if (next === current) return;
     playerRef.current = { ...PLAYER_START };
+    gatherRef.current = emptyGather();
     commit(next, true);
   };
 
   const reset = () => {
     const next = resetOcean();
     playerRef.current = { ...PLAYER_START };
+    gatherRef.current = emptyGather();
     commit(next, true);
     completeShownRef.current = false;
     setShowComplete(false);
@@ -621,6 +944,7 @@ export default function OceanPlanet() {
 
   const def = oceanArea(display.currentArea);
   const carryInfo = display.carry.kind ? oceanResources[display.carry.kind] : null;
+  const next = guidance(display, playerRef.current, Date.now());
 
   return (
     <main className={styles.app}>
@@ -682,8 +1006,8 @@ export default function OceanPlanet() {
           <div><strong>{display.carry.amount}/{carryCapacity(display)}</strong><small>{carryInfo?.name ?? "手持ちなし"}</small></div>
         </div>
         <div className={styles.status}>
-          <strong>{bottleneck(display)}</strong>
-          <small>現場を歩き、光る円に入ると作業します</small>
+          <strong>次：{next.label}</strong>
+          <small>{bottleneck(display)}</small>
         </div>
       </footer>
 
@@ -711,11 +1035,11 @@ export default function OceanPlanet() {
           <section className={styles.sheet} onClick={(event: ReactMouseEvent<HTMLElement>) => event.stopPropagation()}>
             <h2>OCEAN PLANETの遊び方</h2>
             <ol>
-              <li>画面をドラッグしてキャラクターを動かす</li>
-              <li>資源の円に入って拾い、加工設備へ運ぶ</li>
-              <li>完成品を受け取り、海洋復旧本部へ納品する</li>
-              <li>購入パッドに立って、仕事を仲間や船へ渡す</li>
-              <li>全7海域を開き、海洋再生率100%を目指す</li>
+              <li>黄色い破線が、次に向かう場所を示します</li>
+              <li>泳ぐ魚を追い、近くにいると捕獲ゲージがたまります</li>
+              <li>資源を加工設備へ運び、完成品を復旧本部へ納品します</li>
+              <li>購入パッドに立ち、仕事を漁師・加工係・船へ渡します</li>
+              <li>全7海域を開き、海洋再生率100%を目指します</li>
             </ol>
             <button type="button" className={styles.primary} onClick={() => setHelp(false)}>わかった</button>
           </section>

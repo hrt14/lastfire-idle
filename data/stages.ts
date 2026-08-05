@@ -1080,6 +1080,13 @@ const fireSeats: SeatSpec[] = [
     { x: 4770, price: 500000, reveal: 105 },
     { x: 4910, price: 900000, reveal: 108 },
   ]),
+  // 網（net-1）で獲れ高が伸びるわりに席が2つしかなく、供給過多で
+  // 魚がだぶついていた（プレイテストのフィードバック）ので、
+  // ひとつ手前の段にもう2席足して受け止め先を増やした
+  ...benchRow(5, 480, "fish", 2.6, "川辺の席", [
+    { x: 4770, price: 1300000, reveal: 118 },
+    { x: 4910, price: 1800000, reveal: 120 },
+  ], "f"),
   ...benchRow(5, 390, "hide", 5, "交易の席", [
     { x: 5060, price: 1500000, unlockAfter: "found-village", reveal: 109 },
     { x: 5200, price: 2600000, reveal: 111 },
