@@ -25,7 +25,9 @@ jobs:
           cache: npm
       - name: Apply source archive
         run: |
-          cat .scrap-patch/part*.txt | base64 -d > /tmp/scrap-v02.tar.gz
+          cat .scrap-patch/chunk*.txt > /tmp/scrap-v02.b64
+          echo "8d66c890dfc6f8eeffa6fbc58eee4eed260b2e6613444c10b33f170d8ad14a5b  /tmp/scrap-v02.b64" | sha256sum -c -
+          base64 -d /tmp/scrap-v02.b64 > /tmp/scrap-v02.tar.gz
           tar -xzf /tmp/scrap-v02.tar.gz -C .
       - name: Validate
         run: |
