@@ -256,27 +256,28 @@ const buildSweep = (
 
 /* ---------- 谷の緊張（低い唸り） ---------- */
 
-type Tension = { gain: GainNode };
+type Tension = { gain: GainNode; tremGain: GainNode };
 
 const buildTension = (ctx: AudioContext, dest: AudioNode): Tension => {
   const osc = ctx.createOscillator();
   osc.type = "sine";
   osc.frequency.value = 58;
   const gain = ctx.createGain();
-  // 目標の音量は updateBgm がここへ ramp する。それに、小さくうねる throb を足しこむ
   gain.gain.value = 0;
   osc.connect(gain);
   gain.connect(dest);
 
+  // うねる throb。谷にいないときは、これ自体も 0 まで絞る
+  // （そうしないと、ここだけ target=0 でも小さく鳴り続けてしまう）
   const trem = ctx.createOscillator();
   trem.frequency.value = 3.2;
   const tremGain = ctx.createGain();
-  tremGain.gain.value = 0.05;
+  tremGain.gain.value = 0;
   trem.connect(tremGain);
   tremGain.connect(gain.gain);
   osc.start();
   trem.start();
-  return { gain };
+  return { gain, tremGain };
 };
 
 /* ---------- きらめき（パーク・冬） ---------- */
@@ -411,10 +412,11 @@ export const updateBgm = (scene: Scene, dt: number) => {
         : scene.beast === "active"
           ? 0.22
           : 0.12;
-  tension.gain.gain.linearRampToValueAtTime(
-    tensionBase + chargeFlash * 0.35,
-    now + (chargeFlash > 0.5 ? 0.15 : RAMP),
-  );
+  const tensionAt = now + (chargeFlash > 0.5 ? 0.15 : RAMP);
+  const tensionLevel = tensionBase + chargeFlash * 0.35;
+  tension.gain.gain.linearRampToValueAtTime(tensionLevel, tensionAt);
+  // throb の深さも同じ大きさで絞る。谷にいないときに鳴りっぱなしにしないため
+  tension.tremGain.gain.linearRampToValueAtTime(tensionLevel * 0.22, tensionAt);
 
   // きらめき: パークと、冬の丘
   sparkleTimer -= dt;

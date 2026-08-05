@@ -1180,7 +1180,11 @@ button {
 }
 
 .setting-list .ghost {
+  /* .ghost の width:100% がそのまま flex-basis になり、
+     隣の説明文（div）を 0幅まで押しつぶしていた。ここで打ち消す */
   flex: none;
+  width: auto;
+  white-space: nowrap;
 }
 
 .ghost.is-danger {
