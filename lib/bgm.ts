@@ -10,7 +10,7 @@
  *     - 冬の丘は風
  *     - 川辺は水の音
  *   ドリームパーク  ときどき鳴る、木琴のようなきらめき（持続音ではない）
- *   ラーメン一直線  いまのところ環境音なし
+ *   ラーメン一直線  ときどき鳴る、中華ドラの一発（同じく持続音ではない）
  *
  * 持続する発振器（ドローン・低音）は置かない。鳴りっぱなしの音は
  * 「消えないメッセージ」と同じで、それ自体が気になってしまうため
@@ -193,6 +193,7 @@ const NOTE_SETS: Record<string, number[]> = {
 };
 
 let sparkleTimer = 0;
+let gongTimer = 6 + Math.random() * 10;
 
 const sparkle = (ctx: AudioContext, dest: AudioNode, set: number[], loud: number) => {
   const now = ctx.currentTime;
@@ -208,6 +209,52 @@ const sparkle = (ctx: AudioContext, dest: AudioNode, set: number[], loud: number
   gain.connect(dest);
   osc.start(now);
   osc.stop(now + 1);
+};
+
+/* ---------- 中華ドラ（ラーメン一直線） ---------- */
+
+/**
+ * 一発鳴らして、あとは長い余韻でおさまる銅鑼。
+ * 整数比からわざとずらした倍音を重ねると、金属らしいシャリッとした響きになる。
+ * どれも自分で減衰しきる音なので、鳴りっぱなしにはならない
+ */
+const gong = (ctx: AudioContext, dest: AudioNode, loud: number) => {
+  const now = ctx.currentTime;
+
+  // 打った瞬間の、金属を擦ったような立ち上がり
+  const strike = ctx.createBufferSource();
+  strike.buffer = getNoiseBuffer(ctx);
+  const strikeFilter = ctx.createBiquadFilter();
+  strikeFilter.type = "highpass";
+  strikeFilter.frequency.value = 2500;
+  const strikeGain = ctx.createGain();
+  strikeGain.gain.setValueAtTime(0.0001, now);
+  strikeGain.gain.exponentialRampToValueAtTime(0.35 * loud, now + 0.004);
+  strikeGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+  strike.connect(strikeFilter);
+  strikeFilter.connect(strikeGain);
+  strikeGain.connect(dest);
+  strike.start(now);
+  strike.stop(now + 0.14);
+
+  // 銅鑼らしい、ずれた倍音たち。低いものほど長く尾を引く
+  const base = 165;
+  const partials = [1, 1.41, 1.9, 2.28, 2.76, 3.4];
+  const decays = [4.2, 3.4, 2.7, 2.1, 1.5, 1.0];
+  const levels = [0.5, 0.34, 0.26, 0.2, 0.15, 0.11];
+  partials.forEach((ratio, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = base * ratio;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(levels[i] * loud, now + 0.03 + i * 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + decays[i]);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + decays[i] + 0.05);
+  });
 };
 
 /* ---------- まとめ ---------- */
@@ -299,6 +346,18 @@ export const updateBgm = (scene: Scene, dt: number) => {
   if (sparkleSet && sparkleTimer <= 0) {
     sparkleTimer = 2.6 + Math.random() * 3.6;
     sparkle(ctx, master, sparkleSet, scene.stage === "park" ? 0.55 : 0.32);
+  }
+
+  // 中華ドラ: ラーメン一直線で、たまに祝儀っぽく一発鳴る
+  gongTimer -= dt;
+  if (scene.stage === "ramen") {
+    if (gongTimer <= 0) {
+      gongTimer = 18 + Math.random() * 22;
+      gong(ctx, master, 0.85);
+    }
+  } else if (gongTimer < 3) {
+    // 他のステージにいるあいだは進めない（戻ってすぐ鳴りすぎないように）
+    gongTimer = 3;
   }
 };
 
