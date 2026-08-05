@@ -32,28 +32,29 @@ const transportOne = (next: ScrapState, machine: MachineDef) => {
 const completeContract = (next: ScrapState) => {
   const active = contract(next);
   next.orderDelivered -= active.amount;
-  next.credits += active.reward;
+  const bonus = isAutomated(next, "cash") ? Math.ceil(active.reward * 0.1) : 0;
+  next.credits += active.reward + bonus;
   next.restoration = Math.min(100, next.restoration + active.restoration);
   next.contractsCompleted += 1;
   if (next.tutorialStep === 3) next.tutorialStep = 4;
 };
 
 const deliverStock = (next: ScrapState, kind: ResourceId, amount: number) => {
-  const active = contract(next);
-  if (kind !== active.resource || amount <= 0) return 0;
-  let moved = Math.min(amount, Math.floor(next.resources[kind]));
-  if (moved <= 0) return 0;
-  next.resources[kind] -= moved;
-  const original = moved;
-  while (moved > 0) {
+  let left = Math.min(amount, Math.floor(next.resources[kind]));
+  let delivered = 0;
+  while (left > 0 && next.restoration < 100) {
+    const active = contract(next);
+    if (kind !== active.resource) break;
     const room = active.amount - next.orderDelivered;
-    const add = Math.min(room, moved);
-    next.orderDelivered += add;
-    next.totalDelivered += add;
-    moved -= add;
+    const moved = Math.min(room, left);
+    next.resources[kind] -= moved;
+    next.orderDelivered += moved;
+    next.totalDelivered += moved;
+    delivered += moved;
+    left -= moved;
     if (next.orderDelivered >= active.amount) completeContract(next);
   }
-  return original - moved;
+  return delivered;
 };
 
 export const advanceScrap = (state: ScrapState, dtMs: number): ScrapState => {
@@ -62,8 +63,8 @@ export const advanceScrap = (state: ScrapState, dtMs: number): ScrapState => {
   const dt = Math.min(dtMs, OFFLINE_CAP_MS);
 
   next.sourceProgress += dt;
-  const sourceEvery = 1400;
-  const sourceLimit = 18 + next.carryLevel * 2;
+  const sourceEvery = 900;
+  const sourceLimit = 20 + next.carryLevel * 2;
   while (next.sourceProgress >= sourceEvery && next.resources.raw < sourceLimit) {
     next.sourceProgress -= sourceEvery;
     next.resources.raw += 1;
@@ -75,7 +76,7 @@ export const advanceScrap = (state: ScrapState, dtMs: number): ScrapState => {
   for (const machine of machines) {
     if (!isAutomated(next, machine.id) || !machineUnlocked(next, machine.id)) continue;
     next.robotProgress[machine.id] += dt;
-    const interval = Math.max(420, 1300 - next.levels[machine.id] * 70);
+    const interval = Math.max(380, 1050 - next.levels[machine.id] * 60);
     while (next.robotProgress[machine.id] >= interval) {
       next.robotProgress[machine.id] -= interval;
       if (!transportOne(next, machine)) break;
@@ -103,6 +104,16 @@ export const advanceScrap = (state: ScrapState, dtMs: number): ScrapState => {
       next.inputs[machine.id] -= 1;
       next.resources[machine.output] += 1;
       next.totalProduced += 1;
+    }
+  }
+
+  if (isAutomated(next, "deliver")) {
+    next.robotProgress.deliver += dt;
+    const interval = isAutomated(next, "deliver-fast") ? 520 : 920;
+    while (next.robotProgress.deliver >= interval) {
+      next.robotProgress.deliver -= interval;
+      const active = contract(next);
+      if (deliverStock(next, active.resource, 1) <= 0) break;
     }
   }
 
@@ -163,7 +174,9 @@ export const pickup = (
   if (kind === "raw" && next.carry.amount >= 3 && next.tutorialStep === 0) {
     next.tutorialStep = 1;
   }
-  if (kind === "sorted" && next.tutorialStep === 2) next.tutorialStep = 3;
+  if (kind === "sorted" && next.carry.amount >= 3 && next.tutorialStep === 2) {
+    next.tutorialStep = 3;
+  }
   return next;
 };
 
@@ -182,30 +195,34 @@ export const deposit = (
   next.carry.amount -= moved;
   if (next.carry.amount <= 0) next.carry = { kind: null, amount: 0 };
   next.totalActions += moved;
-  if (id === "sort" && next.tutorialStep === 1) next.tutorialStep = 2;
+  if (id === "sort" && next.inputs.sort >= 3 && next.tutorialStep === 1) {
+    next.tutorialStep = 2;
+  }
   return next;
 };
 
 export const deliverContract = (state: ScrapState, amount = 1): ScrapState => {
-  const active = contract(state);
-  if (state.carry.kind !== active.resource || state.carry.amount <= 0) return state;
+  if (!state.carry.kind || state.carry.amount <= 0) return state;
   const next = cloneState(state);
-  let budget = Math.min(amount, next.carry.amount);
-  while (budget > 0 && next.restoration < 100) {
+  let left = Math.min(amount, next.carry.amount);
+  let delivered = 0;
+  while (left > 0 && next.restoration < 100) {
+    const active = contract(next);
+    if (next.carry.kind !== active.resource) break;
     const room = active.amount - next.orderDelivered;
-    const moved = Math.min(room, budget);
+    const moved = Math.min(room, left);
     next.orderDelivered += moved;
     next.totalDelivered += moved;
     next.carry.amount -= moved;
     next.totalActions += moved;
-    budget -= moved;
+    delivered += moved;
+    left -= moved;
     if (next.orderDelivered >= active.amount) completeContract(next);
   }
   if (next.carry.amount <= 0) next.carry = { kind: null, amount: 0 };
-  return next;
+  return delivered > 0 ? next : state;
 };
 
-/** 旧UI互換。現在の復旧依頼に一致する完成品だけを納品する。 */
 export const sellFinished = (state: ScrapState) =>
   deliverContract(state, carryTotal(state));
 export const sellCarried = (state: ScrapState, amount = 1) =>
