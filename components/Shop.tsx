@@ -99,6 +99,7 @@ import type { Aura, Face, Hat } from "@/data/skins";
 import type { Beast } from "@/lib/fire";
 import { formatMoney } from "@/lib/format";
 import { isMuted, loadMuted, playCombo, playSound, unlockAudio } from "@/lib/sfx";
+import { isBgmMuted, loadBgmMuted, suspendBgm, updateBgm, type Scene } from "@/lib/bgm";
 
 export type Sample = {
   money: number;
@@ -111,6 +112,7 @@ export type Sample = {
   levels: Record<UpgradeId, number>;
   toast: string | null;
   muted: boolean;
+  bgmMuted: boolean;
   offline: OfflineReport | null;
 };
 
@@ -5821,6 +5823,41 @@ const drawSled = (
   sledDog(ctx, x + 26 * face, y - 1, face, moving, t + 0.4);
 };
 
+/** いまの場面（BGMの層を決めるための、ざっくりした状況） */
+const currentScene = (state: ShopState): Scene => {
+  const player = state.player;
+  let area = 0;
+  for (const item of areas) {
+    if (
+      player.pos.x >= item.rect.x0 &&
+      player.pos.x <= item.rect.x1 &&
+      player.pos.y >= item.rect.y0 &&
+      player.pos.y <= item.rect.y1
+    ) {
+      const n = Number(item.id.replace("area-", ""));
+      if (Number.isFinite(n)) area = n;
+      break;
+    }
+  }
+  const beast = state.fire.beast;
+  const beastState: Scene["beast"] = !beast
+    ? "none"
+    : beast.state === "down" || beast.state === "falling"
+      ? "down"
+      : beast.state === "charge"
+        ? "charge"
+        : beast.alert > 0.3 || beast.stamina < 0.5
+          ? "active"
+          : "calm";
+  return {
+    stage: stage().id === "fire" ? "fire" : stage().id === "park" ? "park" : "ramen",
+    area,
+    phase: state.fire.phase,
+    weather: state.fire.weather,
+    beast: beastState,
+  };
+};
+
 export default function Shop({ onSample, paused }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -7846,6 +7883,7 @@ export default function Shop({ onSample, paused }: Props) {
     if (!ctx) return;
 
     loadMuted();
+    loadBgmMuted();
     const state = getState();
     let pendingOffline: OfflineReport | null = catchUp();
     let scale = 1;
@@ -8014,6 +8052,7 @@ export default function Shop({ onSample, paused }: Props) {
         }
         state.sfx.length = 0;
       }
+      updateBgm(currentScene(state), dt);
       draw(ctx, state, scale, ox, oy, now / 1000);
 
       if (now - sampleAt > 110) {
@@ -8034,6 +8073,7 @@ export default function Shop({ onSample, paused }: Props) {
               ? state.toast.text
               : null,
           muted: isMuted(),
+          bgmMuted: isBgmMuted(),
           offline: pendingOffline,
         });
         pendingOffline = null;
@@ -8063,6 +8103,8 @@ export default function Shop({ onSample, paused }: Props) {
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", save);
       save();
+      // 画面を離れるので、BGMはすっと静かにする（層じたいは残す。戻ればまたすぐ鳴る）
+      suspendBgm();
     };
   }, [draw]);
 

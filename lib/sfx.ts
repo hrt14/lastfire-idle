@@ -61,6 +61,13 @@ export const unlockAudio = () => {
   if (ctx.state === "suspended") void ctx.resume();
 };
 
+/**
+ * BGM（lib/bgm.ts）が使う、共有の AudioContext。
+ * AudioContext は1ページに1つが作法なので、効果音と鳴らし場所を分ける。
+ * unlockAudio() が呼ばれるまでは null（最初のタップ／キー入力を待つ）
+ */
+export const getCtx = () => ctx;
+
 type Note = {
   freq: number;
   /** 開始（秒） */

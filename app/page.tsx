@@ -32,6 +32,7 @@ import {
 import { planetStages, stageDefs, stageList, type StageId } from "@/data/stages";
 import { formatDuration, formatExact, formatMoney } from "@/lib/format";
 import { setMuted, unlockAudio } from "@/lib/sfx";
+import { setBgmMuted } from "@/lib/bgm";
 import {
   cloudReady,
   cloudState,
@@ -164,6 +165,7 @@ export default function Page() {
 
   const money = sample?.money ?? 0;
   const mute = sample?.muted ?? false;
+  const bgmMuted = sample?.bgmMuted ?? false;
   const unit = stageDefs[stageId].currency ?? "円";
   const itemIcons: Record<string, string> = {
     food: "🍽️",
@@ -372,6 +374,11 @@ export default function Page() {
     setMuted(!mute);
   };
 
+  const toggleBgm = () => {
+    unlockAudio();
+    setBgmMuted(!bgmMuted);
+  };
+
   const gachaReady = tiers.some(
     (item) => item.open && money >= (gachaTierById.get(item.tier)?.cost ?? Infinity),
   );
@@ -437,6 +444,14 @@ export default function Page() {
             aria-label={mute ? "音を出す" : "音を消す"}
           >
             {mute ? "🔇" : "🔊"}
+          </button>
+          <button
+            type="button"
+            className="chip-button"
+            onClick={toggleBgm}
+            aria-label={bgmMuted ? "BGMを鳴らす" : "BGMを消す"}
+          >
+            {bgmMuted ? "🔕" : "🎶"}
           </button>
           {/* 遊びかたとリセットは、この設定シートの中にまとめてある */}
           <button
@@ -597,6 +612,15 @@ export default function Page() {
                 </div>
                 <button type="button" className="ghost" onClick={toggleMute}>
                   {mute ? "🔇 消音中" : "🔊 鳴らす"}
+                </button>
+              </li>
+              <li>
+                <div>
+                  <strong>BGM</strong>
+                  <small>場面に合わせた環境音・下敷きの音楽</small>
+                </div>
+                <button type="button" className="ghost" onClick={toggleBgm}>
+                  {bgmMuted ? "🔕 消音中" : "🎶 鳴らす"}
                 </button>
               </li>
               <li>
