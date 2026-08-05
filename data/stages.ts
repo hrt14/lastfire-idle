@@ -787,7 +787,7 @@ const fireAreas: AreaSpec[] = [
     padPos: { x: 4630, y: 300 },
     palette: { floor: "#2f4247", deep: "#1b2a2f", prop: "ship" },
     // 村がひととおりそろってから、探索者が川を見つける
-    unlockAfter: "mark-pop-24",
+    unlockAfter: "mark-pop-20",
     reveal: 100,
   },
 ];
@@ -999,14 +999,14 @@ const fireStoves: StoveSpec[] = [
   },
   {
     id: "build-hut-6", pos: { x: 4340, y: 570 }, price: 300000, area: 4,
-    art: "bighut", label: "大きな住居", needs: { log: 16, hide: 8, pot: 2 },
-    gives: { houses: 6, warm: 1, note: "大きな住居ができた" }, reveal: 90,
+    art: "bighut", label: "大きな住居", needs: { log: 16, hide: 5, pot: 2 },
+    gives: { houses: 6, warm: 1, note: "大きな住居ができた" }, reveal: 84.5,
   },
   {
     id: "build-hut-7", pos: { x: 4340, y: 660 }, price: 380000, area: 4,
-    art: "bighut", label: "もう一軒の大きな住居", needs: { log: 18, hide: 8, pot: 4 },
+    art: "bighut", label: "もう一軒の大きな住居", needs: { log: 18, hide: 5, pot: 4 },
     gives: { houses: 6, warm: 1, note: "村の住居がそろった" },
-    unlockAfter: "built-build-hut-6", reveal: 92.5,
+    unlockAfter: "built-build-hut-6", reveal: 85.5,
   },
   {
     id: "build-hall2", pos: { x: 4500, y: 570 }, price: 400000, area: 4,

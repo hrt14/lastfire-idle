@@ -468,7 +468,8 @@ const buildPads = (): Pad[] => [
       pos: stove.pos,
       price: stove.price,
       label: stove.label ?? currentStage.labels.producer,
-      sub: "同時に作れる数が増える",
+      // 建築予定地は「同時に作れる数が増える」だと意味が通らないので分ける
+      sub: stove.needs !== undefined ? "資材を運びこむと建つ" : "同時に作れる数が増える",
       reveal: stove.reveal,
       needServed: stove.needServed,
     })),
@@ -1093,7 +1094,11 @@ export const toPersisted = (state: ShopState): Persisted => ({
   levels: state.levels,
   served: state.served,
   playTime: state.playTime,
-  lastSeen: Date.now(),
+  // 見ていた最後の瞬間はここでは決めない（呼ぶたび now にすると、
+  // タブを裏に置いたまま自動保存が走るたびに「いま」に更新されてしまい、
+  // 本当は長く離れていたのに放置時間が0になる）。呼び出す側（実際に
+  // 進めているとき）が state.lastSeen を進めるので、ここではそれを渡すだけ
+  lastSeen: state.lastSeen,
 });
 
 export const fromPersisted = (input: unknown): ShopState => {
@@ -2865,14 +2870,23 @@ const dropJobs = (state: ShopState, worker: Staff): HaulJob[] => {
       const slot = stationAccepts(state, stove, kind);
       if (!slot) continue;
       const room = slotRoom(state, stove, kind, slot);
+      const tag = slot === "build" ? "build" : isStore(stove) ? "store" : "work";
+      /*
+       * 加工場（皮なめし場など）の受け口が空だと、いつもは最優先で助ける。
+       * ただし、その材料を建てかけの建物も欲しがっているなら話は別。
+       * そうしないと、せっかく集めた毛皮が、建物にはまわらず
+       * 加工場の空きを埋めるだけで消えていく（本当に建てたいほうが後回しになる）
+       */
+      const stalled =
+        slotHave(state, stove, kind, slot) <= 0 &&
+        !(tag === "work" && (state.fire.wants[kind] ?? 0) > 0);
       jobs.push({
         id: `${kind}@${stove.id}`,
         kind,
         at: stove.pos,
         drop: true,
-        // 受け口が空＝その工程は止まっている。まっさきに助ける
-        stalled: slotHave(state, stove, kind, slot) <= 0,
-        tag: slot === "build" ? "build" : isStore(stove) ? "store" : "work",
+        stalled,
+        tag,
         night: feedsNight(stove),
         slots: Math.max(1, Math.ceil(room / carrierLimit(state, worker))),
         run: () => {
@@ -2893,8 +2907,14 @@ const dropJobs = (state: ShopState, worker: Staff): HaulJob[] => {
         kind,
         at: seat.serve,
         drop: true,
-        // 待たせている仲間も「止まっている先」として先に回る
-        stalled: true,
+        /*
+         * 待たせている仲間は、ふつうは「止まっている先」として先に回る。
+         * ただし、その品を建てかけの建物がまだ欲しがっているときは違う。
+         * そうしないと、せっかく集めた毛皮などの希少な資材が、
+         * 建築を素通りして交易の席へ売られてしまう（欲しがっている先が2つ
+         * あるとき、建築のほうを優先する）
+         */
+        stalled: (state.fire.wants[kind] ?? 0) <= 0,
         tag: "serve",
         slots: 1,
         run: () => {
@@ -4166,7 +4186,7 @@ const padInspect = (state: ShopState, pad: Pad): Inspect => {
       lines.push(
         chain
           ? "区間は決まっていない。詰まったところから助ける"
-          : "雇うと放置中も稼いでくれる",
+          : "雇うと、閉じているあいだも稼いでくれる",
       );
       if (chain) lines.push("1人では全部は運びきれない（足りなければもう1人）");
     }
@@ -4189,6 +4209,16 @@ const padInspect = (state: ShopState, pad: Pad): Inspect => {
     }
     if (pad.id === "equip-ticket") {
       lines.push(chain ? "雇っていた拾い手ははこび手になる" : "雇っていたレジ係はホール店員になる");
+    }
+    // 建築予定地は、要る資材を名前つきで出す（アイコンだけでは分からないため）
+    const buildStove = stoveById.get(pad.id);
+    if (buildStove?.needs) {
+      lines.push(
+        Object.entries(buildStove.needs)
+          .map(([kind, need]) => `${itemLabel(kind)} ${need}`)
+          .join("・"),
+      );
+      if (buildStove.gives?.note) lines.push(buildStove.gives.note);
     }
   }
 
@@ -4289,6 +4319,20 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
       const item = stoveItem(stove);
       const made = state.ready[stove.id] ?? 0;
       const full = made >= holdCap(state, stove);
+
+      // 建てている途中の建築予定地。工程の作業場とは説明を分ける
+      if (isBuild(stove) && !isDone(state, stove.id)) {
+        return {
+          title: stove.label ?? "建築予定地",
+          lines: [
+            ...Object.entries(stove.needs ?? {}).map(
+              ([kind, need]) => `${itemLabel(kind)} ${partsAt(state, stove.id, kind)} / ${need}`,
+            ),
+            "はこび手が資材を運びこむと建つ",
+          ],
+          pos: stove.pos,
+        };
+      }
 
       // 草原と森は「取りに行く場所」。作業場とは説明を分ける
       if (isHunt(stove)) {

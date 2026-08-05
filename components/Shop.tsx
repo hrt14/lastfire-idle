@@ -2001,7 +2001,9 @@ const drawSettlement = (
       chainItem(ctx, kind, sx, y + 26, 0.6, time);
       ctx.font = SMALL;
       ctx.fillStyle = done ? "#7ee7a8" : "rgba(255,180,150,0.95)";
-      ctx.fillText(`${got}/${need}`, sx, y + 38);
+      // アイコンだけだと何の資材か分かりにくいので、名前も添える
+      ctx.fillText(itemLabel(kind), sx, y + 37);
+      ctx.fillText(`${got}/${need}`, sx, y + 48);
       ctx.font = FONT;
     });
     ctx.font = SMALL;
@@ -7996,7 +7998,13 @@ export default function Shop({ onSample, paused }: Props) {
             ? { x: kx, y: ky }
             : input.current;
 
-      if (!pausedRef.current && !document.hidden) update(state, move, dt);
+      if (!pausedRef.current && !document.hidden) {
+        update(state, move, dt);
+        // 実際に進めたときだけ「見ていた最後の瞬間」を進める。
+        // タブを裏に置いているあいだは進めない＝そこで時計が止まり、
+        // 戻ってきたときに正しく「そのぶん放置していた」と分かる
+        state.lastSeen = Date.now();
+      }
 
       // カメラ: 店が画面より広いぶんだけ、店主を追って縦横に動く
       {
