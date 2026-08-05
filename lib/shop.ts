@@ -1680,9 +1680,18 @@ const updateReveals = (state: ShopState, dt: number) => {
     .filter((pad) => !seen.has(pad.id))
     .sort((a, b) => (a.reveal ?? 999) - (b.reveal ?? 999));
 
+  /*
+   * 一度に出す数。ふだんは2つずつだが、いま1つも出ていないとき
+   *（＝遊びはじめと、見えていた枠をぜんぶ買ったとき）は、
+   * 上限までまとめて出す。何のために稼ぐのかが分からない時間を作らないため。
+   * ステージごとに revealBurst で変えられる（大河の文明は最初から5つ）
+   */
+  const burst =
+    showing === 0 ? Math.max(limit, REVEAL_BURST) : stage().revealBurst ?? REVEAL_BURST;
+
   const added: Pad[] = [];
   for (const pad of queue) {
-    if (added.length >= REVEAL_BURST) break;
+    if (added.length >= burst) break;
     if (pad.kind !== "upgrade") {
       if (showing >= limit) continue;
       showing += 1;
@@ -3926,6 +3935,21 @@ const chainObjective = (state: ShopState): Objective | null => {
           kind: "wait" as const,
           pos: stove.pos,
           label: "切り株が生えなおすのを待とう",
+        };
+        continue;
+      }
+      /*
+       * 素材の作業場（水くみ場・種置き場・粘土穴・牧草地・川の瀬）。
+       * 狩り場と森だけが特別で、それ以外の採取場には案内が出ていなかった。
+       * できるのを待つあいだも、どこで待つのかは必ず指しておく。
+       */
+      if (!isStation(stove)) {
+        waitAt ??= {
+          kind: "wait" as const,
+          pos: stove.pos,
+          label: stove.manual
+            ? `${stove.label ?? "作業場"}に立つと、${itemLabel(stoveItem(stove))}がたまる`
+            : `${stove.label ?? "作業場"}で${itemLabel(stoveItem(stove))}ができるのを待とう`,
         };
         continue;
       }

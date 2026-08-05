@@ -86,6 +86,8 @@ export type StageDef = {
    * 指定すると、条件を満たした枠を順ぐりに少しずつ出す
    */
   revealLimit?: number;
+  /** 一度に新しく出す枠の数（省略で2つずつ） */
+  revealBurst?: number;
   /**
    * ここに書いたものを開くと、同時に見せる枠の数がこの数まで増える。
    * 1区画目は「次の一手」だけ、2区画目からは 5〜10個から選べるようにする。
@@ -1309,9 +1311,12 @@ const taigaStoves: StoveSpec[] = [
     item: "water",
     art: "river",
     label: "水くみ場",
-    // 人の手が要る。水汲みを雇うまでは、自分で川に立って汲む
-    manual: true,
-    work: 0.35,
+    /*
+     * 川べりに置いた水がめに、勝手に水がたまっていく。
+     * ここに人を張りつかせる遊びにはしない ―― 最初に覚えるのは「運ぶ」ことで、
+     * 最初に雇うのも運ぶ人。水の自動化は、第2区画の取水口と水路でやる
+     */
+    work: 0.45,
     hold: 6,
   },
   {
@@ -1348,8 +1353,7 @@ const taigaStoves: StoveSpec[] = [
     art: "field",
     label: "2面目の畑",
     work: 1.2,
-    unlockAfter: "waiter-2",
-    reveal: 8,
+    reveal: 5,
   },
 
   /* --- area-1 第2区画「水路の村」 --------------------------------------
@@ -1443,8 +1447,8 @@ const taigaSeats: SeatSpec[] = [
   // 第1区画: 川辺の食事場。穀物を渡すと粒が落ちる
   ...benchRow(0, 424, "grain", 1, "川辺の食事場", [
     { x: 120, price: 0 },
-    { x: 248, price: 76, unlockAfter: "waiter-1", reveal: 5 },
-    { x: 376, price: 90, unlockAfter: "waiter-2", reveal: 7.5 },
+    { x: 248, price: 76, reveal: 4 },
+    { x: 376, price: 90, unlockAfter: "seat-0-2", reveal: 7 },
   ]),
   // 第2区画: 水路の村の食事場
   ...benchRow(1, 420, "grain", 1.6, "村の食事場", [
@@ -1497,17 +1501,20 @@ const taigaSeats: SeatSpec[] = [
  */
 const taigaHires: HireSpec[] = [
   /* --- area-0 --- */
-  { id: "drawer-1", kind: "splitter", pos: { x: 216, y: 150 }, price: 40, label: "水汲み", stoveId: "river-1", area: 0, needServed: 5, reveal: 1 },
-  { id: "sower-1", kind: "cook", pos: { x: 508, y: 150 }, price: 28, label: "種まき", stoveId: "seed-1", area: 0, unlockAfter: "drawer-1", reveal: 2 },
-  { id: "farmer-1", kind: "cook", pos: { x: 344, y: 366 }, price: 48, label: "農民", stoveId: "field-1", area: 0, unlockAfter: "sower-1", reveal: 3 },
-  { id: "waiter-1", kind: "waiter", pos: { x: 344, y: 230 }, price: 64, label: "はこび手", area: 0, unlockAfter: "farmer-1", reveal: 4 },
-  { id: "waiter-2", kind: "waiter", pos: { x: 420, y: 230 }, price: 96, label: "はこび手", area: 0, unlockAfter: "seat-0-2", reveal: 7 },
-  { id: "farmer-2", kind: "cook", pos: { x: 494, y: 366 }, price: 240, label: "農民", stoveId: "field-2", area: 0, unlockAfter: "field-2", reveal: 8.6 },
-  { id: "collector-1", kind: "collector", pos: { x: 574, y: 300 }, price: 140, label: "拾い手", area: 0, unlockAfter: "farmer-2", reveal: 9 },
+  /*
+   * 最初に見えている枠は「水がめ・農民・はこび手・2席目・2面目の畑」の5つ。
+   * どれも遊びはじめから見えていて、いちばん安いものは3回ぶん運べば買える。
+   * 何のために稼ぐのかが、最初の1分で分かるようにするため
+   */
+  { id: "farmer-1", kind: "cook", pos: { x: 344, y: 366 }, price: 48, label: "農民", stoveId: "field-1", area: 0, reveal: 2 },
+  { id: "waiter-1", kind: "waiter", pos: { x: 268, y: 230 }, price: 64, label: "はこび手", area: 0, reveal: 3 },
+  { id: "waiter-2", kind: "waiter", pos: { x: 420, y: 230 }, price: 96, label: "はこび手", area: 0, unlockAfter: "seat-0-2", reveal: 6 },
+  { id: "farmer-2", kind: "cook", pos: { x: 494, y: 366 }, price: 240, label: "農民", stoveId: "field-2", area: 0, unlockAfter: "field-2", reveal: 8 },
+  { id: "collector-1", kind: "collector", pos: { x: 574, y: 300 }, price: 140, label: "拾い手", area: 0, reveal: 9 },
   { id: "robot-1", kind: "robot", pos: { x: 574, y: 366 }, price: 320, label: "荷車", area: 0, unlockAfter: "collector-1", reveal: 11 },
 
   /* --- area-1 水路の村 --- */
-  { id: "gateman-1", kind: "cook", pos: { x: 790, y: 150 }, price: 2800, label: "水門番", stoveId: "intake-1", area: 1, reveal: 22.5 },
+  { id: "gateman-1", kind: "cook", pos: { x: 790, y: 210 }, price: 2800, label: "水門番", stoveId: "intake-1", area: 1, reveal: 26.5 },
   { id: "farmer-3", kind: "cook", pos: { x: 1020, y: 366 }, price: 2000, label: "農民", stoveId: "field-3", area: 1, reveal: 23.5 },
   { id: "sower-2", kind: "cook", pos: { x: 1420, y: 210 }, price: 1800, label: "種まき", stoveId: "seed-2", area: 1, reveal: 24.5 },
   { id: "farmer-4", kind: "cook", pos: { x: 1180, y: 366 }, price: 2400, label: "農民", stoveId: "field-4", area: 1, reveal: 25.5 },
@@ -1589,10 +1596,11 @@ const taigaEquipment: EquipSpec[] = [
 ];
 
 const taigaUpgrades: Upgrade[] = [
-  { id: "carry", name: "水がめ", detail: (n) => `${3 + n}こまで持てる・はこび手も 品種ごとに ${3 + Math.floor(n / 2)}こ`, pos: { x: 40, y: 330 }, basePrice: 56, growth: 1.7, max: 9, unlockAfter: "waiter-1", reveal: 6 },
-  { id: "cook", name: "石の鍬", detail: (n) => `作る速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 40, y: 390 }, basePrice: 150, growth: 1.7, max: 14, unlockAfter: "farmer-1", reveal: 8.5 },
-  { id: "speed", name: "わらじ", detail: (n) => `足の速さ +${n * 10}%・みんなも +${n * 5}%`, pos: { x: 40, y: 450 }, basePrice: 110, growth: 1.65, max: 12, unlockAfter: "collector-1", reveal: 10 },
-  { id: "price", name: "実りの選別", detail: (n) => `ひとつ ${Math.round(8 * Math.pow(1.4, n))}粒`, pos: { x: 40, y: 510 }, basePrice: 600, growth: 1.75, max: 20, unlockAfter: "robot-1", reveal: 11.5 },
+  // 水がめは、遊びはじめの「いちばん近い目標」。3回ぶん運べば買える
+  { id: "carry", name: "水がめ", detail: (n) => `${3 + n}こまで持てる・はこび手も 品種ごとに ${3 + Math.floor(n / 2)}こ`, pos: { x: 60, y: 340 }, basePrice: 24, growth: 1.7, max: 9, reveal: 1 },
+  { id: "cook", name: "石の鍬", detail: (n) => `作る速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 60, y: 400 }, basePrice: 150, growth: 1.7, max: 14, unlockAfter: "farmer-1", reveal: 7.5 },
+  { id: "speed", name: "わらじ", detail: (n) => `足の速さ +${n * 10}%・みんなも +${n * 5}%`, pos: { x: 60, y: 460 }, basePrice: 110, growth: 1.65, max: 12, unlockAfter: "collector-1", reveal: 10 },
+  { id: "price", name: "実りの選別", detail: (n) => `ひとつ ${Math.round(8 * Math.pow(1.4, n))}粒`, pos: { x: 60, y: 520 }, basePrice: 600, growth: 1.75, max: 20, unlockAfter: "robot-1", reveal: 11.5 },
 ];
 
 /* ==================== 登録 ==================== */
@@ -1809,7 +1817,10 @@ export const stageDefs: Record<StageId, StageDef> = {
     // 畑は 4.0秒に1こ。農民が付くと 2.0秒（作物は待つものなので、火より遅くない）
     cookTime: 4.0,
     cookBoost: 2.0,
-    revealLimit: 4,
+    // 次の自動化に必要な枠が、いつも5つ先まで見えているようにする
+    revealLimit: 5,
+    // ふたつずつだと、次の目標が出そろうまでが長い
+    revealBurst: 3,
     revealLimitBy: {
       "area-1": 6,
       "area-2": 7,

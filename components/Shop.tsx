@@ -2798,19 +2798,70 @@ const drawSettlement = (
         ctx.fill();
       }
     } else {
-      // 水くみ場: 岸に降りる段と、置いてある水がめ
+      /*
+       * 水くみ場: 岸に降りる段と、水をためている大きな水がめ。
+       * 「いま水がたまっているところ」が、ひと目で分かるようにする。
+       * ―― かめの中の水位が上がる／上から水が落ちる／たまったかめが岸に並ぶ
+       */
       ctx.fillStyle = "#7a6142";
       for (let i = 0; i < 3; i += 1) {
-        roundRect(ctx, x - 22 + i * 4, y - 16 + i * 5, 44 - i * 8, 5, 2);
+        roundRect(ctx, x - 26 + i * 4, y - 16 + i * 5, 52 - i * 8, 5, 2);
         ctx.fill();
       }
+      const fill = Math.max(0, Math.min(1, state.cooking[stove.id] ?? 0));
+      // 川から落ちてくる水すじ（かめは、人が立つ場所から少し左にずらす）
+      const jx = x - 20;
+      ctx.strokeStyle = "rgba(150,220,240,0.65)";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(jx - 4, y - 20);
+      ctx.quadraticCurveTo(jx - 2, y - 14, jx, y - 8);
+      ctx.stroke();
+      for (let i = 0; i < 3; i += 1) {
+        const t = (time * 1.4 + i * 0.33) % 1;
+        ctx.fillStyle = `rgba(190,235,250,${0.8 - t * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(jx + Math.sin(t * 3) * 1.5, y - 20 + t * 14, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // 水をためている大きなかめ（中の水位が上がっていく）
+      const jarY = y + 2;
       ctx.fillStyle = "#a8724a";
       ctx.beginPath();
-      ctx.ellipse(x - 20, y - 4, 7, 9, 0, 0, Math.PI * 2);
+      ctx.moveTo(jx - 11, jarY - 10);
+      ctx.quadraticCurveTo(jx - 14, jarY + 8, jx, jarY + 9);
+      ctx.quadraticCurveTo(jx + 14, jarY + 8, jx + 11, jarY - 10);
+      ctx.closePath();
       ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(jx - 10, jarY - 9);
+      ctx.quadraticCurveTo(jx - 12.5, jarY + 7, jx, jarY + 8);
+      ctx.quadraticCurveTo(jx + 12.5, jarY + 7, jx + 10, jarY - 9);
+      ctx.closePath();
+      ctx.clip();
+      const level = jarY + 8 - fill * 16;
+      ctx.fillStyle = "#3f9bb0";
+      ctx.fillRect(jx - 13, level, 26, 20);
+      ctx.fillStyle = "rgba(220,245,255,0.55)";
+      ctx.fillRect(jx - 13, level, 26, 1.6);
+      ctx.restore();
       ctx.fillStyle = "#8a5a3c";
-      roundRect(ctx, x - 23, y - 15, 6, 4, 2);
+      roundRect(ctx, jx - 12, jarY - 12, 24, 4, 2);
       ctx.fill();
+      // たまったぶんは、かめごと岸に並ぶ（持っていける数）
+      const ready = state.ready[stove.id] ?? 0;
+      for (let i = 0; i < Math.min(4, ready); i += 1) {
+        chainItem(ctx, "water", x + 14 + (i % 2) * 13, y + 2 - Math.floor(i / 2) * 11, 0.66, time);
+      }
+      ctx.font = SMALL;
+      ctx.fillStyle = ready > 0 ? "#7ee7a8" : "rgba(240,228,206,0.85)";
+      ctx.fillText(
+        ready > 0 ? `水 ${ready}こ・持っていける` : `水をためている ${Math.round(fill * 100)}%`,
+        x,
+        y + 22,
+      );
+      ctx.font = FONT;
     }
     return true;
   }
