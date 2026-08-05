@@ -73,11 +73,15 @@ import {
 import {
   buildRatio,
   darkness,
+  DAY_TIME,
+  DUSK_TIME,
   fireLive,
   nightNeed,
   phaseLabel,
   phaseLeft,
   popCap,
+  REPORT_SHOW,
+  reportVisible,
   snowDepth,
   stockIn,
   tempLabel,
@@ -7634,9 +7638,9 @@ export default function Shop({ onSample, paused }: Props) {
         });
         ctx.font = FONT;
 
-        // 夜が明けたあと、前の夜の結果をしばらく出す
+        // 夜になった直後の数秒だけ、前の夜の結果を出す（夜の30秒ぶんずっと出しっぱなしにはしない）
         const report = fire.report;
-        if (report && fire.phase === "night") {
+        if (report && reportVisible(fire)) {
           const lines = report.ok
             ? [`保存肉 ${report.got} / ${report.need}`, "みんな腹いっぱいで眠った"]
             : report.cold
@@ -7645,6 +7649,11 @@ export default function Shop({ onSample, paused }: Props) {
                   `保存肉が ${report.need - report.got}こ 足りなかった`,
                   "明日は燻製を増やそう",
                 ];
+          // 出はじめとおわりぎわだけ、すっと現れて・消える
+          const t = (fire.clock - (DAY_TIME + DUSK_TIME)) / REPORT_SHOW;
+          const alpha = Math.min(1, t * 6) * Math.min(1, (1 - t) * 4);
+          ctx.save();
+          ctx.globalAlpha = alpha;
           ctx.font = FONT;
           const w = Math.max(...lines.map((line) => ctx.measureText(line).width)) + 34;
           const bx = camX + view / 2 - w / 2;
@@ -7662,6 +7671,7 @@ export default function Shop({ onSample, paused }: Props) {
           lines.forEach((line, i) => {
             ctx.fillText(line, bx + w / 2, by + 34 + i * 16);
           });
+          ctx.restore();
         }
       }
 

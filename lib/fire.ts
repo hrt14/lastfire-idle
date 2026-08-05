@@ -255,6 +255,17 @@ export const phaseLeft = (fire: FireState) => {
   return FULL_DAY - fire.clock;
 };
 
+/**
+ * 夜の結果を出しておく長さ（秒）。
+ * 夜そのものは30秒あるが、その全部を結果表示でふさぐと
+ * 「メッセージが消えない」ように感じてしまう。夜のはじめの数秒だけ見せる
+ */
+export const REPORT_SHOW = 6;
+
+/** いま夜越しの結果を出す番か（夜になってからの数秒だけ） */
+export const reportVisible = (fire: FireState) =>
+  fire.phase === "night" && fire.clock - (DAY_TIME + DUSK_TIME) < REPORT_SHOW;
+
 /** 夜の暗さ（0 = 昼、1 = 真夜中） */
 export const darkness = (fire: FireState) => {
   if (fire.phase === "day") return 0;
@@ -471,14 +482,15 @@ const settleNight = (state: ShopState, value: number) => {
   const cold = winterOn(state) && fire.temp < -6;
   const ok = got >= need && !cold;
   fire.shortfall = Math.max(0, need - got);
-  fire.report = { day: fire.day, need, got, ok, cold };
 
   const plaza = plazaPos(state) ?? { x: 0, y: 0 };
   if (need === 0) {
-    // まだ住民がいない夜は、静かに明ける
+    // まだ住民がいない夜は、静かに明ける（結果を出すほどの夜でもない）
+    fire.report = null;
     fire.morale = 1;
     return;
   }
+  fire.report = { day: fire.day, need, got, ok, cold };
   if (ok) {
     fire.nights += 1;
     if (winterOn(state)) fire.coldNights += 1;
