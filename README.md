@@ -1,8 +1,15 @@
 # ワーキングプラネット ― 放置ゲームのシリーズ
 
 働いて街と星を大きくしていく、スマホ向けWebゲームのシリーズです。
-公開先は `working-planet.hitobito.jp`。いまは **はんじょうダッシュ**（ラーメン一直線／
-ドリームパーク）が遊べて、原始時代からはじまる **ワーキングプラネット** 本編は準備中です。
+公開先は `working-planet.hitobito.jp`。**はんじょうダッシュ**（ラーメン一直線／
+ドリームパーク）と、原始時代からはじまる **ワーキングプラネット**
+（火のはじまり／大河の文明）が遊べます。
+
+- **火のはじまり** — 狩り・薪・たき火から、集落と村へ（6区画）。
+  設計メモは [docs/fire-early-game.md](docs/fire-early-game.md) と
+  [docs/fire-zones.md](docs/fire-zones.md)
+- **大河の文明** — 川の水を畑へ運ぶところから、水路・土器・牧畜・市場・町へ（6区画）。
+  仕様と実装メモは [docs/taiga-civilization.md](docs/taiga-civilization.md)
 
 ## 公開の設定
 
