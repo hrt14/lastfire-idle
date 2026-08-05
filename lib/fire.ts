@@ -940,7 +940,7 @@ const sailAway = (state: ShopState) => {
   if (state.fire.sailed) return;
   state.fire.sailed = true;
   state.fire.flash = "sail";
-  toast(state, "大型いかだが川へ出た ― 「火のはじまり」の旅はここまで");
+  toast(state, `大型いかだが川へ出た ― 「${stageDefs[state.stageId].name}」の旅はここまで`);
 };
 
 /* ---------- 進み具合の合図 ---------- */
@@ -1033,11 +1033,16 @@ export const firePriorityPads = (state: ShopState): string[] => {
  * 昼夜 → 天気 → 住民 → 谷 → 探索 → 建てあがり、の順に見る。
  */
 export const updateFire = (state: ShopState, dt: number, coinValue: number) => {
-  if (state.stageId !== "fire") return;
   const fire = state.fire;
-  fire.flash = null;
+  if (state.stageId === "fire") fire.flash = null;
+  /*
+   * 建築予定地は「火のはじまり」だけの仕組みではない。
+   * 大河の文明の船着き場・市場・町の建物も、材料を運びこめば建ちあがる。
+   * ここから下（昼夜・寒さ・谷・住民）は、火のはじまりだけのもの。
+   */
   finishBuilds(state);
   countWants(state);
+  if (state.stageId !== "fire") return;
   updateMarks(state);
   // 住むところが減ることはないが、古いセーブから来たときのために合わせておく
   fire.pop = Math.min(fire.pop, popCap(state));

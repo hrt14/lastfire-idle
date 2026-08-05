@@ -176,6 +176,19 @@ export default function Page() {
     roast: "🍖",
     cut: "🥩",
     feast: "🍖",
+    // 大河の文明
+    water: "💧",
+    seed: "🌱",
+    grain: "🌾",
+    flour: "🥣",
+    bread: "🍞",
+    grass: "🌿",
+    milk: "🥛",
+    wool: "🧶",
+    fish: "🐟",
+    dried: "🐟",
+    clay: "🟤",
+    pot: "🏺",
   };
   const carryIcon = sample?.item
     ? itemIcons[sample.item] ?? stageDefs[stageId].itemIcon
@@ -358,6 +371,7 @@ export default function Page() {
         <p className="top-note" style={{ marginTop: "-4px" }}>
           原始からはじまる、時代がすすむシリーズ。しなものは何段もの工程を通って完成する。
         </p>
+
 
         <p className="top-note">
           記録はこの端末に保存されます。ログインすると、アカウントにも保存されます。

@@ -777,6 +777,11 @@ button {
   background: linear-gradient(135deg, rgba(90, 70, 130, 0.55), rgba(24, 26, 44, 0.92));
 }
 
+/* 大河の文明は、川と麦の色 */
+.stage-card.stage-taiga {
+  background: linear-gradient(135deg, rgba(58, 106, 110, 0.55), rgba(26, 34, 30, 0.92));
+}
+
 .stage-card.is-locked {
   opacity: 0.55;
 }

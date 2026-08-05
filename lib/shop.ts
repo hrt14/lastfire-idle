@@ -1297,6 +1297,16 @@ const itemNames: Record<string, string> = {
   plank: "加工木材",
   rope: "縄",
   fish: "魚",
+  // 大河の文明
+  water: "水",
+  seed: "種",
+  grain: "穀物",
+  flour: "粉",
+  bread: "パン",
+  grass: "草",
+  milk: "乳",
+  wool: "毛",
+  dried: "干し魚",
 };
 
 export const itemLabel = (kind: ItemKind): string =>
@@ -3804,7 +3814,7 @@ const chainObjective = (state: ShopState): Objective | null => {
         return {
           kind: "serve",
           pos: seat.tray,
-          label: `${itemLabel(kind)}を、待っている仲間へ渡そう`,
+          label: `${itemLabel(kind)}を、待っている${stageLabels().guest}へ渡そう`,
         };
       }
       const station = near(stationsWanting(state, kind), (item) => item.pos);
@@ -3815,7 +3825,8 @@ const chainObjective = (state: ShopState): Objective | null => {
           pos: station.pos,
           label:
             slot === "fuel"
-              ? `${station.label ?? "たき火"}に薪をくべよう`
+              // 第2の材料はステージで違う（薪をくべる／畑に種をまく）
+              ? `${station.label ?? "たき火"}に${itemLabel(kind)}を入れよう`
               : `${itemLabel(kind)}を${station.label ?? "作業場"}へ置こう`,
         };
       }
@@ -3925,7 +3936,8 @@ const chainObjective = (state: ShopState): Objective | null => {
             kind: "serve" as const,
             pos: stove.pos,
             label: stove.manual
-              ? `${stove.label ?? "作業場"}に立って、丸太を割ろう`
+              // 人の手が要る作業場（薪割り場・石臼）。作るものはステージで違う
+              ? `${stove.label ?? "作業場"}に立って、${itemLabel(stoveItem(stove))}にしよう`
               : `${stove.label ?? "作業場"}でできるのを待とう`,
           };
         }
@@ -4206,8 +4218,13 @@ const padInspect = (state: ShopState, pad: Pad): Inspect => {
     }
     if (hire?.kind === "logger") lines.push("森で立木を切り、丸太を出し口へ積む");
     if (hire?.kind === "splitter") {
-      lines.push("薪割り場に立ちっぱなしで、丸太を薪に変え続ける");
-      lines.push("雇うまでは、自分で薪割り場に立って割る");
+      // 持ち場はステージごとに違う（薪割り場・水くみ場・石臼・牧草地…）。
+      // その人が付く作業場の名前と、そこで作るもので言う
+      const post = hire.stoveId ? stoveById.get(hire.stoveId) : null;
+      const place = post?.label ?? "その作業場";
+      const made = post ? itemLabel(stoveItem(post)) : "しなもの";
+      lines.push(`${place}に立ちっぱなしで、${made}を作り続ける`);
+      lines.push(`雇うまでは、自分で${place}に立つ`);
     }
     if (hire?.kind === "hunter") lines.push("草原の動物を追って、生肉を出し口へ積む");
     if (hire?.kind === "collector") {
