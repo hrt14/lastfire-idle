@@ -7998,7 +7998,13 @@ export default function Shop({ onSample, paused }: Props) {
             ? { x: kx, y: ky }
             : input.current;
 
-      if (!pausedRef.current && !document.hidden) update(state, move, dt);
+      if (!pausedRef.current && !document.hidden) {
+        update(state, move, dt);
+        // 実際に進めたときだけ「見ていた最後の瞬間」を進める。
+        // タブを裏に置いているあいだは進めない＝そこで時計が止まり、
+        // 戻ってきたときに正しく「そのぶん放置していた」と分かる
+        state.lastSeen = Date.now();
+      }
 
       // カメラ: 店が画面より広いぶんだけ、店主を追って縦横に動く
       {

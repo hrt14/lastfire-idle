@@ -1094,7 +1094,11 @@ export const toPersisted = (state: ShopState): Persisted => ({
   levels: state.levels,
   served: state.served,
   playTime: state.playTime,
-  lastSeen: Date.now(),
+  // 見ていた最後の瞬間はここでは決めない（呼ぶたび now にすると、
+  // タブを裏に置いたまま自動保存が走るたびに「いま」に更新されてしまい、
+  // 本当は長く離れていたのに放置時間が0になる）。呼び出す側（実際に
+  // 進めているとき）が state.lastSeen を進めるので、ここではそれを渡すだけ
+  lastSeen: state.lastSeen,
 });
 
 export const fromPersisted = (input: unknown): ShopState => {
@@ -4182,7 +4186,7 @@ const padInspect = (state: ShopState, pad: Pad): Inspect => {
       lines.push(
         chain
           ? "区間は決まっていない。詰まったところから助ける"
-          : "雇うと放置中も稼いでくれる",
+          : "雇うと、閉じているあいだも稼いでくれる",
       );
       if (chain) lines.push("1人では全部は運びきれない（足りなければもう1人）");
     }
