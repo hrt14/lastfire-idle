@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./ScrapPlanet.module.css";
 import {
   HQ_POS,
-  SCRAP_WORLD,
+  SCRAP_VIEW_WIDTH,
   SOURCE_POS,
   advanceScrap,
   bottleneck,
@@ -15,13 +15,15 @@ import {
   currentDistrict,
   deliverContract,
   deposit,
+  guidance,
+  hqDropPos,
   isAutomated,
   machineCapacity,
   machineCycle,
-  machineUnlocked,
+  machineInputPos,
+  machineOutputPos,
   machines,
   moveSpeed,
-  objective,
   outputCapacity,
   payPurchase,
   pickup,
@@ -29,7 +31,10 @@ import {
   purchases,
   resources,
   restorationLabel,
+  sourcePickupPos,
+  worldBounds,
   type Contract,
+  type Guidance,
   type MachineDef,
   type OfflineReport,
   type Purchase,
@@ -44,8 +49,8 @@ import { startCloud } from "@/lib/cloud";
 
 const FONT = `700 11px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
 const SMALL = `700 9px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
-const INTERACT_RADIUS = 43;
-const ACTION_INTERVAL = 145;
+const INTERACT_RADIUS = 48;
+const PURCHASE_RADIUS = 27;
 
 const distance = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (value: number, min: number, max: number) =>
@@ -68,20 +73,8 @@ const roundRect = (
   ctx.closePath();
 };
 
-const inputPos = (machine: MachineDef): Vec => ({
-  x: machine.pos.x - 54,
-  y: machine.pos.y + 35,
-});
-const outputPos = (machine: MachineDef): Vec => ({
-  x: machine.pos.x + 54,
-  y: machine.pos.y + 35,
-});
-const sourcePickupPos = (): Vec => ({ x: SOURCE_POS.x, y: SOURCE_POS.y + 68 });
-
-const sourceFor = (machine: MachineDef): Vec => {
-  const index = machines.findIndex((item) => item.id === machine.id);
-  return index === 0 ? sourcePickupPos() : outputPos(machines[index - 1]);
-};
+const samePoint = (a: Vec | null, b: Vec) =>
+  !!a && Math.abs(a.x - b.x) < 2 && Math.abs(a.y - b.y) < 2;
 
 const sample = (state: ScrapState) => {
   const active = contract(state);
@@ -97,9 +90,10 @@ const sample = (state: ScrapState) => {
     district: currentDistrict(state),
     order: active,
     orderDelivered: state.orderDelivered,
-    objective: objective(state),
+    objective: guidance(state),
     bottleneck: bottleneck(state),
     completed: state.restoration >= 100,
+    totalDelivered: state.totalDelivered,
   };
 };
 
@@ -128,70 +122,31 @@ const emptyJoystick = (): Joystick => ({
 });
 
 const districtDefs = [
-  { name: "1 漂着ゴミ処理場", rect: { x: 18, y: 72, w: 566, h: 342 }, min: 1 },
-  { name: "2 素材再生区画", rect: { x: 596, y: 72, w: 566, h: 342 }, min: 3 },
-  { name: "3 精密加工区画", rect: { x: 596, y: 426, w: 566, h: 374 }, min: 5 },
-  { name: "4 ロボット復旧基地", rect: { x: 18, y: 426, w: 566, h: 374 }, min: 7 },
+  { name: "1 漂着ゴミ処理場", rect: { x: 0, y: 0, w: 360, h: 480 }, min: 1 },
+  { name: "2 破砕・洗浄区", rect: { x: 0, y: 480, w: 360, h: 480 }, min: 3 },
+  { name: "3 溶解・精錬区", rect: { x: 360, y: 0, w: 360, h: 480 }, min: 4 },
+  { name: "4 ロボット復旧基地", rect: { x: 360, y: 480, w: 360, h: 480 }, min: 6 },
 ];
 
 const drawDistricts = (ctx: CanvasRenderingContext2D, state: ScrapState) => {
+  const bounds = worldBounds(state.unlocked);
   ctx.fillStyle = "#0f171f";
-  ctx.fillRect(0, 0, SCRAP_WORLD.w, SCRAP_WORLD.h);
-  ctx.fillStyle = "#111b24";
-  ctx.fillRect(0, 60, SCRAP_WORLD.w, SCRAP_WORLD.h - 60);
+  ctx.fillRect(bounds.x0, bounds.y0, bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
 
   for (const [index, district] of districtDefs.entries()) {
-    const open = state.unlocked >= district.min;
+    if (state.unlocked < district.min) continue;
     const { x, y, w, h } = district.rect;
-    ctx.fillStyle = open
-      ? index % 2 === 0
-        ? "#1b2933"
-        : "#192630"
-      : "#111820";
-    roundRect(ctx, x, y, w, h, 22);
+    ctx.fillStyle = index % 2 === 0 ? "#1b2933" : "#192630";
+    roundRect(ctx, x + 8, y + 8, w - 16, h - 16, 22);
     ctx.fill();
-    ctx.strokeStyle = open
-      ? "rgba(126,231,168,0.16)"
-      : "rgba(148,163,184,0.08)";
+    ctx.strokeStyle = "rgba(126,231,168,0.16)";
     ctx.lineWidth = 2;
     ctx.stroke();
-
     ctx.font = FONT;
     ctx.textAlign = "left";
-    ctx.fillStyle = open ? "rgba(226,232,240,0.58)" : "rgba(148,163,184,0.24)";
-    ctx.fillText(open ? district.name : `🔒 ${district.name}`, x + 18, y + 26);
-
-    if (!open) {
-      ctx.fillStyle = "rgba(4,8,12,0.38)";
-      roundRect(ctx, x + 2, y + 2, w - 4, h - 4, 20);
-      ctx.fill();
-    }
+    ctx.fillStyle = "rgba(226,232,240,0.58)";
+    ctx.fillText(district.name, x + 22, y + 34);
   }
-
-  ctx.strokeStyle = "rgba(245,158,11,0.2)";
-  ctx.lineWidth = 54;
-  ctx.beginPath();
-  ctx.moveTo(42, 410);
-  ctx.lineTo(SCRAP_WORLD.w - 42, 410);
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(245,158,11,0.42)";
-  ctx.lineWidth = 2;
-  ctx.setLineDash([14, 12]);
-  ctx.beginPath();
-  ctx.moveTo(34, 410);
-  ctx.lineTo(SCRAP_WORLD.w - 34, 410);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  const green = state.restoration / 100;
-  ctx.fillStyle = `rgba(77, 190, 116, ${0.04 + green * 0.16})`;
-  ctx.beginPath();
-  ctx.arc(1080, 730, 52 + green * 18, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "rgba(126,231,168,0.4)";
-  ctx.font = `700 44px system-ui`;
-  ctx.textAlign = "center";
-  ctx.fillText(state.restoration >= 100 ? "🌍" : "🪐", 1080, 745);
 };
 
 const drawConnection = (
@@ -201,71 +156,86 @@ const drawConnection = (
   automated: boolean,
   time: number,
 ) => {
-  ctx.strokeStyle = automated ? "rgba(126,231,168,0.48)" : "rgba(148,163,184,0.13)";
-  ctx.lineWidth = automated ? 7 : 4;
+  ctx.strokeStyle = automated ? "rgba(126,231,168,0.48)" : "rgba(148,163,184,0.12)";
+  ctx.lineWidth = automated ? 6 : 3;
   ctx.beginPath();
   ctx.moveTo(from.x, from.y);
   const midX = (from.x + to.x) / 2;
   ctx.bezierCurveTo(midX, from.y, midX, to.y, to.x, to.y);
   ctx.stroke();
   if (!automated) return;
-
-  const phase = (time * 0.00042) % 1;
+  const phase = (time * 0.00048) % 1;
   for (let i = 0; i < 3; i += 1) {
     const t = (phase + i / 3) % 1;
     const x = from.x + (to.x - from.x) * t;
     const y = from.y + (to.y - from.y) * t;
     ctx.fillStyle = "#b7f7ce";
     ctx.beginPath();
-    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#26333e";
-    ctx.font = `700 8px system-ui`;
-    ctx.textAlign = "center";
-    ctx.fillText("R", x, y + 3);
   }
 };
 
-const drawSource = (ctx: CanvasRenderingContext2D, state: ScrapState, time: number) => {
+const drawInteractionRing = (
+  ctx: CanvasRenderingContext2D,
+  at: Vec,
+  active: boolean,
+  icon: string,
+  label: string,
+  time: number,
+) => {
+  const radius = active ? 27 + Math.sin(time * 0.008) * 4 : 24;
+  ctx.fillStyle = active ? "rgba(255,209,102,0.18)" : "rgba(126,231,168,0.09)";
+  ctx.beginPath();
+  ctx.arc(at.x, at.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = active ? "rgba(255,209,102,0.96)" : "rgba(126,231,168,0.42)";
+  ctx.lineWidth = active ? 3 : 1.5;
+  ctx.stroke();
+  ctx.fillStyle = active ? "#ffe4a4" : "#d7f8e3";
+  ctx.font = `700 15px system-ui`;
+  ctx.textAlign = "center";
+  ctx.fillText(icon, at.x, at.y + 5);
+  ctx.font = SMALL;
+  ctx.fillText(label, at.x, at.y + 39);
+};
+
+const drawSource = (
+  ctx: CanvasRenderingContext2D,
+  state: ScrapState,
+  target: Vec | null,
+  time: number,
+) => {
   const { x, y } = SOURCE_POS;
   ctx.fillStyle = "#293640";
-  roundRect(ctx, x - 60, y - 66, 120, 112, 16);
+  roundRect(ctx, x - 54, y - 58, 108, 102, 16);
   ctx.fill();
   ctx.strokeStyle = "rgba(148,163,184,0.42)";
   ctx.lineWidth = 2;
   ctx.stroke();
 
   for (let i = 0; i < Math.min(12, Math.floor(state.resources.raw)); i += 1) {
-    const px = x - 40 + (i % 4) * 26;
-    const py = y + 20 - Math.floor(i / 4) * 18 + Math.sin(time * 0.003 + i) * 1.8;
+    const px = x - 36 + (i % 4) * 24;
+    const py = y + 18 - Math.floor(i / 4) * 17 + Math.sin(time * 0.003 + i) * 1.4;
     ctx.save();
     ctx.translate(px, py);
     ctx.rotate((i % 3 - 1) * 0.18);
     ctx.fillStyle = i % 2 ? "#64748b" : "#475569";
-    ctx.fillRect(-8, -6, 16, 12);
+    ctx.fillRect(-7, -5, 14, 10);
     ctx.fillStyle = "#8895a3";
-    ctx.fillRect(-5, -9, 10, 5);
+    ctx.fillRect(-4, -8, 8, 4);
     ctx.restore();
   }
 
   ctx.font = FONT;
   ctx.textAlign = "center";
   ctx.fillStyle = "#e2e8f0";
-  ctx.fillText("漂着ゴミ山", x, y - 46);
+  ctx.fillText("漂着ゴミ山", x, y - 39);
   ctx.font = SMALL;
   ctx.fillStyle = "#94a3b8";
-  ctx.fillText(`在庫 ${Math.floor(state.resources.raw)}`, x, y - 31);
-
-  const pickup = sourcePickupPos();
-  ctx.fillStyle = "rgba(126,231,168,0.15)";
-  ctx.beginPath();
-  ctx.arc(pickup.x, pickup.y, 25, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(126,231,168,0.75)";
-  ctx.stroke();
-  ctx.font = `700 16px system-ui`;
-  ctx.fillStyle = "#e6fff0";
-  ctx.fillText("🗑️", pickup.x, pickup.y + 6);
+  ctx.fillText(`在庫 ${Math.floor(state.resources.raw)}`, x, y - 25);
+  const pickupAt = sourcePickupPos();
+  drawInteractionRing(ctx, pickupAt, samePoint(target, pickupAt), "🗑️", "拾う", time);
 };
 
 const drawMachineArt = (
@@ -276,55 +246,55 @@ const drawMachineArt = (
 ) => {
   const { x, y } = machine.pos;
   ctx.fillStyle = "#283741";
-  roundRect(ctx, x - 64, y - 68, 128, 116, 16);
+  roundRect(ctx, x - 58, y - 58, 116, 102, 15);
   ctx.fill();
   ctx.strokeStyle = running ? "rgba(126,231,168,0.72)" : "rgba(148,163,184,0.34)";
   ctx.lineWidth = running ? 2.5 : 1.5;
   ctx.stroke();
   ctx.fillStyle = "#101820";
-  roundRect(ctx, x - 43, y - 38, 86, 55, 10);
+  roundRect(ctx, x - 38, y - 32, 76, 48, 9);
   ctx.fill();
 
   const pulse = 0.6 + Math.sin(time * 0.006 + x) * 0.25;
   if (machine.art === "furnace" || machine.art === "refinery") {
     ctx.fillStyle = running ? `rgba(251,146,60,${pulse})` : "rgba(251,146,60,0.18)";
     ctx.beginPath();
-    ctx.arc(x, y - 10, 20, 0, Math.PI * 2);
+    ctx.arc(x, y - 8, 18, 0, Math.PI * 2);
     ctx.fill();
   } else if (machine.art === "washer") {
     ctx.strokeStyle = running ? "#67e8f9" : "#365865";
     ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.arc(x, y - 10, 19, time * 0.004, time * 0.004 + Math.PI * 1.45);
+    ctx.arc(x, y - 8, 17, time * 0.004, time * 0.004 + Math.PI * 1.45);
     ctx.stroke();
   } else if (machine.art === "crusher") {
     ctx.fillStyle = running ? "#fbbf24" : "#6b7280";
-    const squeeze = running ? Math.sin(time * 0.01) * 8 : 0;
-    ctx.fillRect(x - 30 + squeeze, y - 22, 18, 30);
-    ctx.fillRect(x + 12 - squeeze, y - 22, 18, 30);
+    const squeeze = running ? Math.sin(time * 0.01) * 7 : 0;
+    ctx.fillRect(x - 27 + squeeze, y - 20, 16, 27);
+    ctx.fillRect(x + 11 - squeeze, y - 20, 16, 27);
   } else if (machine.art === "press") {
     ctx.fillStyle = running ? "#fde68a" : "#737373";
-    ctx.fillRect(x - 24, y - 30, 48, 10);
-    ctx.fillRect(x - 10, y - 20, 20, 30 + (running ? Math.sin(time * 0.012) * 7 : 0));
+    ctx.fillRect(x - 22, y - 27, 44, 9);
+    ctx.fillRect(x - 9, y - 18, 18, 27 + (running ? Math.sin(time * 0.012) * 6 : 0));
   } else if (machine.art === "assembly") {
     ctx.fillStyle = running ? "#c4b5fd" : "#6d6680";
     ctx.beginPath();
-    ctx.arc(x, y - 10, 18, 0, Math.PI * 2);
+    ctx.arc(x, y - 8, 17, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#111820";
-    ctx.fillRect(x - 10, y - 14, 7, 5);
-    ctx.fillRect(x + 3, y - 14, 7, 5);
+    ctx.fillRect(x - 9, y - 12, 6, 5);
+    ctx.fillRect(x + 3, y - 12, 6, 5);
   } else {
     ctx.fillStyle = running ? "#7dd3fc" : "#536875";
     ctx.save();
-    ctx.translate(x, y - 10);
+    ctx.translate(x, y - 8);
     ctx.rotate(running ? time * 0.004 : 0);
     for (let i = 0; i < 8; i += 1) {
       ctx.rotate(Math.PI / 4);
-      ctx.fillRect(13, -3, 10, 6);
+      ctx.fillRect(12, -3, 9, 6);
     }
     ctx.beginPath();
-    ctx.arc(0, 0, 15, 0, Math.PI * 2);
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -332,100 +302,58 @@ const drawMachineArt = (
   ctx.font = FONT;
   ctx.textAlign = "center";
   ctx.fillStyle = "#f8fafc";
-  ctx.fillText(machine.name, x, y - 49);
+  ctx.fillText(machine.name, x, y - 41);
 };
 
 const drawMachine = (
   ctx: CanvasRenderingContext2D,
   state: ScrapState,
   machine: MachineDef,
-  index: number,
+  target: Vec | null,
   time: number,
 ) => {
-  const unlocked = machineUnlocked(state, machine.id);
-  if (!unlocked && index > state.unlocked) return;
-  if (!unlocked) {
-    ctx.save();
-    ctx.globalAlpha = 0.24;
-    drawMachineArt(ctx, machine, false, time);
-    ctx.restore();
-    ctx.fillStyle = "rgba(7,12,18,0.78)";
-    roundRect(ctx, machine.pos.x - 62, machine.pos.y - 66, 124, 112, 15);
-    ctx.fill();
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = `700 24px system-ui`;
-    ctx.textAlign = "center";
-    ctx.fillText("🔒", machine.pos.x, machine.pos.y - 2);
-    ctx.font = SMALL;
-    ctx.fillText("次の建設設備", machine.pos.x, machine.pos.y + 19);
-    return;
-  }
-
   const running = state.inputs[machine.id] > 0;
   drawMachineArt(ctx, machine, running, time);
-  const ratio = running
-    ? clamp(state.progress[machine.id] / machineCycle(state, machine.id), 0, 1)
-    : 0;
-  ctx.fillStyle = "rgba(15,23,42,0.82)";
-  roundRect(ctx, machine.pos.x - 45, machine.pos.y + 27, 90, 7, 4);
-  ctx.fill();
-  ctx.fillStyle = running ? "#7ee7a8" : "#475569";
-  roundRect(ctx, machine.pos.x - 45, machine.pos.y + 27, 90 * ratio, 7, 4);
-  ctx.fill();
 
-  const input = inputPos(machine);
-  const output = outputPos(machine);
-  ctx.fillStyle = "rgba(251,191,36,0.15)";
-  ctx.beginPath();
-  ctx.arc(input.x, input.y, 24, 0, Math.PI * 2);
+  const cycle = machineCycle(state, machine.id);
+  const ratio = running ? clamp(state.progress[machine.id] / cycle, 0, 1) : 0;
+  ctx.fillStyle = "rgba(5,10,16,0.72)";
+  roundRect(ctx, machine.pos.x - 40, machine.pos.y + 21, 80, 5, 3);
   ctx.fill();
-  ctx.strokeStyle = "rgba(251,191,36,0.68)";
-  ctx.stroke();
-  ctx.fillStyle = "rgba(126,231,168,0.15)";
-  ctx.beginPath();
-  ctx.arc(output.x, output.y, 24, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(126,231,168,0.68)";
-  ctx.stroke();
-
-  ctx.font = `700 14px system-ui`;
-  ctx.textAlign = "center";
-  ctx.fillStyle = resources[machine.input].color;
-  ctx.fillText(resources[machine.input].icon, input.x, input.y + 5);
-  ctx.fillStyle = resources[machine.output].color;
-  ctx.fillText(resources[machine.output].icon, output.x, output.y + 5);
-  ctx.font = SMALL;
-  ctx.fillStyle = "#d6dee8";
-  ctx.fillText("投入", input.x, input.y + 31);
-  ctx.fillText("受取", output.x, output.y + 31);
-  ctx.fillStyle = "#94a3b8";
-  ctx.fillText(
-    `${Math.floor(state.inputs[machine.id])}/${machineCapacity(state, machine.id)}`,
-    input.x,
-    input.y + 43,
-  );
-  ctx.fillText(
-    `${Math.floor(state.resources[machine.output])}/${outputCapacity(state, machine.id)}`,
-    output.x,
-    output.y + 43,
-  );
-  ctx.fillText(`LV ${state.levels[machine.id] + 1}`, machine.pos.x, machine.pos.y + 48);
-
-  if (isAutomated(state, machine.id)) {
-    ctx.fillStyle = "rgba(126,231,168,0.18)";
-    roundRect(ctx, machine.pos.x - 42, machine.pos.y - 88, 84, 19, 10);
+  if (ratio > 0) {
+    ctx.fillStyle = "#7ee7a8";
+    roundRect(ctx, machine.pos.x - 40, machine.pos.y + 21, 80 * ratio, 5, 3);
     ctx.fill();
-    ctx.fillStyle = "#b7f7ce";
+  }
+
+  const input = machineInputPos(machine);
+  const output = machineOutputPos(machine);
+  drawInteractionRing(ctx, input, samePoint(target, input), "⬇️", `投入 ${state.inputs[machine.id]}/${machineCapacity(state, machine.id)}`, time);
+  drawInteractionRing(ctx, output, samePoint(target, output), resources[machine.output].icon, `受取 ${Math.floor(state.resources[machine.output])}/${outputCapacity(state, machine.id)}`, time);
+
+  if (state.inputs[machine.id] <= 0) {
+    ctx.fillStyle = "rgba(255,190,130,0.8)";
     ctx.font = SMALL;
-    ctx.fillText("🤖 自動投入", machine.pos.x, machine.pos.y - 75);
+    ctx.textAlign = "center";
+    ctx.fillText("材料まち", machine.pos.x, machine.pos.y + 39);
+  } else if (state.resources[machine.output] >= outputCapacity(state, machine.id)) {
+    ctx.fillStyle = "#ffd166";
+    ctx.font = SMALL;
+    ctx.textAlign = "center";
+    ctx.fillText("受取口が満杯", machine.pos.x, machine.pos.y + 39);
   }
 };
 
-const drawHQ = (ctx: CanvasRenderingContext2D, state: ScrapState) => {
+const drawHQ = (
+  ctx: CanvasRenderingContext2D,
+  state: ScrapState,
+  target: Vec | null,
+  time: number,
+) => {
   const active = contract(state);
   const { x, y } = HQ_POS;
   ctx.fillStyle = state.restoration >= 100 ? "#214832" : "#24313d";
-  roundRect(ctx, x - 82, y - 65, 164, 112, 18);
+  roundRect(ctx, x - 76, y - 56, 152, 96, 17);
   ctx.fill();
   ctx.strokeStyle = state.restoration >= 100
     ? "rgba(126,231,168,0.8)"
@@ -435,63 +363,52 @@ const drawHQ = (ctx: CanvasRenderingContext2D, state: ScrapState) => {
   ctx.font = FONT;
   ctx.textAlign = "center";
   ctx.fillStyle = "#f4f0ff";
-  ctx.fillText("惑星復旧本部", x, y - 43);
+  ctx.fillText("惑星復旧本部", x, y - 36);
   ctx.font = SMALL;
   ctx.fillStyle = "#c4b5fd";
-  ctx.fillText(active.name, x, y - 26);
+  ctx.fillText(active.name, x, y - 21);
+  ctx.font = `700 16px system-ui`;
   ctx.fillStyle = resources[active.resource].color;
-  ctx.font = `700 17px system-ui`;
-  ctx.fillText(resources[active.resource].icon, x, y - 4);
+  ctx.fillText(resources[active.resource].icon, x, y + 1);
   ctx.font = FONT;
   ctx.fillStyle = "#e2e8f0";
-  ctx.fillText(`${state.orderDelivered}/${active.amount}`, x, y + 17);
+  ctx.fillText(`${state.orderDelivered}/${active.amount}`, x, y + 20);
   ctx.font = SMALL;
   ctx.fillStyle = "#ffd166";
   ctx.fillText(`報酬 ${active.reward.toLocaleString("ja-JP")} C`, x, y + 34);
-
-  ctx.fillStyle = "rgba(196,181,253,0.17)";
-  ctx.beginPath();
-  ctx.arc(x, y + 69, 27, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(196,181,253,0.78)";
-  ctx.stroke();
-  ctx.font = `700 17px system-ui`;
-  ctx.fillStyle = "#f4f0ff";
-  ctx.fillText("📦", x, y + 75);
+  const drop = hqDropPos();
+  drawInteractionRing(ctx, drop, samePoint(target, drop), "📦", "納品", time);
 };
 
 const drawPurchase = (
   ctx: CanvasRenderingContext2D,
   state: ScrapState,
   purchase: Purchase,
+  active: boolean,
   time: number,
 ) => {
   const remaining = purchaseRemaining(state, purchase);
   const paid = purchase.cost - remaining;
   const ratio = purchase.cost > 0 ? clamp(paid / purchase.cost, 0, 1) : 1;
-  const pulse = 0.62 + Math.sin(time * 0.006 + purchase.pos.x) * 0.15;
-  ctx.fillStyle = `rgba(34,197,94,${0.12 + pulse * 0.08})`;
-  roundRect(ctx, purchase.pos.x - 53, purchase.pos.y - 25, 106, 57, 14);
+  const pulse = active ? 0.8 + Math.sin(time * 0.007) * 0.16 : 0.5;
+  ctx.fillStyle = active ? `rgba(255,209,102,${0.14 + pulse * 0.06})` : "rgba(34,197,94,0.11)";
+  roundRect(ctx, purchase.pos.x - 49, purchase.pos.y - 24, 98, 53, 13);
   ctx.fill();
-  ctx.strokeStyle = "rgba(126,231,168,0.66)";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = active ? "rgba(255,209,102,0.92)" : "rgba(126,231,168,0.52)";
+  ctx.lineWidth = active ? 3 : 1.5;
   ctx.stroke();
   ctx.fillStyle = "rgba(8,13,19,0.72)";
-  roundRect(ctx, purchase.pos.x - 45, purchase.pos.y + 21, 90, 5, 3);
+  roundRect(ctx, purchase.pos.x - 41, purchase.pos.y + 18, 82, 5, 3);
   ctx.fill();
-  ctx.fillStyle = "#7ee7a8";
-  roundRect(ctx, purchase.pos.x - 45, purchase.pos.y + 21, 90 * ratio, 5, 3);
+  ctx.fillStyle = active ? "#ffd166" : "#7ee7a8";
+  roundRect(ctx, purchase.pos.x - 41, purchase.pos.y + 18, 82 * ratio, 5, 3);
   ctx.fill();
   ctx.textAlign = "center";
   ctx.font = SMALL;
   ctx.fillStyle = "#e7fff0";
   ctx.fillText(purchase.label, purchase.pos.x, purchase.pos.y - 7);
   ctx.fillStyle = "#ffd166";
-  ctx.fillText(
-    remaining > 0 ? `${Math.ceil(remaining).toLocaleString("ja-JP")} C` : "完成",
-    purchase.pos.x,
-    purchase.pos.y + 10,
-  );
+  ctx.fillText(`${Math.ceil(remaining).toLocaleString("ja-JP")} C`, purchase.pos.x, purchase.pos.y + 9);
 };
 
 const drawPlayer = (
@@ -504,88 +421,59 @@ const drawPlayer = (
   const bob = Math.sin(time * 0.01) * 1.5;
   ctx.fillStyle = "rgba(0,0,0,0.28)";
   ctx.beginPath();
-  ctx.ellipse(x, y + 17, 19, 8, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y + 17, 18, 7, 0, 0, Math.PI * 2);
   ctx.fill();
-
   ctx.fillStyle = skin.coat;
-  roundRect(ctx, x - 13, y - 7 + bob, 26, 29, 9);
+  roundRect(ctx, x - 12, y - 7 + bob, 24, 28, 8);
   ctx.fill();
   ctx.fillStyle = skin.head;
   ctx.beginPath();
-  ctx.arc(x, y - 15 + bob, 12, 0, Math.PI * 2);
+  ctx.arc(x, y - 15 + bob, 11, 0, Math.PI * 2);
   ctx.fill();
   if (skin.hat !== "none") {
     ctx.fillStyle = skin.hatColor ?? skin.coat;
-    roundRect(ctx, x - 13, y - 29 + bob, 26, 8, 4);
+    roundRect(ctx, x - 12, y - 28 + bob, 24, 7, 4);
     ctx.fill();
   }
   ctx.fillStyle = "#111820";
   ctx.beginPath();
-  ctx.arc(x - 4, y - 16 + bob, 1.5, 0, Math.PI * 2);
-  ctx.arc(x + 4, y - 16 + bob, 1.5, 0, Math.PI * 2);
+  ctx.arc(x - 4, y - 16 + bob, 1.4, 0, Math.PI * 2);
+  ctx.arc(x + 4, y - 16 + bob, 1.4, 0, Math.PI * 2);
   ctx.fill();
 
   if (state.carry.kind && state.carry.amount > 0) {
     const icon = resources[state.carry.kind].icon;
     const visible = Math.min(5, state.carry.amount);
-    ctx.font = `700 15px system-ui`;
+    ctx.font = `700 14px system-ui`;
     ctx.textAlign = "center";
     for (let i = 0; i < visible; i += 1) {
-      ctx.fillText(icon, x, y - 38 - i * 12 + bob);
+      ctx.fillText(icon, x, y - 37 - i * 11 + bob);
     }
     if (state.carry.amount > visible) {
       ctx.fillStyle = "#f8fafc";
       ctx.font = SMALL;
-      ctx.fillText(`+${state.carry.amount - visible}`, x + 18, y - 40 - (visible - 1) * 12 + bob);
+      ctx.fillText(`+${state.carry.amount - visible}`, x + 17, y - 39 - (visible - 1) * 11 + bob);
     }
   }
 };
 
-const targetFor = (state: ScrapState): Vec | null => {
-  if (state.restoration >= 100) return null;
-  if (state.tutorialStep === 0) return sourcePickupPos();
-  if (state.tutorialStep === 1) return inputPos(machines[0]);
-  if (state.tutorialStep === 2) return outputPos(machines[0]);
-  if (state.tutorialStep === 3) return { x: HQ_POS.x, y: HQ_POS.y + 69 };
-  if (state.tutorialStep === 4) {
-    return purchases(state).find((item) => item.kind === "unlock")?.pos ?? null;
-  }
-  if (state.tutorialStep === 5) {
-    return purchases(state).find((item) => item.kind === "auto")?.pos ?? null;
-  }
-
-  const active = contract(state);
-  if (state.carry.kind) {
-    if (state.carry.kind === active.resource) return { x: HQ_POS.x, y: HQ_POS.y + 69 };
-    const machine = machines.find(
-      (item) => machineUnlocked(state, item.id) && item.input === state.carry.kind,
-    );
-    return machine ? inputPos(machine) : null;
-  }
-
-  const ready = [...machines]
-    .slice(0, state.unlocked)
-    .reverse()
-    .find((machine) => state.resources[machine.output] > 0);
-  if (ready) return outputPos(ready);
-
-  const affordable = purchases(state).find((item) => state.credits >= purchaseRemaining(state, item));
-  if (affordable) return affordable.pos;
-  return sourcePickupPos();
-};
-
-const drawTarget = (ctx: CanvasRenderingContext2D, target: Vec | null, time: number) => {
+const drawGuideLine = (
+  ctx: CanvasRenderingContext2D,
+  from: Vec,
+  target: Vec | null,
+  time: number,
+) => {
   if (!target) return;
-  const pulse = 28 + Math.sin(time * 0.008) * 5;
-  ctx.strokeStyle = "rgba(255,209,102,0.9)";
-  ctx.lineWidth = 3;
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,209,102,0.68)";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 7]);
+  ctx.lineDashOffset = -(time * 0.018) % 13;
   ctx.beginPath();
-  ctx.arc(target.x, target.y, pulse, 0, Math.PI * 2);
+  ctx.moveTo(from.x, from.y - 10);
+  ctx.lineTo(target.x, target.y);
   ctx.stroke();
-  ctx.fillStyle = "#ffd166";
-  ctx.font = `700 18px system-ui`;
-  ctx.textAlign = "center";
-  ctx.fillText("▼", target.x, target.y - pulse - 7);
+  ctx.restore();
 };
 
 const formatOfflineTime = (ms: number) => {
@@ -596,6 +484,19 @@ const formatOfflineTime = (ms: number) => {
   return rest > 0 ? `${hours}時間${rest}分` : `${hours}時間`;
 };
 
+const progressSignature = (state: ScrapState) =>
+  [
+    Math.floor(state.credits),
+    state.carry.kind ?? "none",
+    state.carry.amount,
+    state.totalProduced,
+    state.totalDelivered,
+    state.unlocked,
+    state.automated.join(","),
+    state.levels.sort,
+    Object.values(state.paid).reduce((sum, value) => sum + Math.floor(value), 0),
+  ].join("|");
+
 export default function ScrapPlanet() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stateRef = useRef<ScrapState | null>(null);
@@ -603,17 +504,19 @@ export default function ScrapPlanet() {
   const joystickRef = useRef<Joystick>(emptyJoystick());
   const keysRef = useRef(new Set<string>());
   const pausedRef = useRef(false);
-  const actionAtRef = useRef(0);
   const saveAtRef = useRef(0);
   const sampleAtRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
-  const viewportRef = useRef({ width: 1, height: 1, dpr: 1 });
+  const viewportRef = useRef({ width: 1, height: 1, dpr: 1, fit: 1 });
+  const cameraRef = useRef({ x: 0, y: 0 });
+  const progressRef = useRef({ signature: "", at: 0 });
 
   const [ready, setReady] = useState(false);
   const [hud, setHud] = useState<Hud | null>(null);
   const [help, setHelp] = useState(false);
   const [offline, setOffline] = useState<OfflineReport | null>(null);
   const [toast, setToast] = useState("");
+  const [stalledFor, setStalledFor] = useState(0);
 
   useEffect(() => {
     pausedRef.current = help || offline !== null;
@@ -633,13 +536,22 @@ export default function ScrapPlanet() {
         return;
       }
       if (after.unlocked > before.unlocked) {
-        const built = machines[after.unlocked - 1];
-        showToast(`${built.name} 建設完了`);
+        showToast(`${currentDistrict(after).name}を開放しました`);
         return;
       }
       if (after.automated.length > before.automated.length) {
         const added = after.automated.find((id) => !before.automated.includes(id));
-        showToast(added === "ship" ? "復旧ロボの自動派遣を開始" : "作業ロボが稼働しました");
+        const labels: Record<string, string> = {
+          sort: "自動回収ドローンが稼働しました",
+          deliver: "納品作業員が働き始めました",
+          "deliver-fast": "搬送ドローンが稼働しました",
+          cash: "自動決済端末が稼働しました",
+        };
+        showToast(labels[added ?? ""] ?? "自動化設備が稼働しました");
+        return;
+      }
+      if (after.levels.sort > before.levels.sort) {
+        showToast("磁力選別機の加工速度が上がりました");
         return;
       }
       if (before.restoration < 100 && after.restoration >= 100) {
@@ -653,8 +565,10 @@ export default function ScrapPlanet() {
     if (!window.confirm("スクラッププラネットを最初から再建しますか？")) return;
     const next = resetScrap();
     stateRef.current = next;
+    progressRef.current = { signature: progressSignature(next), at: performance.now() };
     setHud(sample(next));
     setOffline(null);
+    setStalledFor(0);
     showToast("復旧計画を最初から開始しました");
   }, [showToast]);
 
@@ -665,9 +579,12 @@ export default function ScrapPlanet() {
     loaded.offlineReport = undefined;
     stateRef.current = loaded;
     skinRef.current = equippedSkin();
+    progressRef.current = { signature: progressSignature(loaded), at: performance.now() };
+    queueMicrotask(() => {
     setHud(sample(loaded));
     setOffline(report ?? null);
     setReady(true);
+  });
 
     const down = (event: KeyboardEvent) => {
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d"].includes(event.key)) {
@@ -700,7 +617,12 @@ export default function ScrapPlanet() {
       const height = Math.max(1, rect.height);
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
-      viewportRef.current = { width, height, dpr };
+      viewportRef.current = {
+        width,
+        height,
+        dpr,
+        fit: width / SCRAP_VIEW_WIDTH,
+      };
     };
     resize();
     const observer = new ResizeObserver(resize);
@@ -709,68 +631,127 @@ export default function ScrapPlanet() {
     let raf = 0;
     let previous = performance.now();
 
-    const interact = (state: ScrapState, dt: number, now: number) => {
+    const interact = (state: ScrapState, dt: number) => {
       let next = state;
       for (const purchase of purchases(next)) {
-        if (distance(next.player, purchase.pos) <= INTERACT_RADIUS) {
+        if (distance(next.player, purchase.pos) <= PURCHASE_RADIUS) {
           next = payPurchase(next, purchase, dt);
           break;
         }
       }
 
-      if (now - actionAtRef.current < ACTION_INTERVAL) return next;
-      let acted = false;
-      if (distance(next.player, sourcePickupPos()) <= INTERACT_RADIUS) {
-        const changed = pickup(next, "raw", 1);
-        acted = changed !== next;
-        next = changed;
-      } else if (distance(next.player, { x: HQ_POS.x, y: HQ_POS.y + 69 }) <= INTERACT_RADIUS) {
-        const changed = deliverContract(next, 1);
-        acted = changed !== next;
-        next = changed;
-      } else {
-        for (const machine of machines.slice(0, next.unlocked)) {
-          if (distance(next.player, inputPos(machine)) <= INTERACT_RADIUS) {
-            const changed = deposit(next, machine.id, 1);
-            acted = changed !== next;
-            next = changed;
-            break;
-          }
-          if (distance(next.player, outputPos(machine)) <= INTERACT_RADIUS) {
-            const changed = pickup(next, machine.output, 1);
-            acted = changed !== next;
-            next = changed;
-            break;
-          }
+      const room = carryCapacity(next) - next.carry.amount;
+      if (distance(next.player, sourcePickupPos()) <= INTERACT_RADIUS && room > 0) {
+        return pickup(next, "raw", room);
+      }
+      if (distance(next.player, hqDropPos()) <= INTERACT_RADIUS && next.carry.amount > 0) {
+        return deliverContract(next, next.carry.amount);
+      }
+
+      for (const machine of machines.slice(0, next.unlocked)) {
+        const atInput = machineInputPos(machine);
+        const atOutput = machineOutputPos(machine);
+        const nearBody = distance(next.player, machine.pos) <= 61;
+        if (
+          next.carry.kind === machine.input &&
+          (distance(next.player, atInput) <= INTERACT_RADIUS || (nearBody && next.player.x <= machine.pos.x))
+        ) {
+          return deposit(next, machine.id, next.carry.amount);
+        }
+        if (
+          (!next.carry.kind || next.carry.kind === machine.output) &&
+          (distance(next.player, atOutput) <= INTERACT_RADIUS || (nearBody && next.player.x > machine.pos.x))
+        ) {
+          const capacity = carryCapacity(next) - next.carry.amount;
+          if (capacity > 0) return pickup(next, machine.output, capacity);
         }
       }
-      if (acted) actionAtRef.current = now;
       return next;
     };
 
-    const draw = (state: ScrapState, time: number) => {
-      const { width, height, dpr } = viewportRef.current;
+    const drawScreenArrow = (
+      target: Vec | null,
+      camera: Vec,
+      guidanceNow: Guidance,
+    ) => {
+      if (!target) return;
+      const { width, height, dpr, fit } = viewportRef.current;
+      const sx = (target.x - camera.x) * fit;
+      const sy = (target.y - camera.y) * fit;
+      const margin = 28;
+      if (sx >= margin && sx <= width - margin && sy >= margin && sy <= height - margin) return;
+      const cx = width / 2;
+      const cy = height / 2;
+      const dx = sx - cx;
+      const dy = sy - cy;
+      const scale = Math.min(
+        Math.abs(dx) > 0.001 ? (width / 2 - margin) / Math.abs(dx) : Infinity,
+        Math.abs(dy) > 0.001 ? (height / 2 - margin) / Math.abs(dy) : Infinity,
+      );
+      const x = cx + dx * scale;
+      const y = cy + dy * scale;
+      const angle = Math.atan2(dy, dx);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-      const camera = {
-        x: clamp(state.player.x - width / 2, 0, Math.max(0, SCRAP_WORLD.w - width)),
-        y: clamp(state.player.y - height / 2, 0, Math.max(0, SCRAP_WORLD.h - height)),
-      };
-
       ctx.save();
-      ctx.translate(-camera.x, -camera.y);
-      drawDistricts(ctx, state);
-      for (const [index, machine] of machines.entries()) {
-        if (index > state.unlocked) continue;
-        drawConnection(ctx, sourceFor(machine), inputPos(machine), isAutomated(state, machine.id), time);
-      }
-      drawSource(ctx, state, time);
-      drawHQ(ctx, state);
-      machines.forEach((machine, index) => drawMachine(ctx, state, machine, index, time));
-      purchases(state).forEach((purchase) => drawPurchase(ctx, state, purchase, time));
-      drawTarget(ctx, targetFor(state), time);
-      drawPlayer(ctx, state, skinRef.current ?? equippedSkin(), time);
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = "rgba(255,209,102,0.96)";
+      ctx.beginPath();
+      ctx.moveTo(13, 0);
+      ctx.lineTo(-8, -9);
+      ctx.lineTo(-8, 9);
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
+      ctx.font = SMALL;
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffe4a4";
+      ctx.fillText(guidanceNow.label.slice(0, 14), x, clamp(y + 22, 14, height - 8));
+    };
+
+    const draw = (state: ScrapState, time: number) => {
+      const { width, height, dpr, fit } = viewportRef.current;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const bounds = worldBounds(state.unlocked);
+      const viewW = width / fit;
+      const viewH = height / fit;
+      const targetX = bounds.x1 - bounds.x0 <= viewW
+        ? bounds.x0 - (viewW - (bounds.x1 - bounds.x0)) / 2
+        : clamp(state.player.x - viewW / 2, bounds.x0, bounds.x1 - viewW);
+      const targetY = bounds.y1 - bounds.y0 <= viewH
+        ? bounds.y0 - (viewH - (bounds.y1 - bounds.y0)) / 2
+        : clamp(state.player.y - viewH / 2, bounds.y0, bounds.y1 - viewH);
+      const follow = Math.min(1, Math.max(0.02, (time - previous) * 0.006));
+      cameraRef.current.x += (targetX - cameraRef.current.x) * follow;
+      cameraRef.current.y += (targetY - cameraRef.current.y) * follow;
+      const camera = cameraRef.current;
+
+      const guidanceNow = guidance(state);
+      ctx.setTransform(
+        dpr * fit,
+        0,
+        0,
+        dpr * fit,
+        -camera.x * dpr * fit,
+        -camera.y * dpr * fit,
+      );
+      drawDistricts(ctx, state);
+      for (const machine of machines.slice(0, state.unlocked)) {
+        const index = machines.findIndex((item) => item.id === machine.id);
+        const source = index === 0 ? sourcePickupPos() : machineOutputPos(machines[index - 1]);
+        drawConnection(ctx, source, machineInputPos(machine), isAutomated(state, machine.id), time);
+      }
+      drawGuideLine(ctx, state.player, guidanceNow.pos, time);
+      drawSource(ctx, state, guidanceNow.pos, time);
+      drawHQ(ctx, state, guidanceNow.pos, time);
+      machines.slice(0, state.unlocked).forEach((machine) =>
+        drawMachine(ctx, state, machine, guidanceNow.pos, time));
+      purchases(state).forEach((purchase) =>
+        drawPurchase(ctx, state, purchase, samePoint(guidanceNow.pos, purchase.pos), time));
+      drawPlayer(ctx, state, skinRef.current ?? equippedSkin(), time);
+      drawScreenArrow(guidanceNow.pos, camera, guidanceNow);
 
       const joystick = joystickRef.current;
       if (joystick.active) {
@@ -779,15 +760,16 @@ export default function ScrapPlanet() {
         const startY = joystick.startY - rect.top;
         const knobX = joystick.x - rect.left;
         const knobY = joystick.y - rect.top;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.fillStyle = "rgba(15,23,42,0.5)";
         ctx.beginPath();
-        ctx.arc(startX, startY, 46, 0, Math.PI * 2);
+        ctx.arc(startX, startY, 42, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = "rgba(226,232,240,0.3)";
         ctx.stroke();
         ctx.fillStyle = "rgba(126,231,168,0.55)";
         ctx.beginPath();
-        ctx.arc(knobX, knobY, 21, 0, Math.PI * 2);
+        ctx.arc(knobX, knobY, 19, 0, Math.PI * 2);
         ctx.fill();
       }
     };
@@ -818,17 +800,19 @@ export default function ScrapPlanet() {
           dy += joystick.dy;
         }
         const length = Math.hypot(dx, dy);
-        if (length > 0.05) {
-          const speed = moveSpeed(state) * (dt / 1000);
+        if (length > 0.08) {
+          const scale = Math.min(1, length);
+          const speed = moveSpeed(state) * scale * (dt / 1000);
+          const bounds = worldBounds(state.unlocked);
           state = {
             ...state,
             player: {
-              x: clamp(state.player.x + (dx / Math.max(1, length)) * speed, 28, SCRAP_WORLD.w - 28),
-              y: clamp(state.player.y + (dy / Math.max(1, length)) * speed, 74, SCRAP_WORLD.h - 28),
+              x: clamp(state.player.x + (dx / length) * speed, bounds.x0 + 18, bounds.x1 - 18),
+              y: clamp(state.player.y + (dy / length) * speed, bounds.y0 + 54, bounds.y1 - 24),
             },
           };
         }
-        state = interact(state, dt, now);
+        state = interact(state, dt);
         announceTransition(before, state);
         stateRef.current = state;
       }
@@ -836,6 +820,13 @@ export default function ScrapPlanet() {
       draw(state, now);
       if (now - sampleAtRef.current >= 160) {
         sampleAtRef.current = now;
+        const signature = progressSignature(state);
+        if (signature !== progressRef.current.signature) {
+          progressRef.current = { signature, at: now };
+          setStalledFor(0);
+        } else {
+          setStalledFor(Math.floor((now - progressRef.current.at) / 1000));
+        }
         setHud(sample(state));
       }
       if (now - saveAtRef.current >= 1800) {
@@ -872,14 +863,19 @@ export default function ScrapPlanet() {
     const rawX = event.clientX - joystick.startX;
     const rawY = event.clientY - joystick.startY;
     const length = Math.hypot(rawX, rawY);
-    const max = 50;
-    const scale = length > max ? max / length : 1;
+    const max = 42;
+    const clamped = length > max ? max / length : 1;
+    const shownX = rawX * clamped;
+    const shownY = rawY * clamped;
+    const dead = 4;
+    const full = 34;
+    const inputScale = length <= dead ? 0 : Math.min(1, (length - dead) / (full - dead));
     joystickRef.current = {
       ...joystick,
-      x: joystick.startX + rawX * scale,
-      y: joystick.startY + rawY * scale,
-      dx: (rawX * scale) / max,
-      dy: (rawY * scale) / max,
+      x: joystick.startX + shownX,
+      y: joystick.startY + shownY,
+      dx: length > 0 ? (rawX / length) * inputScale : 0,
+      dy: length > 0 ? (rawY / length) * inputScale : 0,
     };
   };
 
@@ -930,19 +926,26 @@ export default function ScrapPlanet() {
           onPointerCancel={releasePointer}
           onContextMenu={(event: React.MouseEvent<HTMLCanvasElement>) => event.preventDefault()}
         />
-        <p className={styles.objective}>{hud?.objective ?? "工場を読み込み中…"}</p>
+        <p className={styles.objective}>{hud?.objective.label ?? "工場を読み込み中…"}</p>
         {!ready ? <div className={styles.loading}>復旧計画を読み込み中…</div> : null}
         {toast ? <div className={styles.toast}>{toast}</div> : null}
-        {hud?.completed ? (
-          <div className={styles.complete}>🌍 惑星再生完了</div>
+        {stalledFor >= 40 ? (
+          <button
+            type="button"
+            className={styles.hintButton}
+            onClick={() => showToast(hud?.objective.label ?? "黄色い案内へ進もう")}
+          >
+            次にやることを確認
+          </button>
         ) : null}
+        {hud?.completed ? <div className={styles.complete}>🌍 惑星再生完了</div> : null}
       </section>
 
       <footer className={styles.dock}>
         <div className={styles.carry}>
           <span>{carryIcon}</span>
           <strong>
-            {hud?.carryTotal ?? 0}<small> / {hud?.capacity ?? 3}</small>
+            {hud?.carryTotal ?? 0}<small> / {hud?.capacity ?? 5}</small>
           </strong>
           <small>{hud?.carryKind ? resources[hud.carryKind].short : "手持ち"}</small>
         </div>
@@ -974,7 +977,7 @@ export default function ScrapPlanet() {
             </div>
             <div className={styles.reportGrid}>
               <div><span>生産</span><strong>{offline.produced.toLocaleString("ja-JP")}</strong><small>個</small></div>
-              <div><span>派遣</span><strong>{offline.delivered.toLocaleString("ja-JP")}</strong><small>個</small></div>
+              <div><span>納品</span><strong>{offline.delivered.toLocaleString("ja-JP")}</strong><small>個</small></div>
               <div><span>報酬</span><strong>{formatNumber(offline.credits)}</strong><small>C</small></div>
               <div><span>再生</span><strong>+{Math.floor(offline.restoration)}</strong><small>%</small></div>
             </div>
@@ -998,11 +1001,11 @@ export default function ScrapPlanet() {
             </div>
             <ul>
               <li>画面をスワイプして作業員を移動します。PCは矢印キーかWASDです。</li>
-              <li>素材の近くへ行くと自動で拾い、黄色い投入口で自動投入します。</li>
-              <li>緑の受取口で完成品を拾い、惑星復旧本部へ納品します。</li>
-              <li>復旧依頼を達成するとクレジットと惑星再生率が上がります。</li>
-              <li>緑の建設枠へ立つと設備や作業ロボを購入できます。</li>
-              <li>設備強化は処理速度と保管量を改善します。素材は全工程で1個から1個作られます。</li>
+              <li>黄色いリングと点線は、今向かう場所を1か所だけ示します。</li>
+              <li>漂着ゴミを磁力選別機へ運び、外壁補修材を復旧本部へ納品します。</li>
+              <li>初回3個の報酬は280C。その後も3個210Cで何度でも稼げます。</li>
+              <li>自動回収ドローンと納品作業員を買うと、第一区画が自動で回ります。</li>
+              <li>合計15個を納品すると、破砕・洗浄区を開けられます。</li>
             </ul>
             <p className={styles.reportNote}>{hud?.bottleneck}</p>
             <button type="button" className={styles.reset} onClick={handleReset}>
