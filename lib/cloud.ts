@@ -104,7 +104,28 @@ export const bindVault = (read: () => Bag, write: (vault: Bag) => void) => {
   hooks = { read, write };
 };
 
-/** ログイン直後の突き合わせ。新しい方を正とする */
+/**
+ * そのセーブに、どれだけ遊んだ跡があるか（区画ごとの playTime の合計）。
+ *
+ * 保存した時刻（savedAt）だけで新旧を決めると、別の端末でログインする
+ * 前にほんの数分だけ遊んだ「できたてのからっぽに近いセーブ」のほうが
+ * 保存時刻は新しくなり、クラウドに積み上げてきた本物の進み具合を
+ * まるごと消してしまう（merge:false で上書きするため）。
+ * 「どれだけ遊んだか」を見て、それが極端に少ないほうでは上書きしない
+ */
+const progress = (vault: Bag): number => {
+  const stages = vault.stages;
+  if (!stages || typeof stages !== "object") return 0;
+  let total = 0;
+  for (const save of Object.values(stages as Record<string, unknown>)) {
+    if (!save || typeof save !== "object") continue;
+    const playTime = (save as { playTime?: unknown }).playTime;
+    if (typeof playTime === "number" && Number.isFinite(playTime)) total += playTime;
+  }
+  return total;
+};
+
+/** ログイン直後の突き合わせ。遊んだ跡が多い方を正とする（僅差なら新しい方） */
 const merge = async (uid: string) => {
   if (!hooks) return;
   setState({ status: "syncing" });
@@ -113,7 +134,24 @@ const merge = async (uid: string) => {
     const local = hooks.read();
     const localAt = Number(local.savedAt ?? 0);
     const remoteAt = Number(remote?.savedAt ?? 0);
-    if (remote && remoteAt > localAt) {
+    const localProgress = progress(local);
+    const remoteProgress = remote ? progress(remote) : 0;
+
+    let remoteWins: boolean;
+    if (!remote) {
+      remoteWins = false;
+    } else if (localProgress < remoteProgress * 0.5) {
+      // ローカルの遊んだ跡が極端に少ない → 相手を上書きしない
+      remoteWins = true;
+    } else if (remoteProgress < localProgress * 0.5) {
+      // クラウドの遊んだ跡が極端に少ない → こちらを上書きさせない
+      remoteWins = false;
+    } else {
+      // どちらも同じくらい遊んであるときだけ、保存時刻の新しい方に合わせる
+      remoteWins = remoteAt > localAt;
+    }
+
+    if (remoteWins && remote) {
       hooks.write(remote);
     } else {
       await pushVault(uid, local);
