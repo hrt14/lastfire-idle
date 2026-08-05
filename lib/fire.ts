@@ -596,7 +596,7 @@ const YIELD: { kind: string; count: number; from: number }[] = [
   // 最初から肉が出はじめる
   { kind: "mmeat", count: 36, from: 0.05 },
   // 毛皮を外し、牙を取る
-  { kind: "hide", count: 4, from: 0.25 },
+  { kind: "hide", count: 6, from: 0.25 },
   { kind: "tusk", count: 2, from: 0.45 },
   // 中ほどから脂、終わりに骨
   { kind: "fat", count: 8, from: 0.5 },
@@ -956,7 +956,8 @@ export const MARKS: { id: string; reach: (state: ShopState) => boolean }[] = [
   { id: "mark-kills-3", reach: (state) => state.fire.kills >= 3 },
   { id: "mark-cold-3", reach: (state) => state.fire.coldNights >= COLD_NIGHTS },
   { id: "mark-pop-12", reach: (state) => state.fire.pop >= 12 },
-  { id: "mark-pop-24", reach: (state) => state.fire.pop >= 24 },
+  // 住居をぜんぶ建てると上限27人。24人（89%）は詰めすぎだったので20人に下げた
+  { id: "mark-pop-20", reach: (state) => state.fire.pop >= 20 },
   { id: "mark-sailed", reach: (state) => state.fire.sailed },
 ];
 

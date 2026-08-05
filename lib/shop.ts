@@ -2865,14 +2865,23 @@ const dropJobs = (state: ShopState, worker: Staff): HaulJob[] => {
       const slot = stationAccepts(state, stove, kind);
       if (!slot) continue;
       const room = slotRoom(state, stove, kind, slot);
+      const tag = slot === "build" ? "build" : isStore(stove) ? "store" : "work";
+      /*
+       * 加工場（皮なめし場など）の受け口が空だと、いつもは最優先で助ける。
+       * ただし、その材料を建てかけの建物も欲しがっているなら話は別。
+       * そうしないと、せっかく集めた毛皮が、建物にはまわらず
+       * 加工場の空きを埋めるだけで消えていく（本当に建てたいほうが後回しになる）
+       */
+      const stalled =
+        slotHave(state, stove, kind, slot) <= 0 &&
+        !(tag === "work" && (state.fire.wants[kind] ?? 0) > 0);
       jobs.push({
         id: `${kind}@${stove.id}`,
         kind,
         at: stove.pos,
         drop: true,
-        // 受け口が空＝その工程は止まっている。まっさきに助ける
-        stalled: slotHave(state, stove, kind, slot) <= 0,
-        tag: slot === "build" ? "build" : isStore(stove) ? "store" : "work",
+        stalled,
+        tag,
         night: feedsNight(stove),
         slots: Math.max(1, Math.ceil(room / carrierLimit(state, worker))),
         run: () => {
@@ -2893,8 +2902,14 @@ const dropJobs = (state: ShopState, worker: Staff): HaulJob[] => {
         kind,
         at: seat.serve,
         drop: true,
-        // 待たせている仲間も「止まっている先」として先に回る
-        stalled: true,
+        /*
+         * 待たせている仲間は、ふつうは「止まっている先」として先に回る。
+         * ただし、その品を建てかけの建物がまだ欲しがっているときは違う。
+         * そうしないと、せっかく集めた毛皮などの希少な資材が、
+         * 建築を素通りして交易の席へ売られてしまう（欲しがっている先が2つ
+         * あるとき、建築のほうを優先する）
+         */
+        stalled: (state.fire.wants[kind] ?? 0) <= 0,
         tag: "serve",
         slots: 1,
         run: () => {
