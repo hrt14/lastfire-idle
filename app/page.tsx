@@ -359,6 +359,22 @@ export default function Page() {
           原始からはじまる、時代がすすむシリーズ。しなものは何段もの工程を通って完成する。
         </p>
 
+        <ul className="stages">
+          <li className="stage-card stage-doc">
+            <div className="stage-art" aria-hidden>
+              📜
+            </div>
+            <div className="stage-body">
+              <strong>大河の文明の仕様書</strong>
+              <p>「火のはじまり」の次。農業・水路・土器・牧畜・船と交易</p>
+              <span className="stage-progress">v0.1・たたき台・6区画・実装前</span>
+            </div>
+            <a className="stage-go is-doc" href="/docs/taiga">
+              読む
+            </a>
+          </li>
+        </ul>
+
         <p className="top-note">
           記録はこの端末に保存されます。ログインすると、アカウントにも保存されます。
         </p>
