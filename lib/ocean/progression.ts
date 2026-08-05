@@ -17,7 +17,7 @@ export const carryUpgradeCost = (state: OceanState) =>
 /**
  * ドリームパークと同じく、序盤は「次に買うべきもの」を1件だけ出す。
  * 自動化の途中で能力強化にお金を使い、進行が止まることを防ぐ。
- * 1海域を完全自動化した後だけ、能力強化を選択肢として出す。
+ * 1海域を完全自動化して次海域を開いた後だけ、能力強化を選択肢として出す。
  */
 export const availablePurchases = (state: OceanState, id: OceanAreaId): OceanPurchase[] => {
   const def = oceanArea(id);
@@ -78,11 +78,9 @@ export const availablePurchases = (state: OceanState, id: OceanAreaId): OceanPur
   }
 
   const next = oceanAreas[def.index + 1];
-  if (
-    next &&
-    state.unlockedAreas === def.index + 1 &&
-    line.orders >= 3
-  ) {
+  const nextStillLocked = !!next && state.unlockedAreas === def.index + 1;
+  if (nextStillLocked) {
+    if (line.orders < 3) return [];
     return [
       {
         id: `area-${next.id}`,
