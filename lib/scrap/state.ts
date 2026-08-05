@@ -151,7 +151,8 @@ export const fromScrapPersisted = (
 };
 
 export const toScrapPersisted = (state: ScrapState): ScrapPersisted => {
-  const { offlineReport: _offlineReport, ...persisted } = state;
+  const { offlineReport, ...persisted } = state;
+  void offlineReport;
   return persisted;
 };
 
