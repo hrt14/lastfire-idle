@@ -1,1 +1,1 @@
-apply SCRAP PLANET v0.2 retry
+apply SCRAP PLANET v0.2 chunks
