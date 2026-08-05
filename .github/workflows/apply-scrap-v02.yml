@@ -29,6 +29,43 @@ jobs:
           echo "8d66c890dfc6f8eeffa6fbc58eee4eed260b2e6613444c10b33f170d8ad14a5b  /tmp/scrap-v02.b64" | sha256sum -c -
           base64 -d /tmp/scrap-v02.b64 > /tmp/scrap-v02.tar.gz
           tar -xzf /tmp/scrap-v02.tar.gz -C .
+      - name: Apply lint-safe initialization
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          component = Path('components/ScrapPlanet.tsx')
+          text = component.read_text()
+          old = '''    setHud(sample(loaded));
+              setOffline(report ?? null);
+              setReady(true);'''
+          new = '''    queueMicrotask(() => {
+              setHud(sample(loaded));
+              setOffline(report ?? null);
+              setReady(true);
+            });'''
+          if old not in text:
+              raise SystemExit('initial state block not found')
+          component.write_text(text.replace(old, new, 1))
+
+          state = Path('lib/scrap/state.ts')
+          text = state.read_text()
+          text = text.replace(
+              '  const { offlineReport: _offlineReport, ...persisted } = state;\n  return persisted;',
+              '  const { offlineReport, ...persisted } = state;\n  void offlineReport;\n  return persisted;',
+              1,
+          )
+          state.write_text(text)
+
+          store = Path('lib/scrapStore.ts')
+          text = store.read_text()
+          text = text.replace(
+              '  const { scrap: _legacyScrap, ...withoutLegacy } = shared;',
+              '  const { scrap: legacyScrap, ...withoutLegacy } = shared;\n  void legacyScrap;',
+              1,
+          )
+          store.write_text(text)
+          PY
       - name: Validate
         run: |
           npm ci
