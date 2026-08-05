@@ -14,12 +14,16 @@ export const levelCost = (state: OceanState, id: OceanAreaId) => {
 export const carryUpgradeCost = (state: OceanState) =>
   Math.ceil(120 * Math.pow(1.85, state.carryLevel));
 
+/**
+ * ドリームパークと同じく、序盤は「次に買うべきもの」を1件だけ出す。
+ * 自動化の途中で能力強化にお金を使い、進行が止まることを防ぐ。
+ * 1海域を完全自動化して次海域を開いた後だけ、能力強化を選択肢として出す。
+ */
 export const availablePurchases = (state: OceanState, id: OceanAreaId): OceanPurchase[] => {
   const def = oceanArea(id);
   const line = state.lines[id];
-  const list: OceanPurchase[] = [];
 
-  if (line.orders < 1) return list;
+  if (line.orders < 1) return [];
 
   if (!line.expanded) {
     return [
@@ -48,27 +52,48 @@ export const availablePurchases = (state: OceanState, id: OceanAreaId): OceanPur
   }
 
   if (!line.processAuto) {
-    list.push({
-      id: `process-${id}`,
-      kind: "processAuto",
-      label: `${def.transportName}を配置`,
-      detail: `${def.processorName}へ自動投入する`,
-      cost: def.processAutoCost,
-      area: id,
-    });
+    return [
+      {
+        id: `process-${id}`,
+        kind: "processAuto",
+        label: `${def.transportName}を配置`,
+        detail: `${def.processorName}へ自動投入する`,
+        cost: def.processAutoCost,
+        area: id,
+      },
+    ];
   }
 
-  if (line.processAuto && !line.deliveryAuto) {
-    list.push({
-      id: `deliver-${id}`,
-      kind: "deliveryAuto",
-      label: `${def.deliveryName}を配置`,
-      detail: `${def.productName}の依頼を自動で完了する`,
-      cost: def.deliveryAutoCost,
-      area: id,
-    });
+  if (!line.deliveryAuto) {
+    return [
+      {
+        id: `deliver-${id}`,
+        kind: "deliveryAuto",
+        label: `${def.deliveryName}を配置`,
+        detail: `${def.productName}の依頼を自動で完了する`,
+        cost: def.deliveryAutoCost,
+        area: id,
+      },
+    ];
   }
 
+  const next = oceanAreas[def.index + 1];
+  const nextStillLocked = !!next && state.unlockedAreas === def.index + 1;
+  if (nextStillLocked) {
+    if (line.orders < 3) return [];
+    return [
+      {
+        id: `area-${next.id}`,
+        kind: "area",
+        label: `${next.icon} ${next.name}へ出航`,
+        detail: next.subtitle,
+        cost: def.unlockCost,
+        area: id,
+      },
+    ];
+  }
+
+  const list: OceanPurchase[] = [];
   if (line.level < 10) {
     list.push({
       id: `level-${id}`,
@@ -79,7 +104,6 @@ export const availablePurchases = (state: OceanState, id: OceanAreaId): OceanPur
       area: id,
     });
   }
-
   if (state.carryLevel < 7) {
     list.push({
       id: "carry-ocean",
@@ -90,27 +114,7 @@ export const availablePurchases = (state: OceanState, id: OceanAreaId): OceanPur
       area: id,
     });
   }
-
-  const next = oceanAreas[def.index + 1];
-  if (
-    next &&
-    state.unlockedAreas === def.index + 1 &&
-    line.orders >= 3 &&
-    line.sourceAuto &&
-    line.processAuto &&
-    line.deliveryAuto
-  ) {
-    list.unshift({
-      id: `area-${next.id}`,
-      kind: "area",
-      label: `${next.icon} ${next.name}へ出航`,
-      detail: next.subtitle,
-      cost: def.unlockCost,
-      area: id,
-    });
-  }
-
-  return list.slice(0, 3);
+  return list.slice(0, 2);
 };
 
 export const buyOceanPurchase = (
@@ -160,7 +164,7 @@ export const oceanObjective = (state: OceanState): string => {
   if (line.orders === 0) {
     if (line.input > 0 && line.output <= 0) return `${def.processorName}で加工中…`;
     if (line.output > 0) return `${def.productName}を受け取ろう`;
-    return `${def.sourceName}から${oceanResources[def.source].name}を集めよう`;
+    return `${def.sourceName}で${oceanResources[def.source].name}を集めよう`;
   }
 
   if (!line.expanded) return idFirst(state.currentArea, "干物台を建てよう", `${def.processorName}を拡張しよう`);
@@ -171,7 +175,7 @@ export const oceanObjective = (state: OceanState): string => {
   const next = oceanAreas[def.index + 1];
   if (next && line.orders < 3) return `復旧依頼をあと${3 - line.orders}回完了しよう`;
   if (next && state.unlockedAreas === def.index + 1) return `${next.name}への航路を開こう`;
-  if (!next) return `海底都市を完成させ、海洋再生率100%を目指そう`;
+  if (!next) return "海底都市を完成させ、海洋再生率100%を目指そう";
   return `${def.name}の設備を強化しよう`;
 };
 
