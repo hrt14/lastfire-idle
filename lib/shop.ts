@@ -1822,9 +1822,15 @@ const spawnCustomers = (state: ShopState, dt: number) => {
       .filter((customer) => customer.state !== "leaving")
       .map((customer) => customer.seatId),
   );
-  const free = openSeats(state).find(
+  // 空席の中から毎回くじで選ぶ（先頭固定だと、あとから出す席
+  // ＝川辺の席・交易の席のような枠に、空きがあっても客がまず来ない）
+  const freeCandidates = openSeats(state).filter(
     (seat) => !taken.has(seat.id) && !isDirty(state, seat.id),
   );
+  const free =
+    freeCandidates.length > 0
+      ? freeCandidates[Math.floor(Math.random() * freeCandidates.length)]
+      : undefined;
 
   const newGuest = (over: Partial<Customer>): Customer => ({
     id: state.nextId++,
