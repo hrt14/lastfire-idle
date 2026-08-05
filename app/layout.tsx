@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import ScrollMode from "@/components/ScrollMode";
+import OceanTopLink from "@/components/OceanTopLink";
 import "./globals.css";
 
 export const metadata: Metadata = {
   applicationName: "ワーキングプラネット",
   title: "ワーキングプラネット ― 働いて大きくする放置ゲーム",
   description:
-    "働いて街と星を大きくしていく放置ゲームのシリーズ。いまは はんじょうダッシュ（ラーメン屋・テーマパーク）が遊べます。",
+    "働いて街と星を大きくしていく放置ゲームのシリーズ。はんじょうダッシュ、SCRAP PLANET、OCEAN PLANETを遊べます。",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -34,6 +35,7 @@ export default function RootLayout({
       <body>
         <ScrollMode />
         {children}
+        <OceanTopLink />
       </body>
     </html>
   );
