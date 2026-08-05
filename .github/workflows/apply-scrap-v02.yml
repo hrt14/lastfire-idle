@@ -1,0 +1,42 @@
+name: Apply SCRAP PLANET v0.2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/scrap-first-district-v02
+    paths:
+      - '.scrap-patch/trigger.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/scrap-first-district-v02
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply source archive
+        run: |
+          cat .scrap-patch/part*.txt | base64 -d > /tmp/scrap-v02.tar.gz
+          tar -xzf /tmp/scrap-v02.tar.gz -C .
+      - name: Validate
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - name: Commit verified implementation
+        run: |
+          rm -rf .scrap-patch .github/workflows/apply-scrap-v02.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Implement SCRAP PLANET first district v0.2"
+          git push origin HEAD:agent/scrap-first-district-v02
