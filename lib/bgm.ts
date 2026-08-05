@@ -2,20 +2,20 @@
  * BGM・環境音。
  *
  * 効果音（lib/sfx.ts）と同じく、音声ファイルは持たずその場で鳴らす。
- * 常に鳴っている「下敷き」（ドローン）に、場面ごとの層を足し引きする:
+ * 和音のドローンは持たない。あくまで「そこにいる音」だけを重ねる:
  *
- *   ラーメン一直線・ドリームパーク  ステージごとに1つの、あたたかい和音
- *   火のはじまり                    区画・昼夜・天気で層が変わる
+ *   火のはじまり  区画・昼夜・天気で層が変わる
  *     - 焚き火のパチパチ（区画をとおして流れる下敷き）
  *     - 昼は鳥、夜は虫の声
- *     - 冬の丘は風、氷のきらめき
+ *     - 冬の丘は風
  *     - 川辺は水の音
+ *   ドリームパーク  ときどき鳴る、木琴のようなきらめき（持続音ではない）
+ *   ラーメン一直線  いまのところ環境音なし
  *
- * ゲームを煽るような音（緊張の低音など）は入れない。あくまで環境音として
+ * 持続する発振器（ドローン・低音）は置かない。鳴りっぱなしの音は
+ * 「消えないメッセージ」と同じで、それ自体が気になってしまうため
  *
- * 層はどれも「作って、音量を上げ下げする」だけ。作り直さない。
- * 区画をまたぐたびに和音がなめらかに変わるのは、
- * 同じ発振器の周波数をなだらかに ramp しているから
+ * 層はどれも「作って、音量を上げ下げする」だけ。作り直さない
  */
 
 import { getCtx } from "@/lib/sfx";
@@ -85,74 +85,6 @@ const loopingNoise = (ctx: AudioContext): AudioBufferSourceNode => {
   src.loop = true;
   src.start();
   return src;
-};
-
-/* ---------- 和音の下敷き（区画ごとに周波数だけ変える） ---------- */
-
-/** [根音, 三度・五度ぶん, オクターブ] のHz。区画をまたぐと、ここへなめらかに移る */
-const CHORDS: Record<string, [number, number, number]> = {
-  ramen: [196, 247, 294], // G3 - B3 - D4（あたたかい長三和音）
-  park: [220, 277, 330], // A3 - C#4 - E4（明るく高め）
-  "fire-0": [147, 175, 220], // D3 - F3 - A3（原始的な短調ぎみ）
-  "fire-1": [147, 175, 220],
-  "fire-2": [131, 156, 196], // C3 - Eb3 - G3（谷。少し低く、不安げに）
-  "fire-3": [165, 196, 247], // E3 - G3 - B3（冬。冷たい響き）
-  "fire-4": [175, 220, 262], // F3 - A3 - C4（村。あたたかい長調）
-  "fire-5": [110, 165, 277], // A2 - E3 - C#4（川。ひらけた響き）
-};
-
-const chordKey = (scene: Scene) =>
-  scene.stage === "fire" ? `fire-${Math.min(5, Math.max(0, scene.area))}` : scene.stage;
-
-type Pad = {
-  osc: OscillatorNode[];
-  out: GainNode;
-  filter: BiquadFilterNode;
-};
-
-const buildPad = (ctx: AudioContext, dest: AudioNode): Pad => {
-  const filter = ctx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.value = 900;
-  filter.Q.value = 0.4;
-
-  const out = ctx.createGain();
-  out.gain.value = 1;
-  filter.connect(out);
-  out.connect(dest);
-
-  // ゆっくり動くフィルターのうねり（LFO）
-  const lfo = ctx.createOscillator();
-  lfo.frequency.value = 0.045;
-  const lfoGain = ctx.createGain();
-  lfoGain.gain.value = 260;
-  lfo.connect(lfoGain);
-  lfoGain.connect(filter.frequency);
-  lfo.start();
-
-  const shapes: OscillatorType[] = ["triangle", "sine", "sine"];
-  const gains = [0.5, 0.32, 0.16];
-  const osc = shapes.map((type, i) => {
-    const o = ctx.createOscillator();
-    o.type = type;
-    o.detune.value = i === 0 ? -4 : 4;
-    const g = ctx.createGain();
-    g.gain.value = gains[i];
-    o.connect(g);
-    g.connect(filter);
-    o.start();
-    return o;
-  });
-
-  return { osc, out, filter };
-};
-
-const tunePad = (pad: Pad, chord: [number, number, number], now: number) => {
-  pad.osc.forEach((osc, i) => {
-    osc.frequency.cancelScheduledValues(now);
-    osc.frequency.setValueAtTime(osc.frequency.value, now);
-    osc.frequency.linearRampToValueAtTime(chord[i], now + 1.6);
-  });
 };
 
 /* ---------- 焚き火のパチパチ ---------- */
@@ -280,13 +212,11 @@ const sparkle = (ctx: AudioContext, dest: AudioNode, set: number[], loud: number
 
 /* ---------- まとめ ---------- */
 
-let pad: Pad | null = null;
 let crackle: Crackle | null = null;
 let birdTimer = 0;
 let cricketTimer = 0;
 let wind: Sweep | null = null;
 let water: Sweep | null = null;
-let lastKey = "";
 
 /** ノードをまだ作っていなければ作る。AudioContext ができてから1回だけ */
 const ensureBuilt = (ctx: AudioContext) => {
@@ -298,7 +228,6 @@ const ensureBuilt = (ctx: AudioContext) => {
   const at = ctx.currentTime + 0.6;
   master.gain.linearRampToValueAtTime(bgmMuted ? 0 : MASTER_LEVEL, at);
 
-  pad = buildPad(ctx, master);
   crackle = buildCrackle(ctx, master);
   wind = buildSweep(ctx, master, "lowpass", 700, 500, 0.09);
   water = buildSweep(ctx, master, "bandpass", 1100, 500, 0.16);
@@ -306,22 +235,16 @@ const ensureBuilt = (ctx: AudioContext) => {
 
 /**
  * 毎フレーム呼ぶ。まだ音が解錠されていなければ何もしない。
- * 場面が変わったところだけ和音をなだらかに移し、
- * 層の音量を目標値へ寄せていく。鳥・虫・パチパチは、ここでたまに1つ鳴らす
+ * 層の音量を目標値へ寄せていくだけ。鳥・虫・パチパチ・きらめきは、
+ * ここでたまに1つ鳴らす（どれも一過性で、鳴りっぱなしにはしない）
  */
 export const updateBgm = (scene: Scene, dt: number) => {
   const ctx = getCtx();
   if (!ctx) return;
   ensureBuilt(ctx);
-  if (!pad || !crackle || !wind || !water || !master) return;
+  if (!crackle || !wind || !water || !master) return;
   const now = ctx.currentTime;
   const RAMP = 1.4;
-
-  const key = chordKey(scene);
-  if (key !== lastKey) {
-    lastKey = key;
-    tunePad(pad, CHORDS[key] ?? CHORDS["fire-0"], now);
-  }
 
   const isFire = scene.stage === "fire";
   const area = scene.area;
