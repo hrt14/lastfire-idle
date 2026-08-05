@@ -8,9 +8,10 @@
  *   火のはじまり                    区画・昼夜・天気で層が変わる
  *     - 焚き火のパチパチ（区画をとおして流れる下敷き）
  *     - 昼は鳥、夜は虫の声
- *     - マンモスの谷は低い緊張の唸り。突進では一瞬あおる
  *     - 冬の丘は風、氷のきらめき
  *     - 川辺は水の音
+ *
+ * ゲームを煽るような音（緊張の低音など）は入れない。あくまで環境音として
  *
  * 層はどれも「作って、音量を上げ下げする」だけ。作り直さない。
  * 区画をまたぐたびに和音がなめらかに変わるのは、
@@ -25,8 +26,6 @@ export type Scene = {
   area: number;
   phase: "day" | "dusk" | "night";
   weather: "clear" | "cold" | "blizzard";
-  /** 谷の巨獣の様子（緊張の層に使う） */
-  beast: "none" | "calm" | "active" | "charge" | "down";
 };
 
 const BGM_KEY = "ramen-arcade-bgm-muted";
@@ -254,22 +253,6 @@ const buildSweep = (
   return { gain, filter };
 };
 
-/* ---------- 谷の緊張（低い唸り） ---------- */
-
-type Tension = { gain: GainNode };
-
-const buildTension = (ctx: AudioContext, dest: AudioNode): Tension => {
-  const osc = ctx.createOscillator();
-  osc.type = "sine";
-  osc.frequency.value = 58;
-  const gain = ctx.createGain();
-  gain.gain.value = 0;
-  osc.connect(gain);
-  gain.connect(dest);
-  osc.start();
-  return { gain };
-};
-
 /* ---------- きらめき（パーク・冬） ---------- */
 
 const NOTE_SETS: Record<string, number[]> = {
@@ -303,9 +286,7 @@ let birdTimer = 0;
 let cricketTimer = 0;
 let wind: Sweep | null = null;
 let water: Sweep | null = null;
-let tension: Tension | null = null;
 let lastKey = "";
-let chargeFlash = 0;
 
 /** ノードをまだ作っていなければ作る。AudioContext ができてから1回だけ */
 const ensureBuilt = (ctx: AudioContext) => {
@@ -321,7 +302,6 @@ const ensureBuilt = (ctx: AudioContext) => {
   crackle = buildCrackle(ctx, master);
   wind = buildSweep(ctx, master, "lowpass", 700, 500, 0.09);
   water = buildSweep(ctx, master, "bandpass", 1100, 500, 0.16);
-  tension = buildTension(ctx, master);
 };
 
 /**
@@ -333,7 +313,7 @@ export const updateBgm = (scene: Scene, dt: number) => {
   const ctx = getCtx();
   if (!ctx) return;
   ensureBuilt(ctx);
-  if (!pad || !crackle || !wind || !water || !tension || !master) return;
+  if (!pad || !crackle || !wind || !water || !master) return;
   const now = ctx.currentTime;
   const RAMP = 1.4;
 
@@ -389,23 +369,6 @@ export const updateBgm = (scene: Scene, dt: number) => {
   // 水: 川辺
   const waterTarget = river ? 0.09 : 0;
   water.gain.gain.linearRampToValueAtTime(waterTarget, now + RAMP);
-
-  // 谷の緊張: 巨獣がいるときだけ。突進の瞬間はひときわ強くなる
-  chargeFlash = Math.max(0, chargeFlash - dt * 1.4);
-  if (scene.beast === "charge") chargeFlash = 1;
-  const tensionBase = !valley
-    ? 0
-    : scene.beast === "none"
-      ? 0
-      : scene.beast === "down"
-        ? 0.05
-        : scene.beast === "active"
-          ? 0.22
-          : 0.12;
-  tension.gain.gain.linearRampToValueAtTime(
-    tensionBase + chargeFlash * 0.35,
-    now + (chargeFlash > 0.5 ? 0.15 : RAMP),
-  );
 
   // きらめき: パークと、冬の丘
   sparkleTimer -= dt;

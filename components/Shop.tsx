@@ -5839,22 +5839,11 @@ const currentScene = (state: ShopState): Scene => {
       break;
     }
   }
-  const beast = state.fire.beast;
-  const beastState: Scene["beast"] = !beast
-    ? "none"
-    : beast.state === "down" || beast.state === "falling"
-      ? "down"
-      : beast.state === "charge"
-        ? "charge"
-        : beast.alert > 0.3 || beast.stamina < 0.5
-          ? "active"
-          : "calm";
   return {
     stage: stage().id === "fire" ? "fire" : stage().id === "park" ? "park" : "ramen",
     area,
     phase: state.fire.phase,
     weather: state.fire.weather,
-    beast: beastState,
   };
 };
 
