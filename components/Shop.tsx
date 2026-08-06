@@ -52,6 +52,9 @@ import {
   padPosOf,
   stage,
   openAreas,
+  openingsOf,
+  roomRects,
+  wallsOn,
   worldBounds,
   padLevel,
   padPrice,
@@ -5912,6 +5915,80 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.fillRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
         drawProps(ctx, area, time);
       }
+      /* --- 棟の壁と、戸口・渡り廊下（2号店） --- */
+      if (wallsOn()) {
+        const holes = openingsOf(state);
+        // 渡り廊下は床の一部として先に敷く
+        for (const hole of holes) {
+          if (hole.nodes.includes("out") && hole.nodes.length <= 2) continue;
+          const { x0, y0, x1, y1 } = hole.rect;
+          ctx.fillStyle = "rgba(214,190,150,0.20)";
+          ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+          ctx.strokeStyle = "rgba(236,214,176,0.30)";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+        }
+        for (const room of roomRects(state)) {
+          const { x0, y0, x1, y1 } = room.rect;
+          const gaps = holes.filter((hole) => hole.nodes.includes(room.id));
+          ctx.strokeStyle = "#6d5a44";
+          ctx.lineWidth = 7;
+          // 壁は4辺を線分でなぞり、穴のところだけ描かない
+          const edges: [number, number, number, number][] = [
+            [x0, y0, x1, y0],
+            [x0, y1, x1, y1],
+            [x0, y0, x0, y1],
+            [x1, y0, x1, y1],
+          ];
+          for (const [ax, ay, bx, by] of edges) {
+            const flat = ay === by;
+            const cuts = gaps
+              .filter((hole) =>
+                flat
+                  ? hole.rect.y0 < ay && hole.rect.y1 > ay
+                  : hole.rect.x0 < ax && hole.rect.x1 > ax,
+              )
+              .map((hole) => (flat ? [hole.rect.x0, hole.rect.x1] : [hole.rect.y0, hole.rect.y1]))
+              .sort((p, q) => p[0] - q[0]);
+            let at = flat ? ax : ay;
+            const end = flat ? bx : by;
+            for (const [from, to] of cuts) {
+              if (from > at) {
+                ctx.beginPath();
+                if (flat) {
+                  ctx.moveTo(at, ay);
+                  ctx.lineTo(Math.min(from, end), ay);
+                } else {
+                  ctx.moveTo(ax, at);
+                  ctx.lineTo(ax, Math.min(from, end));
+                }
+                ctx.stroke();
+              }
+              at = Math.max(at, to);
+            }
+            if (at < end) {
+              ctx.beginPath();
+              if (flat) {
+                ctx.moveTo(at, ay);
+                ctx.lineTo(end, ay);
+              } else {
+                ctx.moveTo(ax, at);
+                ctx.lineTo(ax, end);
+              }
+              ctx.stroke();
+            }
+          }
+        }
+        // 戸口は のれん で分かるようにする
+        for (const hole of holes) {
+          if (!hole.nodes.includes("out") || hole.nodes.length > 2) continue;
+          const { x0, x1, y0 } = hole.rect;
+          ctx.fillStyle = "#b8452f";
+          ctx.fillRect(x0, y0 + 2, x1 - x0, 12);
+          ctx.fillStyle = "rgba(255,255,255,0.75)";
+          ctx.fillRect((x0 + x1) / 2 - 1.5, y0 + 3, 3, 10);
+        }
+      }
       // 冬が来ると、地面が少しずつ白くなる（第4区画）
       const snow = isFire ? snowDepth(state) : 0;
       if (snow > 0) {
@@ -6216,24 +6293,34 @@ export default function Shop({ onSample, paused }: Props) {
         if (isStation(stove) && !plain) {
           const held0 = heldAt(state, stove.id);
           const fuel0 = stove.fuel ? fuelAt(state, stove.id) : 0;
-          const slots: { kind: string; count: number; sx: number; word: string }[] = [
-            {
-              kind: stove.takes ?? "",
-              count: held0,
-              sx: x - 32,
-              word: `${itemLabel(stove.takes ?? "")}まち`,
-            },
-            ...(stove.fuel
-              ? [
+          const needs = Object.keys(stove.recipe ?? {});
+          const slots: { kind: string; count: number; sx: number; word: string }[] =
+            needs.length > 0
+              ? // 多品目の受け口（盛り付け台）。どの品が足りないかまで並べて出す
+                needs.map((kind, i) => ({
+                  kind,
+                  count: partsAt(state, stove.id, kind),
+                  sx: x + (i - (needs.length - 1) / 2) * 26,
+                  word: `${itemLabel(kind)}まち`,
+                }))
+              : [
                   {
-                    kind: stove.fuel,
-                    count: fuel0,
-                    sx: x + 32,
-                    word: `${itemLabel(stove.fuel)}まち`,
+                    kind: stove.takes ?? "",
+                    count: held0,
+                    sx: x - 32,
+                    word: `${itemLabel(stove.takes ?? "")}まち`,
                   },
-                ]
-              : []),
-          ];
+                  ...(stove.fuel
+                    ? [
+                        {
+                          kind: stove.fuel,
+                          count: fuel0,
+                          sx: x + 32,
+                          word: `${itemLabel(stove.fuel)}まち`,
+                        },
+                      ]
+                    : []),
+                ];
           for (const slot of slots) {
             // 受け口の枠（空だと赤く点滅する）
             const empty = slot.count <= 0;
@@ -6278,6 +6365,13 @@ export default function Shop({ onSample, paused }: Props) {
         if (ready >= holdCap(state, stove) && !plain) {
           ctx.fillStyle = "#ffd166";
           ctx.fillText("満杯", x, y + 36);
+        }
+        // 工程が長い店は、作業場の名前を足もとに出す
+        if (wallsOn() && stove.label && !plain) {
+          ctx.font = SMALL;
+          ctx.fillStyle = "rgba(240,228,208,0.7)";
+          ctx.fillText(stove.label, x, y + (ready >= holdCap(state, stove) ? 48 : 36));
+          ctx.font = FONT;
         }
       }
 
@@ -6940,7 +7034,8 @@ export default function Shop({ onSample, paused }: Props) {
         keeper: "#4f7a5c",
         nightman: "#5b4f9e",
         explorer: "#3f8fa0",
-      };
+              runner: "#c98b5a",
+};
 
       // 谷のマンモス（人と同じ列にならべて、前後が分かるようにする）
       const beast = state.fire.beast;

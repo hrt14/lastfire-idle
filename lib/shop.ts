@@ -121,6 +121,14 @@ export type StoveSpec = {
   };
   /** 巨獣（マンモス）がうろつく谷 */
   beast?: boolean;
+
+  /* ---- ラーメン 2号店（第5区画以降） ---- */
+  /**
+   * 1つ作るのに要るもの（多品目）。takes / fuel の一般形。
+   * 盛り付け台のように、玉・スープ・チャーシュー…を同時に要るときに使う。
+   * たまった数は state.parts[id][kind] に品種ごとに残る（建築予定地と同じ置き場）。
+   */
+  recipe?: Record<ItemKind, number>;
 };
 
 export type SeatSpec = {
@@ -193,7 +201,9 @@ export type StaffKind =
   /** 夜に共同たき火へ薪を足す係 */
   | "nightman"
   /** いかだで川を下り、新しい土地を見つけてくる係 */
-  | "explorer";
+  | "explorer"
+  /** 作業場から作業場へ材料を運ぶ係（2号店の工程） */
+  | "runner";
 
 export type HireSpec = {
   id: string;
@@ -215,6 +225,11 @@ export type HireSpec = {
   reveal?: number;
   /** これだけ提供するまで出てこない */
   needServed?: number;
+  /**
+   * 運ぶ品。省略すると種類ごとの既定（ホール店員＝丼）。
+   * 特製ラーメンのように、別の品を運ぶ係を置くときに指定する
+   */
+  carries?: ItemKind;
 };
 
 import { stageDefs, type StageDef, type StageId } from "@/data/stages";
@@ -245,6 +260,20 @@ export type AreaSpec = {
   label: string;
   price: number;
   rect: Rect;
+  /**
+   * どの棟に属するか。同じ id の区画はひと続きの建物になり、あいだに壁が立たない。
+   * 省略すると壁を持たない（いままでのステージ）
+   */
+  building?: string;
+  /** どの店に属するか（0＝1号店 / 1＝2号店）。店員はこの店から出ない */
+  shop?: number;
+  /**
+   * 客用の戸口。棟の南の壁（通り側）に開いた穴。
+   * 壁の位置は開いている区画によって変わるので、横位置と幅だけを持つ
+   */
+  door?: { x: number; w: number };
+  /** この区画を買うとついてくる渡り廊下（棟と棟をつなぐ、歩ける床） */
+  corridor?: Rect;
   /** 買う枠の位置（すでに開いている区画の中に置く） */
   padPos: Vec;
   palette: AreaPalette;
@@ -293,6 +322,11 @@ export type EquipSpec = {
   capacity?: { stove: string; plus: number };
   /** 建物どうしをつなぐ道（通ると足が速くなる） */
   road?: { from: Vec; to: Vec };
+  /**
+   * 渡り廊下。買うと、この長方形が歩けるようになり、
+   * 両はしが触れている棟の壁に穴が開く（客も店員も自分も通れる）
+   */
+  corridor?: Rect;
 };
 
 export type UpgradeId = "carry" | "speed" | "cook" | "price" | "gate";
@@ -446,6 +480,7 @@ const hireSub: Record<StaffKind, string> = {
   keeper: "保存肉を食料庫へ入れてくれる",
   nightman: "夜に共同たき火の薪を絶やさない",
   explorer: "先まわりして、獲物や土地を見つけてくる",
+  runner: "作業場のあいだを運んでくれる",
 };
 
 const buildPads = (): Pad[] => [
@@ -687,6 +722,10 @@ export type Customer = {
   visits: number;
   /** 行列にならんでいるときの位置（0 が先頭） */
   lane?: number;
+  /** 戸口や渡り廊下をたどる経由地（壁のあるステージだけ） */
+  path?: Vec[];
+  pathTo?: Vec;
+  pathEpoch?: number;
 };
 
 export type Coin = { id: number; pos: Vec; value: number; age: number };
@@ -754,6 +793,15 @@ export type Staff = {
   moving?: boolean;
   /** 担当エリア（雇った区画。ここを優先して回る） */
   area: number;
+  /** 運ぶ品（HireSpec.carries）。省略すると種類ごとの既定 */
+  carries?: ItemKind;
+  /** どの店の人か（0＝1号店 / 1＝2号店）。担当の店から出ない */
+  shop?: number;
+  /** いま向かっている先までの経由地（戸口・渡り廊下） */
+  path?: Vec[];
+  /** その経路を引いたときの行き先と、そのときの通路の版 */
+  pathTo?: Vec;
+  pathEpoch?: number;
 };
 
 export type Player = {
@@ -930,6 +978,9 @@ export const SERVE_RHYTHM = 0.13;
 export const COMBO_WINDOW = 0.7;
 /** 行列にならべる最大人数（工程ステージ） */
 export const MAX_LINE = 6;
+
+/** 待たされた客があきらめて帰るまで（工程が止まっても席が死なないように） */
+export const PATIENCE = 60;
 /** 狩り場に動物が湧く間隔（秒）と、同時にいられる数 */
 export const HUNT_SPAWN = 2.4;
 export const HUNT_CAP = 4;
@@ -980,6 +1031,8 @@ const makeStaff = (
   stoveId: hire.stoveId ?? null,
   home: { ...at },
   area: hire.area,
+  carries: hire.carries,
+  shop: shopOfArea(hire.area),
   trips: 0,
   charge: 0,
   wait: 0,
@@ -1297,13 +1350,43 @@ const itemNames: Record<string, string> = {
   plank: "加工木材",
   rope: "縄",
   fish: "魚",
+  // ラーメン 2号店
+  kona: "粉",
+  namamen: "生麺",
+  tama: "玉",
+  soup: "スープ",
+  buta: "豚",
+  chashu: "チャーシュー",
+  tamago: "卵",
+  ajitama: "味玉",
+  takenoko: "たけのこ",
+  menma: "メンマ",
+  hone: "骨",
+  dashi: "出汁",
+  kaeshi: "かえし",
+  kokusoup: "濃厚スープ",
+  kake: "かけラーメン",
+  chashumen: "チャーシュー麺",
+  gomoku: "五目ラーメン",
+  koku: "濃厚ラーメン",
+  tokusei: "特製ラーメン",
 };
 
 export const itemLabel = (kind: ItemKind): string =>
   itemNames[kind] ?? stageLabels().item;
 
 /** 工程の作業場か（受け取ってから作る＝手前の工程が要る） */
-export const isStation = (stove: StoveSpec) => stove.takes !== undefined;
+export const isStation = (stove: StoveSpec) =>
+  stove.takes !== undefined || stove.recipe !== undefined;
+
+/** 多品目の受け口を持つ作業場（盛り付け台） */
+export const isRecipe = (stove: StoveSpec) => stove.recipe !== undefined;
+
+/** その作業場が、いま作れる状態か（材料がぜんぶそろっているか） */
+export const recipeReady = (state: ShopState, stove: StoveSpec) =>
+  Object.entries(stove.recipe ?? {}).every(
+    ([kind, need]) => partsAt(state, stove.id, kind) >= need,
+  );
 
 /** 建築予定地か（材料をぜんぶ運びこむと建物になる） */
 export const isBuild = (stove: StoveSpec) => stove.needs !== undefined;
@@ -1344,7 +1427,7 @@ export const heldAt = (state: ShopState, stoveId: string) =>
 export const fuelAt = (state: ShopState, stoveId: string) =>
   state.fuel[stoveId] ?? 0;
 
-export type Slot = "hold" | "fuel" | "build";
+export type Slot = "hold" | "fuel" | "build" | "recipe";
 
 /**
  * この作業場が、その品をどの受け口で受け取れるか。
@@ -1372,6 +1455,11 @@ export const stationAccepts = (
   if (stove.fuel === item && fuelAt(state, stove.id) < holdCap(state, stove)) {
     return "fuel";
   }
+  // 多品目の受け口。品種ごとに上限を持つ
+  if (stove.recipe?.[item] !== undefined) {
+    if (partsAt(state, stove.id, item) < holdCap(state, stove)) return "recipe";
+    return null;
+  }
   // 建築予定地は、まだ足りていない材料だけを受け取る
   const need = stove.needs?.[item];
   if (need !== undefined && !isDone(state, stove.id)) {
@@ -1389,7 +1477,7 @@ export const slotHave = (
 ) =>
   slot === "fuel"
     ? fuelAt(state, stove.id)
-    : slot === "build"
+    : slot === "build" || slot === "recipe"
       ? partsAt(state, stove.id, item)
       : heldAt(state, stove.id);
 
@@ -1474,6 +1562,196 @@ export const isBlocked = (state: ShopState, pos: Vec) =>
       pos.y > area.rect.y0 &&
       pos.y < area.rect.y1,
   );
+
+
+/* ---------- 棟の壁・戸口・渡り廊下 ---------- */
+
+/** このステージが棟の壁を持つか */
+export const wallsOn = () => !!currentStage.walls;
+
+const inRect = (rect: Rect, pos: Vec) =>
+  pos.x > rect.x0 && pos.x < rect.x1 && pos.y > rect.y0 && pos.y < rect.y1;
+
+const centerOf = (rect: Rect): Vec => ({
+  x: (rect.x0 + rect.x1) / 2,
+  y: (rect.y0 + rect.y1) / 2,
+});
+
+const touches = (a: Rect, b: Rect, slack = 6) =>
+  a.x0 - slack < b.x1 && a.x1 + slack > b.x0 && a.y0 - slack < b.y1 && a.y1 + slack > b.y0;
+
+export type Opening = { rect: Rect; nodes: string[] };
+
+type WallCache = {
+  key: string;
+  rooms: { id: string; rect: Rect }[];
+  openings: Opening[];
+};
+let wallCache: WallCache | null = null;
+
+/** 買ったものが変わると経路も変わる。その版 */
+export const pathEpoch = (state: ShopState) =>
+  state.unlocked.length + (wallsOn() ? 0 : 0);
+
+const wallData = (state: ShopState): WallCache => {
+  const key = `${currentStage.id}:${state.unlocked.length}`;
+  if (wallCache && wallCache.key === key) return wallCache;
+
+  // 棟＝同じ building を持つ、開いている区画のまとまり（その外周が壁）
+  const boxes = new Map<string, Rect>();
+  for (const area of openAreas(state)) {
+    if (!area.building) continue;
+    const box = boxes.get(area.building);
+    boxes.set(
+      area.building,
+      box
+        ? {
+            x0: Math.min(box.x0, area.rect.x0),
+            y0: Math.min(box.y0, area.rect.y0),
+            x1: Math.max(box.x1, area.rect.x1),
+            y1: Math.max(box.y1, area.rect.y1),
+          }
+        : { ...area.rect },
+    );
+  }
+  const rooms = [...boxes.entries()].map(([id, rect]) => ({ id, rect }));
+
+  // 穴＝戸口（棟 ↔ 外）と渡り廊下（棟 ↔ 棟）
+  const openings: Opening[] = [];
+  for (const area of openAreas(state)) {
+    if (!area.door || !area.building) continue;
+    const box = boxes.get(area.building);
+    if (!box) continue;
+    // 戸口は南の壁（通り側）。壁の位置は棟が広がると下がる
+    openings.push({
+      rect: {
+        x0: area.door.x - area.door.w / 2,
+        x1: area.door.x + area.door.w / 2,
+        y0: box.y1 - 14,
+        y1: box.y1 + 14,
+      },
+      nodes: [area.building, "out"],
+    });
+  }
+  const halls: Rect[] = [
+    ...openAreas(state)
+      .map((area) => area.corridor)
+      .filter((rect): rect is Rect => !!rect),
+    ...equipment
+      .filter((item) => item.corridor && hasEquip(state, item.id))
+      .map((item) => item.corridor as Rect),
+  ];
+  for (const rect of halls) {
+    const ends = rooms.filter((room) => touches(rect, room.rect)).map((room) => room.id);
+    openings.push({ rect, nodes: ends.length > 0 ? ends : ["out"] });
+  }
+  wallCache = { key, rooms, openings };
+  return wallCache;
+};
+
+export const roomRects = (state: ShopState) => wallData(state).rooms;
+export const openingsOf = (state: ShopState) => wallData(state).openings;
+
+/** いまいる場所（棟の id か、屋外なら "out"） */
+export const placeOf = (state: ShopState, pos: Vec): string => {
+  for (const room of wallData(state).rooms) if (inRect(room.rect, pos)) return room.id;
+  return "out";
+};
+
+/** その一歩で棟の壁をまたぐか（戸口・渡り廊下のところだけ通れる） */
+export const wallBlocked = (state: ShopState, from: Vec, to: Vec) => {
+  if (!wallsOn()) return false;
+  const { rooms, openings } = wallData(state);
+  for (const room of rooms) {
+    if (inRect(room.rect, from) === inRect(room.rect, to)) continue;
+    // またいだ。穴の中を通っているなら通す
+    if (openings.some((hole) => inRect(hole.rect, to) || inRect(hole.rect, from))) break;
+    return true;
+  }
+  return false;
+};
+
+/**
+ * 行き先までに通る戸口・渡り廊下の並び。
+ * 点は棟と屋外だけなので、幅優先で一瞬で解ける
+ */
+export const routeTo = (state: ShopState, from: Vec, to: Vec): Vec[] => {
+  if (!wallsOn()) return [];
+  const start = placeOf(state, from);
+  const goal = placeOf(state, to);
+  if (start === goal) return [];
+  const { openings } = wallData(state);
+  const back = new Map<string, { node: string; at: Vec }>();
+  const seen = new Set<string>([start]);
+  const queue: string[] = [start];
+  while (queue.length > 0) {
+    const cur = queue.shift() as string;
+    if (cur === goal) break;
+    for (const hole of openings) {
+      if (!hole.nodes.includes(cur)) continue;
+      for (const next of hole.nodes) {
+        if (next === cur || seen.has(next)) continue;
+        seen.add(next);
+        back.set(next, { node: cur, at: centerOf(hole.rect) });
+        queue.push(next);
+      }
+    }
+  }
+  if (!seen.has(goal)) return [];
+  const out: Vec[] = [];
+  let cur = goal;
+  while (cur !== start) {
+    const step = back.get(cur);
+    if (!step) break;
+    out.unshift(step.at);
+    cur = step.node;
+  }
+  return out;
+};
+
+type Walker = { pos: Vec; path?: Vec[]; pathTo?: Vec; pathEpoch?: number };
+
+/**
+ * 経由地をたどって行き先へ進む。壁の無いステージでは、まっすぐ進むだけ。
+ * 行き先まで届いたら true
+ */
+export const walkTo = (
+  state: ShopState,
+  who: Walker,
+  target: Vec,
+  speed: number,
+  dt: number,
+) => {
+  if (!wallsOn()) return moveToward(who.pos, target, speed, dt);
+  const epoch = pathEpoch(state);
+  const changed =
+    !who.pathTo ||
+    who.pathTo.x !== target.x ||
+    who.pathTo.y !== target.y ||
+    who.pathEpoch !== epoch;
+  if (changed) {
+    who.path = routeTo(state, who.pos, target);
+    who.pathTo = { ...target };
+    who.pathEpoch = epoch;
+  }
+  // 経由地に着いたら次へ。着いたあとは、そのまま行き先へ抜けていく
+  while (who.path && who.path.length > 0 && dist(who.pos, who.path[0]) < 8) {
+    who.path.shift();
+  }
+  const next = who.path && who.path.length > 0 ? who.path[0] : target;
+  const before = { ...who.pos };
+  const done = moveToward(who.pos, next, speed, dt);
+  // 壁にぶつかったぶんは戻す（軸ごとに見て、壁ぎわを滑らせる）
+  if (wallBlocked(state, before, { x: who.pos.x, y: before.y })) who.pos.x = before.x;
+  if (wallBlocked(state, before, { x: before.x, y: who.pos.y })) who.pos.y = before.y;
+  // 壁にはまって進めていないときだけ、道を引き直す
+  const moved = Math.abs(who.pos.x - before.x) + Math.abs(who.pos.y - before.y);
+  if (!done && moved < speed * dt * 0.25) {
+    who.path = routeTo(state, who.pos, target);
+    if (who.path.length > 0 && dist(who.pos, who.path[0]) < 8) who.path.shift();
+  }
+  return done && next === target;
+};
 
 export const maxCarry = (state: ShopState) => 3 + state.levels.carry;
 
@@ -1737,6 +2015,12 @@ const unlock = (state: ShopState, padId: string) => {
     if (isStation(extra)) state.hold[extra.id] = 0;
     if (extra.fuel) state.fuel[extra.id] = 0;
   }
+  // 値段0の席も同じ（2号店を買うと、動く店が丸ごとついてくる）
+  for (const extra of seats) {
+    if (extra.price !== 0 || extra.unlockAfter !== padId) continue;
+    if (state.unlocked.includes(extra.id)) continue;
+    state.unlocked.push(extra.id);
+  }
   const hire = hireById.get(padId);
   if (hire) state.staff.push(makeStaff(hire, state.nextId++, hireHome(state, hire)));
 
@@ -1798,8 +2082,26 @@ const unlock = (state: ShopState, padId: string) => {
  * 遠い区画のベンチにたどり着くだけで何十秒もかかる。
  * その区画の野から来てもらう（帰るときも同じ方角へ帰る）。
  */
-const guestEntry = (state: ShopState, seat: SeatSpec | null): Vec => {
+/** その席のある棟の、客用の戸口（無ければ null） */
+const doorFor = (seat: SeatSpec | null): { x: number; w: number } | null => {
+  if (!seat) return null;
+  const own = areaById.get(`area-${seat.area}`);
+  if (!own) return null;
+  if (own.door) return own.door;
+  // 同じ棟のどこかにある戸口を使う（1号店は area-0 に置く）
+  const mate = areas.find((item) => item.building === own.building && item.door);
+  return mate?.door ?? null;
+};
+
+/** その席の客が出入りする、通りの位置 */
+const streetFor = (state: ShopState, seat: SeatSpec | null): Vec => {
   const street = streetPos(state);
+  const door = doorFor(seat);
+  return { x: door ? door.x : street.x, y: street.y };
+};
+
+const guestEntry = (state: ShopState, seat: SeatSpec | null): Vec => {
+  const street = streetFor(state, seat);
   const fallback = { x: street.x + (Math.random() * 40 - 20), y: street.y };
   if (state.stageId !== "fire" || !seat) return fallback;
   const area = areaById.get(`area-${seat.area}`);
@@ -1823,7 +2125,8 @@ const spawnCustomers = (state: ShopState, dt: number) => {
       .map((customer) => customer.seatId),
   );
   const free = openSeats(state).find(
-    (seat) => !taken.has(seat.id) && !isDirty(state, seat.id),
+    (seat) =>
+      !taken.has(seat.id) && !isDirty(state, seat.id) && seatServable(state, seat),
   );
 
   const newGuest = (over: Partial<Customer>): Customer => ({
@@ -1906,7 +2209,13 @@ const updateStoves = (state: ShopState, dt: number) => {
     const cap = holdCap(state, stove);
     if (ready >= cap) continue;
     // 工程の作業場は、受け口に材料がないと作れない（まきが要る焼き場はまきも）
-    if (isStation(stove) && heldAt(state, stove.id) <= 0) {
+    if (isRecipe(stove)) {
+      // 盛り付け台。品目がひとつでも欠けたら止まる
+      if (!recipeReady(state, stove)) {
+        state.cooking[stove.id] = 0;
+        continue;
+      }
+    } else if (isStation(stove) && heldAt(state, stove.id) <= 0) {
       state.cooking[stove.id] = 0;
       continue;
     }
@@ -1929,7 +2238,15 @@ const updateStoves = (state: ShopState, dt: number) => {
       state.ready[stove.id] = ready + 1;
       state.cooking[stove.id] = progress - 1;
       // 1つ作ったら、材料を1つ・まきを1つ使う
-      if (isStation(stove)) state.hold[stove.id] = heldAt(state, stove.id) - 1;
+      if (isRecipe(stove)) {
+        const bag = state.parts[stove.id] ?? {};
+        for (const [kind, need] of Object.entries(stove.recipe ?? {})) {
+          bag[kind] = Math.max(0, (bag[kind] ?? 0) - need);
+        }
+        state.parts[stove.id] = bag;
+      } else if (isStation(stove)) {
+        state.hold[stove.id] = heldAt(state, stove.id) - 1;
+      }
       if (stove.fuel) state.fuel[stove.id] = fuelAt(state, stove.id) - 1;
     } else {
       state.cooking[stove.id] = progress;
@@ -2180,6 +2497,27 @@ const payOut = (state: ShopState, seat: SeatSpec, at: Vec) => {
   state.served += 1;
 };
 
+/**
+ * いま、いちばん多く運べる数（自分・配膳ロボ・ホール店員のうち最大）。
+ * これを超える数を要る席は、誰も運べないので客を入れない
+ */
+export const bestCarry = (state: ShopState, kind: ItemKind) => {
+  let best = maxCarry(state);
+  for (const worker of state.staff) {
+    if (handledItem(worker) !== kind) continue;
+    if (worker.kind !== "waiter" && worker.kind !== "robot" && worker.kind !== "server") {
+      continue;
+    }
+    best = Math.max(best, carrierLimit(state, worker));
+  }
+  return best;
+};
+
+/** その席は、いま誰かが運べるか（運べない席には客を入れない） */
+export const seatServable = (state: ShopState, seat: SeatSpec) =>
+  seatMode(seat) === "shelf" ||
+  seatCost(seat) <= bestCarry(state, seatNeeds(seat));
+
 /** いま空いている場所（ほかの人が向かっていない・皿も残っていない） */
 const freeSeats = (state: ShopState, customer: Customer) => {
   const taken = new Set(
@@ -2194,7 +2532,10 @@ const freeSeats = (state: ShopState, customer: Customer) => {
   );
   return openSeats(state).filter(
     (seat) =>
-      seat.id !== customer.seatId && !taken.has(seat.id) && !isDirty(state, seat.id),
+      seat.id !== customer.seatId &&
+      !taken.has(seat.id) &&
+      !isDirty(state, seat.id) &&
+      seatServable(state, seat),
   );
 };
 
@@ -2252,7 +2593,14 @@ const updateCustomers = (state: ShopState, dt: number) => {
         if (customer.timer >= 1 + AUTO_TIME * 0.5) letIn(state, customer);
       }
     } else if (customer.state === "walking") {
-      if (moveToward(customer.pos, seat.pos, 96, dt)) customer.state = "waiting";
+      if (walkTo(state, customer, seat.pos, 96, dt)) customer.state = "waiting";
+    } else if (customer.state === "waiting" && mode !== "shelf") {
+      // 待ちくたびれたら帰る。止まった工程の前で、席が永久に埋まらないように
+      customer.timer += dt;
+      if (customer.timer > PATIENCE) {
+        customer.state = "leaving";
+        pop(state, { x: customer.pos.x, y: customer.pos.y - 30 }, "また来ます…");
+      }
     } else if (customer.state === "waiting" && mode === "shelf") {
       // お土産屋は自分で棚から取る。並んでいなければ待つ
       if (shelfStock(state, seat.id) > 0) {
@@ -2262,7 +2610,7 @@ const updateCustomers = (state: ShopState, dt: number) => {
       }
     } else if (customer.state === "paying") {
       const till = payPos(seat);
-      if (moveToward(customer.pos, till, 100, dt)) {
+      if (walkTo(state, customer, till, 100, dt)) {
         payOut(state, seat, till);
         state.sfx.push("serve");
         nextStop(state, customer);
@@ -2289,8 +2637,9 @@ const updateCustomers = (state: ShopState, dt: number) => {
         customer.state = "leaving";
       } else {
         const t = state.playTime * 0.6 + customer.id;
-        moveToward(
-          customer.pos,
+        walkTo(
+          state,
+          customer,
           { x: seat.pos.x + Math.cos(t) * 60, y: seat.pos.y + Math.sin(t) * 34 },
           70,
           dt,
@@ -2301,8 +2650,8 @@ const updateCustomers = (state: ShopState, dt: number) => {
       const away =
         state.stageId === "fire"
           ? { x: seat.pos.x, y: Math.min(worldHeight(state) - 10, seat.pos.y + 120) }
-          : streetPos(state);
-      if (moveToward(customer.pos, away, 112, dt)) customer.id = -1;
+          : streetFor(state, seat);
+      if (walkTo(state, customer, away, 112, dt)) customer.id = -1;
     }
   }
   state.customers = state.customers.filter((customer) => customer.id !== -1);
@@ -2558,8 +2907,16 @@ const updatePlayer = (state: ShopState, input: Input, dt: number) => {
       box.y1 - 26,
     );
     // 工事中の区画には入れない（軸ごとに判定して壁ぎわを滑れるようにする）
-    if (!isBlocked(state, { x: nextX, y: player.pos.y })) player.pos.x = nextX;
-    if (!isBlocked(state, { x: player.pos.x, y: nextY })) player.pos.y = nextY;
+    const stepX = { x: nextX, y: player.pos.y };
+    const stepY = { x: player.pos.x, y: nextY };
+    if (!isBlocked(state, stepX) && !wallBlocked(state, player.pos, stepX)) {
+      player.pos.x = nextX;
+    }
+    const stepY2 = { x: player.pos.x, y: nextY };
+    if (!isBlocked(state, stepY2) && !wallBlocked(state, player.pos, stepY2)) {
+      player.pos.y = nextY;
+    }
+    void stepY;
     player.step += dt * speed * 0.06 * scale;
   }
 
@@ -2689,7 +3046,15 @@ const updatePads = (state: ShopState, dt: number) => {
  * プレイヤーは何でも持てる
  */
 export const handledItem = (worker: Staff): ItemKind =>
-  worker.kind === "server" ? "food" : worker.kind === "stocker" ? "goods" : "main";
+  worker.carries ??
+  (worker.kind === "server" ? "food" : worker.kind === "stocker" ? "goods" : "main");
+
+/** その区画がどの店のものか（0＝1号店 / 1＝2号店） */
+export const shopOfArea = (area: number) => areaById.get(`area-${area}`)?.shop ?? 0;
+
+/** その店員が、そこで働けるか（担当の店から出ない） */
+export const inShop = (worker: Staff, area: number) =>
+  (worker.shop ?? 0) === shopOfArea(area);
 
 /** スタッフが一度に運べる数。強化（両手鍋／チケットホルダー）で増える */
 export const carrierLimit = (state: ShopState, worker: Staff) =>
@@ -2743,7 +3108,8 @@ const go = (
   // 向きは、はっきり横へ動いているときだけ変える（その場で反転しない）
   if (Math.abs(dx) > 6) worker.face = dx > 0 ? 1 : -1;
   worker.moving = !near;
-  return moveToward(worker.pos, target, speed, dt);
+  // 壁のあるステージでは、戸口と渡り廊下をたどって行く
+  return walkTo(state, worker, target, speed, dt);
 };
 
 /**
@@ -2867,6 +3233,7 @@ const dropJobs = (state: ShopState, worker: Staff): HaulJob[] => {
   for (const kind of carryKinds(worker)) {
     const have = carryOf(worker, kind);
     for (const stove of stationsWanting(state, kind)) {
+      if (!inShop(worker, stove.area)) continue;
       const slot = stationAccepts(state, stove, kind);
       if (!slot) continue;
       const room = slotRoom(state, stove, kind, slot);
@@ -2936,6 +3303,7 @@ const dropJobs = (state: ShopState, worker: Staff): HaulJob[] => {
 const pickJobs = (state: ShopState, worker: Staff): HaulJob[] => {
   const jobs: HaulJob[] = [];
   for (const source of openStoves(state)) {
+    if (!inShop(worker, source.area)) continue;
     const stock = state.ready[source.id] ?? 0;
     if (stock <= 0) continue;
     const kind = stoveItem(source);
@@ -3470,12 +3838,14 @@ const updateStaff = (state: ShopState, dt: number) => {
     // 工程のあるステージでは、はこび手は「作業場から作業場へ」も運ぶ。
     // 建築係・食料番・夜番は、同じ運びかたで持ち場だけが違う
     if (
-      isChainStage() &&
-      (worker.kind === "waiter" ||
-        worker.kind === "robot" ||
-        worker.kind === "builder" ||
-        worker.kind === "keeper" ||
-        worker.kind === "nightman")
+      worker.kind === "runner" ||
+      (currentStage.haulers &&
+        isChainStage() &&
+        (worker.kind === "waiter" ||
+          worker.kind === "robot" ||
+          worker.kind === "builder" ||
+          worker.kind === "keeper" ||
+          worker.kind === "nightman"))
     ) {
       updateHauler(state, worker, dt);
       continue;
@@ -3502,6 +3872,7 @@ const updateStaff = (state: ShopState, dt: number) => {
           return (
             !!item &&
             seatMode(item) !== "shelf" &&
+            inShop(worker, item.area) &&
             // 自動供給機が付いている場所は機械にまかせる
             !hasAuto(state, item) &&
             seatNeeds(item) === mine &&
@@ -3567,6 +3938,7 @@ const updateStaff = (state: ShopState, dt: number) => {
         if (customer.state !== "waiting") continue;
         const item = seatById.get(customer.seatId);
         if (!item || seatMode(item) === "shelf" || hasAuto(state, item)) continue;
+        if (!inShop(worker, item.area)) continue;
         if (seatNeeds(item) !== mine) continue;
         maxNeed = Math.max(maxNeed, seatCost(item));
       }
@@ -3576,7 +3948,9 @@ const updateStaff = (state: ShopState, dt: number) => {
           ? openStoves(state)
               .filter(
                 (item) =>
-                  stoveItem(item) === mine && (state.ready[item.id] ?? 0) > 0,
+                  stoveItem(item) === mine &&
+                  inShop(worker, item.area) &&
+                  (state.ready[item.id] ?? 0) > 0,
               )
               .sort((a, b) => dist(worker.pos, a.pos) - dist(worker.pos, b.pos))[0]
           : null;
@@ -4113,7 +4487,10 @@ export const applyOffline = (
 
   const staffed = (kind: StaffKind, stoveId: string) =>
     state.staff.some((w) => w.kind === kind && w.stoveId === stoveId);
+  // 席が受け取る品を作れる作業場だけを数える（工程の途中は稼ぎに直結しない）
+  const wanted = new Set(openSeats(state).map((seat) => seatNeeds(seat)));
   const cookRate = openStoves(state).reduce((sum, stove) => {
+    if (wanted.size > 0 && !wanted.has(stoveItem(stove))) return sum;
     // 貯蔵庫・仮置き場・建築予定地・谷は、それ自体は何も作らない
     if (isStore(stove) || isPile(stove) || isBuild(stove) || stove.beast) return sum;
     // 草原と森は、狩人・木こりがいるあいだだけ実る（留守は本人が動けない）

@@ -97,6 +97,14 @@ export type StageDef = {
   startPos?: { x: number; y: number };
   /** 最初からくべてあるまき（1食目だけ、火の世話を教えずに済ませる） */
   startFuel?: Record<string, number>;
+  /**
+   * 工程のあるステージで、はこび手（ホール店員・配膳ロボ）にも
+   * 作業場から作業場への運搬をさせるか。
+   * 「火のはじまり」だけ true。ラーメンは専任の仕込み係だけが運ぶので false
+   */
+  haulers?: boolean;
+  /** 棟の壁で当たり判定をするか（AreaSpec.building を使うステージ） */
+  walls?: boolean;
 };
 
 /**
@@ -209,6 +217,10 @@ const ramenAreas: AreaSpec[] = [
     rect: { x0: 0, y0: 0, x1: 360, y1: 480 },
     padPos: { x: 0, y: 0 },
     palette: { floor: "#3b322a", deep: "#282019", prop: "none" },
+    building: "shop1",
+    shop: 0,
+    // 1号店の暖簾。棟が下へ広がると、戸口もその壁へ下がる
+    door: { x: 306, w: 64 },
   },
   {
     id: "area-1",
@@ -219,6 +231,8 @@ const ramenAreas: AreaSpec[] = [
     palette: { floor: "#3a3128", deep: "#272018", prop: "none" },
     // 屋台がひととおり埋まってから、はじめて外に広げる話が出てくる
     unlockAfter: "seat-0-4",
+    building: "shop1",
+    shop: 0,
   },
   {
     id: "area-2",
@@ -227,6 +241,8 @@ const ramenAreas: AreaSpec[] = [
     rect: { x0: 360, y0: 0, x1: 720, y1: 480 },
     padPos: { x: 298, y: 250 },
     palette: { floor: "#343029", deep: "#242019", prop: "none" },
+    building: "shop1",
+    shop: 0,
   },
   {
     id: "area-3",
@@ -235,6 +251,8 @@ const ramenAreas: AreaSpec[] = [
     rect: { x0: 360, y0: 480, x1: 720, y1: 790 },
     padPos: { x: 540, y: 452 },
     palette: { floor: "#3c3128", deep: "#282018", prop: "none" },
+    building: "shop1",
+    shop: 0,
   },
   /**
    * 最後の区画。ここだけ桁がひとつもふたつも違う。
@@ -251,8 +269,98 @@ const ramenAreas: AreaSpec[] = [
     palette: { floor: "#332a2c", deep: "#221a1c", prop: "none" },
     // 宣伝トラックが町を回るくらい有名になってから、はじめて話が来る
     unlockAfter: "equip-truck",
+    building: "shop1",
+    shop: 0,
+  },
+  /* ---------- 2号店（区画5〜9）。5つの棟が建つ、ひとつの敷地 ---------- */
+  {
+    id: "area-5",
+    label: "2号店をひらく",
+    price: 10000000000,
+    rect: { x0: 1120, y0: 420, x1: 1460, y1: 790 },
+    padPos: { x: 1040, y: 600 },
+    palette: { floor: "#39312b", deep: "#26201b", prop: "none" },
+    building: "honkan",
+    shop: 1,
+    door: { x: 1250, w: 64 },
+    // 総本店を建て切った店にだけ、2号店の話が来る
+    unlockAfter: "seat-4-3",
+  },
+  {
+    id: "area-6",
+    label: "焼き場をたてる",
+    price: 20000000000,
+    rect: { x0: 1120, y0: 0, x1: 1460, y1: 380 },
+    padPos: { x: 1250, y: 450 },
+    palette: { floor: "#3a2f28", deep: "#271f19", prop: "none" },
+    building: "yakiba",
+    shop: 1,
+    door: { x: 1250, w: 64 },
+    // 本館とのあいだの渡り廊下が、建てるとついてくる
+    corridor: { x0: 1220, y0: 368, x1: 1280, y1: 432 },
+  },
+  {
+    id: "area-7",
+    label: "仕込み場をたてる",
+    price: 32000000000,
+    rect: { x0: 1500, y0: 0, x1: 1840, y1: 380 },
+    padPos: { x: 1430, y: 190 },
+    palette: { floor: "#38332a", deep: "#26221c", prop: "none" },
+    building: "shikomi",
+    shop: 1,
+    door: { x: 1620, w: 64 },
+    corridor: { x0: 1448, y0: 150, x1: 1512, y1: 210 },
+  },
+  {
+    id: "area-8",
+    label: "スープ蔵をたてる",
+    price: 48000000000,
+    rect: { x0: 1500, y0: 420, x1: 1840, y1: 790 },
+    padPos: { x: 1620, y: 450 },
+    palette: { floor: "#33302c", deep: "#22201d", prop: "none" },
+    building: "soupgura",
+    shop: 1,
+    door: { x: 1620, w: 64 },
+    corridor: { x0: 1590, y0: 368, x1: 1650, y1: 432 },
+  },
+  {
+    id: "area-9",
+    label: "離れをたてる",
+    price: 70000000000,
+    rect: { x0: 1880, y0: 0, x1: 2220, y1: 380 },
+    padPos: { x: 1810, y: 190 },
+    palette: { floor: "#3c342c", deep: "#28221c", prop: "none" },
+    building: "hanare",
+    shop: 1,
+    door: { x: 2000, w: 64 },
+    corridor: { x0: 1828, y0: 150, x1: 1892, y1: 210 },
   },
 ];
+
+/** 2号店の席。棟のなかに横一列。値段0の席は、区画を買うとついてくる */
+const shopSeats = (
+  area: number,
+  baseY: number,
+  label: string,
+  needs: string,
+  cost: number,
+  value: number,
+  spots: { x: number; price: number }[],
+  first?: string,
+): SeatSpec[] =>
+  spots.map((spot, i) => ({
+    id: `seat-${area}-${i + 1}`,
+    pos: { x: spot.x, y: baseY + 60 },
+    serve: { x: spot.x, y: baseY },
+    tray: { x: spot.x, y: baseY + 24 },
+    price: spot.price,
+    area,
+    label,
+    needs,
+    cost,
+    value,
+    unlockAfter: i === 0 ? first : `seat-${area}-${i}`,
+  }));
 
 const ramenStoves: StoveSpec[] = [
   { id: "stove-1", pos: { x: 72, y: 176 }, price: 0, area: 0 },
@@ -265,6 +373,32 @@ const ramenStoves: StoveSpec[] = [
   // 総本店の厨房。ここの寸胴だけ桁が違う
   { id: "stove-6", pos: { x: 800, y: 176 }, price: 90000000, area: 4, label: "秘伝の寸胴" },
   { id: "stove-7", pos: { x: 940, y: 176 }, price: 260000000, area: 4, label: "大釜" },
+
+  /* ---------- 2号店（区画5〜9）。一杯が工程を通って完成する ---------- */
+  /* 本館: 粉 → 麺打ち台 → 茹で釜 → 玉。スープ窯と合わせて かけラーメン */
+  { id: "kona-1", pos: { x: 1160, y: 470 }, price: 0, area: 5, item: "kona", label: "粉ひき", unlockAfter: "area-5" },
+  { id: "noodle-1", pos: { x: 1250, y: 470 }, price: 0, area: 5, takes: "kona", item: "namamen", manual: true, label: "麺打ち台", unlockAfter: "area-5" },
+  { id: "boil-1", pos: { x: 1345, y: 470 }, price: 0, area: 5, takes: "namamen", item: "tama", work: 0.35, label: "茹で釜", unlockAfter: "area-5" },
+  { id: "soupkama-1", pos: { x: 1425, y: 470 }, price: 0, area: 5, item: "soup", work: 0.35, label: "スープ窯", unlockAfter: "area-5" },
+  { id: "plate-1", pos: { x: 1180, y: 565 }, price: 0, area: 5, recipe: { tama: 1, soup: 1 }, item: "kake", hold: 8, label: "盛り付け台", unlockAfter: "area-5" },
+  /* 焼き場 */
+  { id: "meat-1", pos: { x: 1180, y: 110 }, price: 18000000000, area: 6, item: "buta", label: "精肉台" },
+  { id: "roast-1", pos: { x: 1300, y: 110 }, price: 22000000000, area: 6, takes: "buta", item: "chashu", work: 0.8, label: "焼豚窯" },
+  { id: "plate-2", pos: { x: 1410, y: 190 }, price: 26000000000, area: 6, recipe: { tama: 1, soup: 1, chashu: 1 }, item: "chashumen", hold: 8, label: "盛り付け台" },
+  /* 仕込み場 */
+  { id: "egg-1", pos: { x: 1545, y: 90 }, price: 28000000000, area: 7, item: "tamago", label: "卵の仕込み" },
+  { id: "ajitama-1", pos: { x: 1635, y: 90 }, price: 30000000000, area: 7, takes: "tamago", item: "ajitama", work: 0.6, label: "味玉漬け" },
+  { id: "take-1", pos: { x: 1725, y: 90 }, price: 30000000000, area: 7, item: "takenoko", label: "たけのこ蔵" },
+  { id: "menma-1", pos: { x: 1805, y: 90 }, price: 32000000000, area: 7, takes: "takenoko", item: "menma", work: 0.6, label: "メンマ樽" },
+  { id: "plate-3", pos: { x: 1545, y: 175 }, price: 38000000000, area: 7, recipe: { tama: 1, soup: 1, chashu: 1, ajitama: 1, menma: 1 }, item: "gomoku", hold: 8, label: "盛り付け台" },
+  /* スープ蔵: 骨 → 出汁、かえしと合わせて濃厚スープ */
+  { id: "bone-1", pos: { x: 1545, y: 480 }, price: 42000000000, area: 8, item: "hone", label: "骨置き場" },
+  { id: "dashi-1", pos: { x: 1640, y: 480 }, price: 46000000000, area: 8, takes: "hone", item: "dashi", work: 1.1, label: "出汁釜" },
+  { id: "kaeshi-1", pos: { x: 1730, y: 480 }, price: 44000000000, area: 8, item: "kaeshi", label: "かえし壺" },
+  { id: "blend-1", pos: { x: 1810, y: 480 }, price: 52000000000, area: 8, recipe: { dashi: 2, kaeshi: 1 }, item: "kokusoup", work: 0.8, hold: 12, label: "合わせ寸胴" },
+  { id: "plate-4", pos: { x: 1545, y: 565 }, price: 56000000000, area: 8, recipe: { tama: 1, kokusoup: 1, chashu: 1, ajitama: 1, menma: 1 }, item: "koku", hold: 8, label: "盛り付け台" },
+  /* 離れ: 全部乗せ */
+  { id: "plate-5", pos: { x: 1935, y: 95 }, price: 80000000000, area: 9, recipe: { tama: 2, kokusoup: 1, chashu: 2, ajitama: 1, menma: 1 }, item: "tokusei", hold: 10, label: "特製の盛り付け台" },
 ];
 
 const ramenSeats: SeatSpec[] = [
@@ -299,6 +433,34 @@ const ramenSeats: SeatSpec[] = [
     "特上座敷",
     [4, 5, 6],
   ),
+
+  /* ---------- 2号店の席。具が増えるほど、まとめて出す数も単価も上がる ---------- */
+  ...shopSeats(5, 650, "2号店のカウンター", "kake", 2, 250, [
+    { x: 1180, price: 0 },
+    { x: 1270, price: 13000000000 },
+    { x: 1360, price: 16000000000 },
+  ], "area-5"),
+  ...shopSeats(6, 250, "炙りカウンター", "chashumen", 3, 375, [
+    { x: 1170, price: 24000000000 },
+    { x: 1260, price: 27000000000 },
+    { x: 1350, price: 30000000000 },
+  ]),
+  ...shopSeats(7, 250, "仕込み場の卓", "gomoku", 4, 560, [
+    { x: 1560, price: 36000000000 },
+    { x: 1660, price: 40000000000 },
+    { x: 1760, price: 44000000000 },
+  ]),
+  ...shopSeats(8, 650, "蔵の座敷", "koku", 5, 840, [
+    { x: 1560, price: 54000000000 },
+    { x: 1660, price: 58000000000 },
+    { x: 1760, price: 62000000000 },
+  ]),
+  ...shopSeats(9, 240, "特製の間", "tokusei", 8, 1260, [
+    { x: 1930, price: 75000000000 },
+    { x: 2010, price: 80000000000 },
+    { x: 2090, price: 85000000000 },
+    { x: 2170, price: 100000000000 },
+  ]),
 ];
 
 /**
@@ -338,6 +500,22 @@ const ramenHires: HireSpec[] = [
   { id: "waiter-5", kind: "waiter", pos: { x: 780, y: 560 }, price: 200000000, label: "ホール店員", area: 4 },
   { id: "robot-4", kind: "robot", pos: { x: 900, y: 560 }, price: 700000000, label: "配膳ロボ", area: 4, unlockAfter: "waiter-5" },
   { id: "collector-3", kind: "collector", pos: { x: 1020, y: 560 }, price: 1600000000, label: "レジ係", area: 4 },
+  /* ---------- 2号店。工程を運ぶ仕込み係と、品ごとの配膳ロボ ---------- */
+  { id: "runner-1", kind: "runner", pos: { x: 1155, y: 625 }, price: 18000000000, label: "仕込み係", area: 5 },
+  { id: "noodler-1", kind: "cook", pos: { x: 1250, y: 515 }, price: 20000000000, label: "麺職人", stoveId: "noodle-1", area: 5 },
+  { id: "robot-kake", kind: "robot", carries: "kake", pos: { x: 1425, y: 625 }, price: 15000000000, label: "配膳ロボ", area: 5, unlockAfter: "seat-5-2" },
+  { id: "roaster-1", kind: "cook", pos: { x: 1300, y: 155 }, price: 28000000000, label: "焼き場の職人", stoveId: "roast-1", area: 6 },
+  { id: "robot-chashu", kind: "robot", carries: "chashumen", pos: { x: 1170, y: 190 }, price: 32000000000, label: "配膳ロボ", area: 6 },
+  { id: "runner-2", kind: "runner", pos: { x: 1800, y: 175 }, price: 38000000000, label: "仕込み係", area: 7 },
+  { id: "shikomi-1", kind: "cook", pos: { x: 1635, y: 133 }, price: 42000000000, label: "仕込みの職人", stoveId: "ajitama-1", area: 7 },
+  { id: "robot-gomoku", kind: "robot", carries: "gomoku", pos: { x: 1800, y: 250 }, price: 40000000000, label: "配膳ロボ", area: 7 },
+  { id: "dashiman-1", kind: "cook", pos: { x: 1640, y: 525 }, price: 50000000000, label: "出汁の職人", stoveId: "dashi-1", area: 8 },
+  { id: "runner-3", kind: "runner", pos: { x: 1805, y: 565 }, price: 52000000000, label: "仕込み係", area: 8 },
+  { id: "robot-koku", kind: "robot", carries: "koku", pos: { x: 1805, y: 650 }, price: 60000000000, label: "配膳ロボ", area: 8 },
+  { id: "plateman-1", kind: "cook", pos: { x: 1935, y: 140 }, price: 78000000000, label: "盛り付けの名人", stoveId: "plate-5", area: 9 },
+  { id: "runner-4", kind: "runner", pos: { x: 2180, y: 95 }, price: 70000000000, label: "仕込み係", area: 9 },
+  { id: "robot-tokusei", kind: "robot", carries: "tokusei", pos: { x: 2180, y: 320 }, price: 82000000000, label: "配膳ロボ", area: 9 },
+  { id: "master-2", kind: "master", pos: { x: 2090, y: 340 }, price: 90000000000, label: "板場", area: 9 },
 ];
 
 const ramenEquipment: EquipSpec[] = [
@@ -352,6 +530,16 @@ const ramenEquipment: EquipSpec[] = [
   { id: "screen", name: "街頭ビジョン", detail: "でかい映像で宣伝する。集客 1.6倍", pos: { x: 470, y: 0 }, price: 4000000, area: 2, outside: true, draw: 1.6, unlockAfter: "area-2" },
   { id: "truck", name: "宣伝トラック", detail: "町じゅうを回ってくる。集客 1.8倍", pos: { x: 620, y: 0 }, price: 18000000, area: 3, outside: true, draw: 1.8, unlockAfter: "area-3" },
   { id: "blimp", name: "飛行船の広告", detail: "空から町ぜんぶに知らせる。集客 2.2倍", pos: { x: 790, y: 0 }, price: 1200000000, area: 4, outside: true, draw: 2.2, unlockAfter: "area-4" },
+  /* ---------- 2号店。渡り廊下（誰でも通る）と、工程の直結 ---------- */
+  { id: "pass-home", name: "通用口", detail: "1号店の厨房から2号店へ、まっすぐ行ける", pos: { x: 1100, y: 630 }, price: 22000000000, area: 5, corridor: { x0: 1058, y0: 600, x1: 1142, y1: 660 } },
+  { id: "belt-kona", name: "麺のベルト", detail: "粉が麺打ち台へ自動で流れる", pos: { x: 1205, y: 440 }, price: 24000000000, area: 5, link: { from: "kona-1", to: "noodle-1" } },
+  { id: "belt-boil", name: "茹でのレール", detail: "生麺が茹で釜へ自動で流れる", pos: { x: 1300, y: 440 }, price: 36000000000, area: 6, link: { from: "noodle-1", to: "boil-1" } },
+  { id: "pass-cross", name: "中庭の四つ辻", detail: "本館・焼き場・仕込み場・スープ蔵が中庭で直につながる", pos: { x: 1480, y: 400 }, price: 42000000000, area: 7, corridor: { x0: 1440, y0: 360, x1: 1520, y1: 440 } },
+  { id: "belt-gu", name: "具のレール", detail: "メンマが盛り付け台へ自動で流れる", pos: { x: 1700, y: 175 }, price: 46000000000, area: 7, link: { from: "menma-1", to: "plate-3" } },
+  { id: "pass-soup", name: "渡り廊下", detail: "本館とスープ蔵が直につながる", pos: { x: 1480, y: 630 }, price: 60000000000, area: 8, corridor: { x0: 1440, y0: 600, x1: 1520, y1: 660 } },
+  { id: "pipe-soup", name: "スープの配管", detail: "濃厚スープが盛り付け台へ自動で流れる", pos: { x: 1700, y: 565 }, price: 66000000000, area: 8, link: { from: "blend-1", to: "plate-4" } },
+  { id: "rail-tokusei", name: "特製のレール", detail: "玉が特製の盛り付け台へ自動で流れる", pos: { x: 2030, y: 95 }, price: 95000000000, area: 9, link: { from: "boil-1", to: "plate-5" } },
+  { id: "pass-roof", name: "大屋根", detail: "敷地ぜんぶに屋根がかかり、全部の棟が直につながる", pos: { x: 1650, y: 400 }, price: 100000000000, area: 9, corridor: { x0: 1058, y0: 380, x1: 2240, y1: 420 } },
 ];
 
 const ramenUpgrades: Upgrade[] = [
@@ -1235,6 +1423,8 @@ export const stageDefs: Record<StageId, StageDef> = {
     upgrades: ramenUpgrades,
     baseValue: 55,
     requiresAreas: 0,
+    // 2号店は棟が分かれている。壁と戸口の当たり判定を使う
+    walls: true,
     labels: {
       item: "丼",
       producer: "寸胴",
@@ -1260,6 +1450,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         keeper: "食料番",
         nightman: "夜番",
         explorer: "探索者",
+        runner: "仕込み係",
       },
       objective: {
         pickup: "厨房で丼を受け取ろう",
@@ -1314,6 +1505,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         keeper: "食料番",
         nightman: "夜番",
         explorer: "探索者",
+        runner: "仕込み係",
       },
       objective: {
         pickup: "券売所でチケットを受け取ろう",
@@ -1352,6 +1544,8 @@ export const stageDefs: Record<StageId, StageDef> = {
     // たき火は 4.0秒に1つ。火の番が付くと 2.0秒（§6）
     cookTime: 4.0,
     cookBoost: 2.0,
+    // 工程の運搬を、はこび手（仲間）にまかせるのはこのステージだけ
+    haulers: true,
     // 覚えたての仕事の周りだけを見せる。少なすぎると選ぶ楽しみがなくなるので、
     // 手を付けられる先を何本か並べておく
     revealLimit: 4,
@@ -1394,6 +1588,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         keeper: "食料番",
         nightman: "夜番",
         explorer: "探索者",
+        runner: "仕込み係",
       },
       objective: {
         pickup: "出し口でしなものを受け取ろう",
