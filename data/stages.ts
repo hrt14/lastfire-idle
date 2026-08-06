@@ -1557,6 +1557,8 @@ const taigaHires: HireSpec[] = [
   { id: "builder-1", kind: "builder", pos: { x: 3480, y: 540 }, price: 260000, label: "建築係", area: 4, reveal: 84.5 },
   { id: "waiter-6", kind: "waiter", pos: { x: 3700, y: 480 }, price: 300000, label: "はこび手", area: 4, reveal: 87 },
   { id: "trader-1", kind: "master", pos: { x: 4020, y: 480 }, price: 900000, label: "商人", area: 4, unlockAfter: "built-build-market", reveal: 90 },
+  // 川の物流。船着き場ができてはじめて、船が出せる
+  { id: "boat-1", kind: "boat", pos: { x: 3620, y: 540 }, price: 700000, label: "運搬船", area: 4, unlockAfter: "built-build-dock", reveal: 91.5 },
   { id: "robot-5", kind: "robot", pos: { x: 3760, y: 480 }, price: 500000, label: "荷車", area: 4, reveal: 92 },
 
   /* --- area-5 川の町 --- */
@@ -1565,6 +1567,7 @@ const taigaHires: HireSpec[] = [
   { id: "splitter-2", kind: "splitter", pos: { x: 4980, y: 470 }, price: 440000, label: "薪割り", stoveId: "split-2", area: 5, reveal: 100.9 },
   { id: "waiter-7", kind: "waiter", pos: { x: 4700, y: 480 }, price: 1500000, label: "はこび手", area: 5, reveal: 105 },
   { id: "robot-6", kind: "robot", pos: { x: 4780, y: 480 }, price: 2400000, label: "荷車", area: 5, reveal: 108 },
+  { id: "boat-2", kind: "boat", pos: { x: 4620, y: 420 }, price: 2200000, label: "交易船", area: 5, reveal: 106.5 },
   { id: "elder-1", kind: "master", pos: { x: 4880, y: 480 }, price: 6000000, label: "町長", area: 5, unlockAfter: "built-build-temple", reveal: 111 },
 ];
 
@@ -1669,6 +1672,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         keeper: "食料番",
         nightman: "夜番",
         explorer: "探索者",
+        boat: "運搬船",
       },
       objective: {
         pickup: "厨房で丼を受け取ろう",
@@ -1723,6 +1727,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         keeper: "食料番",
         nightman: "夜番",
         explorer: "探索者",
+        boat: "運搬船",
       },
       objective: {
         pickup: "券売所でチケットを受け取ろう",
@@ -1803,6 +1808,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         keeper: "食料番",
         nightman: "夜番",
         explorer: "探索者",
+        boat: "運搬船",
       },
       objective: {
         pickup: "出し口でしなものを受け取ろう",
@@ -1880,6 +1886,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         keeper: "倉庫番",
         nightman: "夜番",
         explorer: "船頭",
+        boat: "運搬船",
       },
       objective: {
         pickup: "出し口でしなものを受け取ろう",

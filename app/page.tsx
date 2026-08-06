@@ -30,6 +30,8 @@ import {
   type Tier,
 } from "@/data/skins";
 import { planetStages, stageDefs, stageList, type StageId } from "@/data/stages";
+import { HANDS_PER_POP, JOBS, JOB_STEP, moveHand, type Job } from "@/lib/taiga";
+import { getState } from "@/lib/shopStore";
 import { formatDuration, formatExact, formatMoney } from "@/lib/format";
 import { setMuted, unlockAudio } from "@/lib/sfx";
 import { setBgmMuted } from "@/lib/bgm";
@@ -72,6 +74,8 @@ export default function Page() {
   /** リセットの確認。既定はキャンセル（この画面を開いただけでは消えない） */
   const [confirmReset, setConfirmReset] = useState(false);
   const [gacha, setGacha] = useState(false);
+  /** 人手の割りふりシート（大河の文明の第6区画から） */
+  const [crew, setCrew] = useState(false);
   const [tier, setTier] = useState<Tier>(1);
   const [tiers, setTiers] = useState<TierProgress[]>([]);
   /** 上の段が開いた瞬間の演出（1回だけ） */
@@ -128,6 +132,28 @@ export default function Page() {
     },
     [],
   );
+
+  /**
+   * 人手をひとり動かす。
+   * ゲームの状態はReactの外にあるので、そこを直接さわってから、
+   * 見えている数字だけ先に合わせる（次のサンプルで正しい値が来る）
+   */
+  const handHand = useCallback((job: Job, delta: number) => {
+    const state = getState();
+    if (!moveHand(state, job, delta)) return;
+    setSample((now) =>
+      now && now.crew
+        ? {
+            ...now,
+            crew: {
+              ...now.crew,
+              left: now.crew.left - delta,
+              jobs: { ...now.crew.jobs, [job]: (now.crew.jobs[job] ?? 0) + delta },
+            },
+          }
+        : now,
+    );
+  }, []);
 
   const starMark = (count: number) =>
     "★".repeat(count) + "☆".repeat(Math.max(0, MAX_STARS - count));
@@ -443,6 +469,16 @@ export default function Page() {
             </i>
             {formatMoney(sample?.served ?? 0, "")}
           </span>
+          {sample?.crew ? (
+            <button
+              type="button"
+              className={`chip-button${sample.crew.left > 0 ? " is-ready" : ""}`}
+              onClick={() => setCrew(true)}
+              aria-label="人手の割りふり"
+            >
+              👥
+            </button>
+          ) : null}
           <button
             type="button"
             className={`chip-button${gachaReady ? " is-ready" : ""}`}
@@ -598,6 +634,76 @@ export default function Page() {
       ) : null}
 
       {/* 設定。ステージのリセットはここに常設する（ヘルプの末尾だけに置かない） */}
+      {crew && sample?.crew ? (
+        <div className="scrim" onClick={() => setCrew(false)}>
+          <section className="sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-head">
+              <h2>人手の割りふり</h2>
+              <span className="sheet-money">
+                町の人 {sample.crew.pop}人
+              </span>
+              <button
+                type="button"
+                className="sheet-close"
+                onClick={() => setCrew(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="crew-note">
+              町の人が {HANDS_PER_POP}人 増えるごとに、任せられる手がひとつ増えます。
+              残りは暮らしを回す手です。
+              <strong>ぜんぶ仕事に出すと、町ぜんたいが少し鈍ります。</strong>
+            </p>
+            <p className={`crew-left${sample.crew.left === 0 ? " is-bad" : ""}`}>
+              暮らしに残っている手 {sample.crew.left} / {sample.crew.hands}
+            </p>
+            <ul className="crew-list">
+              {JOBS.map((job) => {
+                const count = sample.crew?.jobs[job.id] ?? 0;
+                return (
+                  <li key={job.id}>
+                    <div className="crew-body">
+                      <strong>{job.label}</strong>
+                      <p>{job.note}</p>
+                      <span className="crew-gain">
+                        +{Math.round(count * JOB_STEP * 100)}%
+                      </span>
+                    </div>
+                    <div className="crew-pick">
+                      <button
+                        type="button"
+                        onClick={() => handHand(job.id, -1)}
+                        disabled={count <= 0}
+                        aria-label={`${job.label}を減らす`}
+                      >
+                        −
+                      </button>
+                      <b>{count}</b>
+                      <button
+                        type="button"
+                        onClick={() => handHand(job.id, 1)}
+                        disabled={(sample.crew?.left ?? 0) <= 0}
+                        aria-label={`${job.label}を増やす`}
+                      >
+                        ＋
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setCrew(false)}
+            >
+              とじる
+            </button>
+          </section>
+        </div>
+      ) : null}
+
       {settings ? (
         <>
           <button

@@ -38,6 +38,7 @@ import {
   heldAt,
   holdCap,
   huntZone,
+  RIVER_LANE,
   seatById,
   stoveById,
   type ItemKind,
@@ -101,6 +102,10 @@ import {
   seasonName,
   taigaLive,
   townPop,
+  handCount,
+  handsLeft,
+  jobsOpen,
+  type Job,
   TOWN_BUILDS,
   TOWN_POP,
 } from "@/lib/taiga";
@@ -130,6 +135,14 @@ export type Sample = {
   muted: boolean;
   bgmMuted: boolean;
   offline: OfflineReport | null;
+  /** 大河の文明の、人手の割りふり（それ以外のステージでは null） */
+  crew: {
+    open: boolean;
+    hands: number;
+    left: number;
+    pop: number;
+    jobs: Record<Job, number>;
+  } | null;
 };
 
 type Props = {
@@ -2766,41 +2779,7 @@ const drawSettlement = (
   /* --- 水くみ場: 川の水ぎわ。水面が流れ、岸に水がめが並ぶ --- */
   if (art === "river" || art === "intake") {
     const intake = art === "intake";
-    /*
-     * 川そのもの（上の帯）。作業場の左右いっぱいに広がって見えるようにする。
-     * 雨季は水かさが増して岸に迫り、乾季は引いて川原が広がる
-     */
-    const rise = riverRise(state);
-    const top = y - 96 - rise * 14;
-    const edge = y - 18 + rise * 12;
-    const grad = ctx.createLinearGradient(0, top, 0, edge);
-    grad.addColorStop(0, rise > 0.8 ? "#2a5a48" : "#1d4b5c");
-    grad.addColorStop(1, rise > 0.8 ? "#4a8c72" : "#2f7d8c");
-    ctx.fillStyle = grad;
-    ctx.fillRect(x - 150, top, 300, edge - top);
-    // 流れ（横に走る白い筋）
-    ctx.strokeStyle = "rgba(220,245,255,0.32)";
-    ctx.lineWidth = 1.6;
-    for (let i = 0; i < 5; i += 1) {
-      const ly = top + 12 + i * 14;
-      const shift = ((time * (26 + i * 7)) % 300) - 150;
-      ctx.beginPath();
-      for (let sx = -150; sx <= 150; sx += 10) {
-        const yy = ly + Math.sin((sx + shift) * 0.06 + i) * 2.2;
-        if (sx === -150) ctx.moveTo(x + sx, yy);
-        else ctx.lineTo(x + sx, yy);
-      }
-      ctx.stroke();
-    }
-    // 岸辺（水が引くと川原が広がる）
-    ctx.fillStyle = "#6d5a3c";
-    roundRect(ctx, x - 150, edge - 2, 300, 10 - rise * 4, 4);
-    ctx.fill();
-    if (rise < -0.2) {
-      ctx.fillStyle = "rgba(150,128,92,0.5)";
-      roundRect(ctx, x - 150, edge + 6, 300, -rise * 16, 4);
-      ctx.fill();
-    }
+    // 川そのものは、区画をまたぐ1本を先に描いてある。ここは岸まわりだけ
 
     if (intake) {
       // 取水口: 石で囲った切りこみ。水が水路の口へ吸いこまれていく
@@ -2820,7 +2799,7 @@ const drawSettlement = (
       // 石積みの水門
       ctx.fillStyle = "#7a7264";
       for (const ox of [-26, 26]) {
-        roundRect(ctx, x + ox - 5, y - 40, 10, 22, 2);
+        roundRect(ctx, x + ox - 5, y - 38, 10, 20, 2);
         ctx.fill();
       }
     } else {
@@ -6457,6 +6436,68 @@ const sledDog = (
  * 荷車（大河の文明）。牛が引く二輪の荷車。
  * 犬ぞりと同じ「低いところを走る運び屋」だが、車輪と牛で見分けがつく。
  */
+/**
+ * 川を行く運搬船（大河の文明）。
+ * 船頭が棹（さお）を差し、荷を積んで水の上を進む。
+ */
+const drawRiverBoat = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  face: number,
+  moving: boolean,
+  t: number,
+) => {
+  const bob = Math.sin(t * 2.2) * 1.4;
+  const by = y + bob;
+  // 水しぶきと引き波
+  if (moving) {
+    ctx.strokeStyle = "rgba(220,245,255,0.45)";
+    ctx.lineWidth = 1.4;
+    for (const oy of [2, 6]) {
+      ctx.beginPath();
+      ctx.moveTo(x - 26 * face, by + oy);
+      ctx.lineTo(x - 46 * face, by + oy);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  ctx.beginPath();
+  ctx.ellipse(x, by + 8, 26, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 船体
+  ctx.fillStyle = "#6b4a2b";
+  ctx.beginPath();
+  ctx.moveTo(x - 26, by - 2);
+  ctx.quadraticCurveTo(x, by + 12, x + 26, by - 2);
+  ctx.lineTo(x + 21, by - 9);
+  ctx.lineTo(x - 21, by - 9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#8a6440";
+  roundRect(ctx, x - 22, by - 11, 44, 4, 2);
+  ctx.fill();
+  // 積み荷のむしろ
+  ctx.fillStyle = "#c2ad84";
+  roundRect(ctx, x - 12, by - 19, 22, 9, 3);
+  ctx.fill();
+  // 船頭と棹
+  ctx.fillStyle = "#e8c9a0";
+  ctx.beginPath();
+  ctx.arc(x + 15 * face, by - 20, 4.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#4f7f6a";
+  roundRect(ctx, x + 15 * face - 4, by - 17, 8, 9, 3);
+  ctx.fill();
+  ctx.strokeStyle = "#8a6a44";
+  ctx.lineWidth = 1.8;
+  const pole = moving ? Math.sin(t * 3) * 4 : 0;
+  ctx.beginPath();
+  ctx.moveTo(x + 19 * face, by - 24);
+  ctx.lineTo(x + (26 + pole) * face, by + 6);
+  ctx.stroke();
+};
+
 const drawCart = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -6677,66 +6718,6 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.fillRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
         drawProps(ctx, area, time);
       }
-      // 冬が来ると、地面が少しずつ白くなる（第4区画）
-      const snow = isFire ? snowDepth(state) : 0;
-      if (snow > 0) {
-        ctx.fillStyle = `rgba(224,235,246,${0.14 + snow * 0.26})`;
-        ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
-      }
-      // 敷いた道（村の道）。通る人みんなが速くなる
-      if (wild) {
-        for (const item of equipment) {
-          if (!item.road || !hasEquip(state, item.id)) continue;
-          ctx.strokeStyle = "rgba(196,176,140,0.34)";
-          ctx.lineWidth = 26;
-          ctx.lineCap = "round";
-          ctx.beginPath();
-          ctx.moveTo(item.road.from.x, item.road.from.y);
-          ctx.lineTo(item.road.to.x, item.road.to.y);
-          ctx.stroke();
-          ctx.lineCap = "butt";
-          ctx.fillStyle = "rgba(120,102,74,0.35)";
-          const span = Math.hypot(
-            item.road.to.x - item.road.from.x,
-            item.road.to.y - item.road.from.y,
-          );
-          for (let i = 0; i < span / 30; i += 1) {
-            const t = i / (span / 30);
-            ctx.beginPath();
-            ctx.ellipse(
-              item.road.from.x + (item.road.to.x - item.road.from.x) * t,
-              item.road.from.y + (item.road.to.y - item.road.from.y) * t + ((i % 2) - 0.5) * 8,
-              6,
-              4,
-              0,
-              0,
-              Math.PI * 2,
-            );
-            ctx.fill();
-          }
-        }
-      }
-      if (isPark) {
-        // 園内の遊歩道（区画をつなぐ石畳）
-        for (const area of openAreas(state)) {
-          const { rect } = area;
-          ctx.fillStyle = "rgba(236,226,206,0.13)";
-          ctx.fillRect(rect.x0, rect.y1 - 34, rect.x1 - rect.x0, 26);
-          ctx.fillStyle = "rgba(255,255,255,0.07)";
-          for (let x = rect.x0 + 4; x < rect.x1 - 8; x += 26) {
-            ctx.fillRect(x, rect.y1 - 30, 18, 18);
-          }
-        }
-      } else {
-        ctx.strokeStyle = "rgba(0,0,0,0.16)";
-        ctx.lineWidth = 1;
-        for (let y = KITCHEN.bottom + 20; y < worldH; y += 34) {
-          ctx.beginPath();
-          ctx.moveTo(box.x0, y);
-          ctx.lineTo(box.x1, y);
-          ctx.stroke();
-        }
-      }
 
       /* --- 作業場（歩いて入れる） --- */
       for (const area of openAreas(state)) {
@@ -6846,6 +6827,104 @@ export default function Shop({ onSample, paused }: Props) {
           for (let i = 1; i < 5; i += 1) {
             ctx.fillRect(x0 + 10 + ((x1 - x0 - 20) / 5) * i - 1, 4, 2, 30);
           }
+        }
+      }
+
+      /*
+       * 大河。区画をまたいで、世界のはしからはしまで流れている。
+       * 水くみ場や取水口はこの岸に立ち、運搬船はこの上を行き来する。
+       * 季節で水かさが変わる（雨季は岸に迫り、乾季は川原が広がる）
+       */
+      if (isTaiga) {
+        const rise = riverRise(state);
+        const top = box.y0 + 26 - rise * 14;
+        const edge = RIVER_LANE + 24 + rise * 12;
+        const wide = box.x1 - box.x0;
+        const water = ctx.createLinearGradient(0, top, 0, edge);
+        water.addColorStop(0, rise > 0.8 ? "#2a5a48" : "#1d4b5c");
+        water.addColorStop(1, rise > 0.8 ? "#4a8c72" : "#2f7d8c");
+        ctx.fillStyle = water;
+        ctx.fillRect(box.x0, top, wide, edge - top);
+        // 流れの筋
+        ctx.strokeStyle = "rgba(220,245,255,0.28)";
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 5; i += 1) {
+          const ly = top + 12 + i * ((edge - top - 16) / 5);
+          const shift = (time * (26 + i * 7)) % 240;
+          ctx.beginPath();
+          for (let sx = box.x0; sx <= box.x1; sx += 14) {
+            const yy = ly + Math.sin((sx + shift) * 0.03 + i) * 2.4;
+            if (sx === box.x0) ctx.moveTo(sx, yy);
+            else ctx.lineTo(sx, yy);
+          }
+          ctx.stroke();
+        }
+        // 岸（水が引くと川原が広がる）
+        ctx.fillStyle = "#6d5a3c";
+        ctx.fillRect(box.x0, edge - 2, wide, 10 - rise * 4);
+        if (rise < -0.2) {
+          ctx.fillStyle = "rgba(150,128,92,0.5)";
+          ctx.fillRect(box.x0, edge + 6, wide, -rise * 16);
+        }
+      }
+      // 冬が来ると、地面が少しずつ白くなる（第4区画）
+      const snow = isFire ? snowDepth(state) : 0;
+      if (snow > 0) {
+        ctx.fillStyle = `rgba(224,235,246,${0.14 + snow * 0.26})`;
+        ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+      }
+      // 敷いた道（村の道）。通る人みんなが速くなる
+      if (wild) {
+        for (const item of equipment) {
+          if (!item.road || !hasEquip(state, item.id)) continue;
+          ctx.strokeStyle = "rgba(196,176,140,0.34)";
+          ctx.lineWidth = 26;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(item.road.from.x, item.road.from.y);
+          ctx.lineTo(item.road.to.x, item.road.to.y);
+          ctx.stroke();
+          ctx.lineCap = "butt";
+          ctx.fillStyle = "rgba(120,102,74,0.35)";
+          const span = Math.hypot(
+            item.road.to.x - item.road.from.x,
+            item.road.to.y - item.road.from.y,
+          );
+          for (let i = 0; i < span / 30; i += 1) {
+            const t = i / (span / 30);
+            ctx.beginPath();
+            ctx.ellipse(
+              item.road.from.x + (item.road.to.x - item.road.from.x) * t,
+              item.road.from.y + (item.road.to.y - item.road.from.y) * t + ((i % 2) - 0.5) * 8,
+              6,
+              4,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fill();
+          }
+        }
+      }
+      if (isPark) {
+        // 園内の遊歩道（区画をつなぐ石畳）
+        for (const area of openAreas(state)) {
+          const { rect } = area;
+          ctx.fillStyle = "rgba(236,226,206,0.13)";
+          ctx.fillRect(rect.x0, rect.y1 - 34, rect.x1 - rect.x0, 26);
+          ctx.fillStyle = "rgba(255,255,255,0.07)";
+          for (let x = rect.x0 + 4; x < rect.x1 - 8; x += 26) {
+            ctx.fillRect(x, rect.y1 - 30, 18, 18);
+          }
+        }
+      } else {
+        ctx.strokeStyle = "rgba(0,0,0,0.16)";
+        ctx.lineWidth = 1;
+        for (let y = KITCHEN.bottom + 20; y < worldH; y += 34) {
+          ctx.beginPath();
+          ctx.moveTo(box.x0, y);
+          ctx.lineTo(box.x1, y);
+          ctx.stroke();
         }
       }
 
@@ -7707,6 +7786,7 @@ export default function Shop({ onSample, paused }: Props) {
         keeper: "#4f7a5c",
         nightman: "#5b4f9e",
         explorer: "#3f8fa0",
+        boat: "#4f7f6a",
       };
 
       // 谷のマンモス（人と同じ列にならべて、前後が分かるようにする）
@@ -7851,7 +7931,16 @@ export default function Shop({ onSample, paused }: Props) {
               ctx.rotate(0.9);
               ctx.translate(-worker.pos.x, -worker.pos.y);
             }
-            if (worker.kind === "robot") {
+            if (worker.kind === "boat") {
+              drawRiverBoat(
+                ctx,
+                worker.pos.x,
+                worker.pos.y,
+                worker.face ?? 1,
+                worker.moving ?? false,
+                time,
+              );
+            } else if (worker.kind === "robot") {
               // 火のはじまりの「犬ぞり」は犬が引く。大河の文明は牛の荷車
               if (isTaiga) {
                 drawCart(
@@ -8260,10 +8349,12 @@ export default function Shop({ onSample, paused }: Props) {
               ctx,
               worker.bag,
               worker.pos.x,
-              worker.kind === "robot" && wild
-                ? worker.pos.y - 12
+              (worker.kind === "robot" && wild) || worker.kind === "boat"
+                ? worker.pos.y - 22
                 : worker.pos.y - 30,
-              worker.kind === "robot" && wild ? (worker.face ?? 1) * -16 : 0,
+              (worker.kind === "robot" && wild) || worker.kind === "boat"
+                ? (worker.face ?? 1) * -14
+                : 0,
               time,
             );
             if (knocked) {
@@ -9005,6 +9096,15 @@ export default function Shop({ onSample, paused }: Props) {
           muted: isMuted(),
           bgmMuted: isBgmMuted(),
           offline: pendingOffline,
+          crew: jobsOpen(state)
+            ? {
+                open: true,
+                hands: handCount(state),
+                left: handsLeft(state),
+                pop: townPop(state),
+                jobs: { ...state.taiga.jobs },
+              }
+            : null,
         });
         pendingOffline = null;
       }

@@ -53,6 +53,22 @@ export const seasonNote: Record<Season, string> = {
   dry: "水が細る。ためておいた水がものを言う",
 };
 
+/** 人手を配る職。仕様書 §10.4 の「人口を職業へ配分する」 */
+export type Job = "farm" | "craft" | "haul" | "build";
+
+export const JOBS: { id: Job; label: string; note: string }[] = [
+  { id: "farm", label: "農と牧", note: "畑・牧草地・家畜の囲いが速くなる" },
+  { id: "craft", label: "工房", note: "窯・石臼・パン窯・干し場が速くなる" },
+  { id: "haul", label: "運び", note: "はこび手・荷車・船が速くなる" },
+  { id: "build", label: "建築", note: "建築係が速くなる" },
+];
+
+/** 1人あたりの効き目 */
+export const JOB_STEP = 0.12;
+
+/** 町の人 何人ごとに、配れる手がひとつ増えるか */
+export const HANDS_PER_POP = 20;
+
 export type TaigaState = {
   /** いまの季節が始まってからの秒数 */
   clock: number;
@@ -67,6 +83,8 @@ export type TaigaState = {
   rich: number;
   /** 使者が来て、旅が終わったか */
   sailed: boolean;
+  /** どの仕事に何人ずつ配っているか */
+  jobs: Record<Job, number>;
   /** 描画側が拾う合図 */
   flash: string | null;
 };
@@ -79,6 +97,7 @@ export const createTaiga = (): TaigaState => ({
   flooded: false,
   rich: 0,
   sailed: false,
+  jobs: { farm: 0, craft: 0, haul: 0, build: 0 },
   flash: null,
 });
 
@@ -93,6 +112,7 @@ export const toTaiga = (taiga: TaigaState) => ({
   flooded: taiga.flooded,
   rich: taiga.rich,
   sailed: taiga.sailed,
+  jobs: taiga.jobs,
 });
 
 export const fromTaiga = (input: unknown): TaigaState => {
@@ -108,6 +128,12 @@ export const fromTaiga = (input: unknown): TaigaState => {
   taiga.flooded = raw.flooded === true;
   taiga.rich = Math.max(0, finite(raw.rich, 0));
   taiga.sailed = raw.sailed === true;
+  if (raw.jobs && typeof raw.jobs === "object") {
+    const jobs = raw.jobs as Record<string, unknown>;
+    for (const job of JOBS) {
+      taiga.jobs[job.id] = Math.max(0, Math.floor(finite(jobs[job.id], 0)));
+    }
+  }
   return taiga;
 };
 
@@ -188,7 +214,76 @@ export const taigaWork = (state: ShopState, stove: StoveSpec) => {
   }
   // 洪水のあとの泥で、しばらく畑がよく育つ
   if (taiga.rich > 0 && isField(stove)) rate *= 1.4;
+
+  // 配った人手のぶん、その系統が速くなる
+  const job = jobOf(stove);
+  if (job) rate *= jobBonus(state, job);
+  // 暮らしの手を残していないと、町ぜんたいが少し鈍る
+  if (overworked(state)) rate *= 0.9;
   return rate;
+};
+
+/* ---------- 人手の配りかた（仕様書 §10.4） ---------- */
+
+/** 割りふれる人手の数（町が育つほど増える） */
+export const handCount = (state: ShopState) =>
+  state.stageId === "taiga" ? Math.floor(townPop(state) / HANDS_PER_POP) : 0;
+
+/** いま配っている数の合計 */
+export const handsUsed = (state: ShopState) =>
+  JOBS.reduce((sum, job) => sum + (state.taiga.jobs[job.id] ?? 0), 0);
+
+/** まだ配っていない人手。ここが 0 だと暮らしが回らなくなる */
+export const handsLeft = (state: ShopState) =>
+  Math.max(0, handCount(state) - handsUsed(state));
+
+/** 人手の割りふりを使えるか（町づくりに入ってから） */
+export const jobsOpen = (state: ShopState) =>
+  state.stageId === "taiga" && state.unlocked.includes("area-5");
+
+/**
+ * 人手を全部仕事に出すと、暮らしの手が足りなくなる（仕様書 §10.4）。
+ * ぜんぶの作業場が少し遅くなる。1人でも残していれば起きない
+ */
+export const overworked = (state: ShopState) =>
+  jobsOpen(state) && handCount(state) > 0 && handsLeft(state) === 0;
+
+/** その仕事に配った人手のぶんの倍率 */
+export const jobBonus = (state: ShopState, job: Job) => {
+  if (!jobsOpen(state)) return 1;
+  return 1 + (state.taiga.jobs[job] ?? 0) * JOB_STEP;
+};
+
+/** 人手を1人動かす。戻り値は動かせたかどうか */
+export const moveHand = (state: ShopState, job: Job, delta: number) => {
+  if (!jobsOpen(state)) return false;
+  const now = state.taiga.jobs[job] ?? 0;
+  if (delta > 0 && handsLeft(state) <= 0) return false;
+  if (delta < 0 && now <= 0) return false;
+  state.taiga.jobs[job] = Math.max(0, now + delta);
+  return true;
+};
+
+/** その作業場が、どの仕事の受け持ちか */
+const jobOf = (stove: StoveSpec): Job | null => {
+  const item = stoveItem(stove);
+  if (item === "grain" || item === "grass" || item === "milk" || item === "wool") {
+    return "farm";
+  }
+  if (item === "pot" || item === "flour" || item === "bread" || item === "dried") {
+    return "craft";
+  }
+  return null;
+};
+
+/** 運ぶ人・建築係にかかる倍率 */
+export const taigaCrew = (state: ShopState, kind: string) => {
+  if (!jobsOpen(state)) return 1;
+  if (kind === "waiter" || kind === "robot" || kind === "boat") {
+    return jobBonus(state, "haul");
+  }
+  if (kind === "builder") return jobBonus(state, "build");
+  return 1;
 };
 
 /** 歩く速さの倍率（増水中はぬかるむ） */

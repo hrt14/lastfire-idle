@@ -36,6 +36,7 @@ import {
 import {
   createTaiga,
   fromTaiga,
+  taigaCrew,
   taigaMove,
   taigaWork,
   toTaiga,
@@ -202,7 +203,12 @@ export type StaffKind =
   /** 夜に共同たき火へ薪を足す係 */
   | "nightman"
   /** いかだで川を下り、新しい土地を見つけてくる係 */
-  | "explorer";
+  | "explorer"
+  /**
+   * 川を行き来する運搬船（大河の文明）。
+   * 陸の運び手より多く積めて速いが、遠くへ行くときは必ず川を通る
+   */
+  | "boat";
 
 export type HireSpec = {
   id: string;
@@ -460,6 +466,7 @@ const hireSub: Record<StaffKind, string> = {
   keeper: "保存肉を食料庫へ入れてくれる",
   nightman: "夜に共同たき火の薪を絶やさない",
   explorer: "先まわりして、獲物や土地を見つけてくる",
+  boat: "川を行き来して、まとめて運んでくれる",
 };
 
 const buildPads = (): Pad[] => [
@@ -923,6 +930,10 @@ export type ShopState = Persisted & {
 export const PLAYER_BASE_SPEED = 128;
 export const STAFF_SPEED = 92;
 export const ROBOT_SPEED = 150;
+/** 川を行く運搬船の速さ。陸の運び手より速いが、川へ出るまでの手間がある */
+export const BOAT_SPEED = 205;
+/** 川の水路。船はこの高さを通る */
+export const RIVER_LANE = 108;
 export const PICK_RADIUS = 44;
 export const SERVE_RADIUS = 46;
 export const COIN_RADIUS = 34;
@@ -2745,9 +2756,12 @@ export const handledItem = (worker: Staff): ItemKind =>
 
 /** スタッフが一度に運べる数。強化（両手鍋／チケットホルダー）で増える */
 export const carrierLimit = (state: ShopState, worker: Staff) =>
-  worker.kind === "robot"
-    ? Math.max(5, maxCarry(state))
-    : 3 + Math.floor(state.levels.carry / 2);
+  // 船は荷が積める。陸の運び手より一段多い
+  worker.kind === "boat"
+    ? Math.max(10, maxCarry(state) * 2)
+    : worker.kind === "robot"
+      ? Math.max(5, maxCarry(state))
+      : 3 + Math.floor(state.levels.carry / 2);
 
 /** 敷いた道のぶんの足の速さ（村の道は、通る人みんなが速くなる） */
 export const roadBonus = (state: ShopState) =>
@@ -2763,7 +2777,14 @@ export const staffSpeedFactor = (state: ShopState) =>
 const staffSpeed = (state: ShopState) => STAFF_SPEED * staffSpeedFactor(state);
 
 const carrierSpeed = (state: ShopState, worker: Staff) =>
-  (worker.kind === "robot" ? ROBOT_SPEED : STAFF_SPEED) * staffSpeedFactor(state);
+  (worker.kind === "boat"
+    ? BOAT_SPEED
+    : worker.kind === "robot"
+      ? ROBOT_SPEED
+      : STAFF_SPEED) *
+  staffSpeedFactor(state) *
+  // 運びへ人手を配ると、運ぶ人みんなが速くなる（大河の文明）
+  taigaCrew(state, worker.kind);
 
 /** 調理人の立ち位置（寸胴の奥） */
 export const cookPost = (worker: Staff): Vec => {
@@ -2799,6 +2820,32 @@ const go = (
 };
 
 /**
+ * 船の動き。遠くへ行くときは、いったん川へ出て、水の上を走り、
+ * 目的地の正面まで来てから岸へ寄る。陸をまっすぐ突っ切らない。
+ */
+const sail = (
+  state: ShopState,
+  worker: Staff,
+  target: Vec,
+  speed: number,
+  dt: number,
+) => {
+  const far = Math.abs(target.x - worker.pos.x) > 150;
+  const onRiver = worker.pos.y <= RIVER_LANE + 24;
+  if (far && !onRiver) {
+    // まず川へ出る（いま居るところの真上）
+    go(state, worker, { x: worker.pos.x, y: RIVER_LANE }, speed, dt);
+    return;
+  }
+  if (far) {
+    // 川の上を、目的地の正面まで走る
+    go(state, worker, { x: target.x, y: RIVER_LANE }, speed, dt);
+    return;
+  }
+  go(state, worker, target, speed, dt);
+};
+
+/**
  * その場所を、ほかのスタッフが担当していないか。
  * 配膳ロボは最初のとおり素直に動かすので、予約を見ない
  */
@@ -2812,6 +2859,7 @@ const claimedByOther = (state: ShopState, worker: Staff, id: string) =>
  */
 const approach = (_state: ShopState, worker: Staff, at: Vec): Vec => {
   // まっすぐ向かう。重ならないように行き先だけ少しずらす
+  if (worker.kind === "boat") return { x: at.x, y: RIVER_LANE };
   if (worker.kind === "robot") return at;
   return { x: at.x + ((worker.id % 3) - 1) * 10, y: at.y };
 };
@@ -2829,6 +2877,7 @@ const spread = (state: ShopState, dt: number) => {
       if (a.kind === "cook" || b.kind === "cook") continue;
       // ロボはぶつかり判定を持たない（すり抜ける）
       if (a.kind === "robot" || b.kind === "robot") continue;
+      if (a.kind === "boat" || b.kind === "boat") continue;
       // 着いて作業している人は押さない（押し合いで震えないように）
       if (a.settled || b.settled) continue;
       if (a.charge > 0 || b.charge > 0) continue;
@@ -3084,12 +3133,17 @@ const updateHauler = (state: ShopState, worker: Staff, dt: number) => {
     keep ?? jobs.reduce((best, job) => (score(job) < score(best) ? job : best));
 
   worker.target = pick.id;
-  go(state, worker, approach(state, worker, pick.at), speed, dt);
+  const to = approach(state, worker, pick.at);
+  if (worker.kind === "boat") sail(state, worker, to, speed, dt);
+  else go(state, worker, to, speed, dt);
   const reach = pick.drop ? SERVE_RADIUS : PICK_RADIUS;
   if (dist(worker.pos, pick.at) <= reach && pick.run() > 0) {
     worker.target = null;
-    // 犬ぞりは荷台にまとめて積めるので、積み下ろしが速い
-    worker.charge = worker.kind === "robot" ? HAUL_PAUSE * 0.4 : HAUL_PAUSE;
+    // 犬ぞりと船は荷台にまとめて積めるので、積み下ろしが速い
+    worker.charge =
+      worker.kind === "robot" || worker.kind === "boat"
+        ? HAUL_PAUSE * 0.4
+        : HAUL_PAUSE;
   }
 };
 
@@ -3525,6 +3579,7 @@ const updateStaff = (state: ShopState, dt: number) => {
       isChainStage() &&
       (worker.kind === "waiter" ||
         worker.kind === "robot" ||
+        worker.kind === "boat" ||
         worker.kind === "builder" ||
         worker.kind === "keeper" ||
         worker.kind === "nightman")
@@ -3885,7 +3940,8 @@ const chainObjective = (state: ShopState): Objective | null => {
     return {
       kind: "pickup",
       pos: done.pos,
-      label: `焼けた${itemLabel(stoveItem(done))}を受け取ろう`,
+      // 「焼けた」はたき火の言葉。できあがったものの名前だけで言う
+      label: `${done.label ?? "出し口"}の${itemLabel(stoveItem(done))}を受け取ろう`,
     };
   }
 
@@ -4604,14 +4660,21 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
           isChainStage()
             ? `品種ごとに ${carrierLimit(state, worker)}${unit}まで（生肉と薪を同時に持てる）`
             : `一度に ${carrierLimit(state, worker)}${unit}${
-                worker.kind === "robot" ? "・足が速い" : ""
+                worker.kind === "boat"
+                  ? "・川を通ってまとめて運ぶ"
+                  : worker.kind === "robot"
+                    ? "・足が速い"
+                    : ""
               }`,
           load ? `いま ${load} を持っている` : "いまは手ぶら",
         );
       }
       if (
         !isChainStage() &&
-        (worker.kind === "robot" || worker.kind === "waiter" || worker.kind === "server")
+        (worker.kind === "robot" ||
+          worker.kind === "boat" ||
+          worker.kind === "waiter" ||
+          worker.kind === "server")
       ) {
         lines.push(
           worker.wait > 0
