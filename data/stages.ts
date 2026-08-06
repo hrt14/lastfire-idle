@@ -1425,6 +1425,9 @@ const taigaStoves: StoveSpec[] = [
    * 生産はもう回っている。ここは「運びこんで建てる」区画。
    * 最後の大型交易船が建つと、上流から使者が来てステージが終わる。
    */
+  // 町の材木。ここが無いと、最後の建築が遠くの林からの丸太待ちになる
+  { id: "forest-2", pos: { x: 5100, y: 330 }, price: 300000, area: 5, item: "log", art: "forest", label: "町はずれの林", zone: { x0: 4960, y0: 90, x1: 5200, y1: 300 }, hold: 6, reveal: 100.6 },
+  { id: "split-2", pos: { x: 5040, y: 420 }, price: 340000, area: 5, item: "wood", takes: "log", art: "split", label: "町の薪割り場", manual: true, work: 0.5, reveal: 100.8 },
   {
     id: "build-granary", pos: { x: 4420, y: 600 }, price: 400000, area: 5,
     art: "bighut", label: "大型穀物庫", needs: { wood: 10, clay: 12 },
@@ -1444,9 +1447,11 @@ const taigaStoves: StoveSpec[] = [
   },
   {
     id: "build-ship", pos: { x: 5060, y: 600 }, price: 2600000, area: 5,
-    art: "bigraft", label: "大型交易船", needs: { log: 20, wood: 16, pot: 10 },
-    gives: { note: "大河の上流から使者が来た ― 「大河の文明」の旅はここまで" },
-    unlockAfter: "built-build-temple", reveal: 110,
+    art: "bigraft", label: "大型交易船", needs: { log: 14, wood: 12, pot: 10 },
+    // これが建つと、上流から使者が来てステージが終わる
+    gives: { sail: true, note: "大型交易船ができた。代表団が上流へ発つ" },
+    // 町が完成する（人80人・畑5面・穀物庫・井戸・記念塔）まで、まだ出られない
+    unlockAfter: "mark-town-done", reveal: 110,
   },
 ];
 
@@ -1556,6 +1561,8 @@ const taigaHires: HireSpec[] = [
 
   /* --- area-5 川の町 --- */
   { id: "builder-2", kind: "builder", pos: { x: 4380, y: 520 }, price: 1200000, label: "建築係", area: 5, reveal: 100.5 },
+  { id: "logger-2", kind: "logger", pos: { x: 5160, y: 380 }, price: 400000, label: "木こり", stoveId: "forest-2", area: 5, reveal: 100.7 },
+  { id: "splitter-2", kind: "splitter", pos: { x: 4980, y: 470 }, price: 440000, label: "薪割り", stoveId: "split-2", area: 5, reveal: 100.9 },
   { id: "waiter-7", kind: "waiter", pos: { x: 4700, y: 480 }, price: 1500000, label: "はこび手", area: 5, reveal: 105 },
   { id: "robot-6", kind: "robot", pos: { x: 4780, y: 480 }, price: 2400000, label: "荷車", area: 5, reveal: 108 },
   { id: "elder-1", kind: "master", pos: { x: 4880, y: 480 }, price: 6000000, label: "町長", area: 5, unlockAfter: "built-build-temple", reveal: 111 },
@@ -1572,13 +1579,22 @@ const taigaEquipment: EquipSpec[] = [
   { id: "sign", name: "物見やぐら", detail: "人が 1.5倍のはやさで来る", pos: { x: 380, y: 0 }, price: 60000, area: 0, outside: true, unlockAfter: "equip-ticket", reveal: 19 },
 
   /* --- 第2区画: 水路をのばす。ここがこのステージの本題 --- */
-  { id: "canal-1", name: "主水路", detail: "取水口の水を、3面目の畑へ流す", pos: { x: 940, y: 220 }, price: 3000, area: 1, link: { from: "intake-1", to: "field-3" }, unlockAfter: "field-3", reveal: 26 },
+  { id: "canal-1", name: "主水路", detail: "取水口の水を、3面目の畑へ流す", pos: { x: 940, y: 220 }, price: 3000, area: 1, link: { from: "intake-1", to: "field-3" }, priority: "gate-up", unlockAfter: "field-3", reveal: 26 },
   { id: "pond-1", name: "貯水池", detail: "取水口にためられる水 +6", pos: { x: 800, y: 230 }, price: 2400, area: 1, capacity: { stove: "intake-1", plus: 6 }, unlockAfter: "intake-1", reveal: 28 },
   { id: "canal-2", name: "分岐水路", detail: "取水口の水を、4面目の畑へも流す", pos: { x: 1100, y: 220 }, price: 6000, area: 1, link: { from: "intake-1", to: "field-4" }, unlockAfter: "equip-canal-1", reveal: 30 },
   { id: "seedway-1", name: "村の種の道", detail: "種を、3面目の畑へ直接おくる", pos: { x: 1400, y: 300 }, price: 4000, area: 1, link: { from: "seed-2", to: "field-3" }, unlockAfter: "seed-2", reveal: 31 },
-  { id: "canal-3", name: "下流の水路", detail: "取水口の水を、5面目の畑へも流す", pos: { x: 1260, y: 220 }, price: 12000, area: 1, link: { from: "intake-1", to: "field-5" }, unlockAfter: "equip-canal-2", reveal: 36 },
+  { id: "canal-3", name: "下流の水路", detail: "取水口の水を、5面目の畑へも流す", pos: { x: 1260, y: 220 }, price: 12000, area: 1, link: { from: "intake-1", to: "field-5" }, priority: "gate-down", unlockAfter: "equip-canal-2", reveal: 36 },
   { id: "lantern", name: "たいこ", detail: "音で人を集める。集まりが 1.4倍", pos: { x: 470, y: 0 }, price: 90000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-1", reveal: 36.5 },
   { id: "canal-home", name: "川辺への水路", detail: "取水口の水を、はじまりの畑へも流す", pos: { x: 740, y: 220 }, price: 17000, area: 1, link: { from: "intake-1", to: "field-2" }, unlockAfter: "equip-canal-3", reveal: 38 },
+  /*
+   * 水門と、増水への備え（仕様書 §3.5 / §6.4）。
+   * 取水口の水はみんなで分け合うので、水門を据えた水路が先に飲む。
+   * 土手は雨季の増水から畑を守り、排水路は水が引くのを早める
+   */
+  { id: "gate-up", name: "上流の水門", detail: "3面目の畑へ、水を先に流す", pos: { x: 1020, y: 220 }, price: 9000, area: 1, unlockAfter: "equip-canal-1", reveal: 30.5 },
+  { id: "levee", name: "土手", detail: "川があふれても、畑と足もとを守る", pos: { x: 880, y: 380 }, price: 14000, area: 1, unlockAfter: "area-1", reveal: 32 },
+  { id: "drain", name: "排水路", detail: "あふれた水が、はやく引く", pos: { x: 1480, y: 380 }, price: 26000, area: 1, unlockAfter: "equip-levee", reveal: 35 },
+  { id: "gate-down", name: "下流の水門", detail: "5面目の畑へ、水を先に流す", pos: { x: 1340, y: 220 }, price: 30000, area: 1, unlockAfter: "equip-canal-3", reveal: 37.5 },
 
   /* --- 第3区画: 工房をつなぐ --- */
   { id: "chute-log", name: "丸太ころがし", detail: "丸太を、薪割り場へ直接おくる", pos: { x: 2400, y: 480 }, price: 9000, area: 2, link: { from: "forest-1", to: "split-1" }, unlockAfter: "splitter-1", reveal: 44 },

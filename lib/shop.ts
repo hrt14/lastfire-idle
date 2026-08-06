@@ -33,6 +33,15 @@ import {
   updateFire,
   type FireState,
 } from "@/lib/fire";
+import {
+  createTaiga,
+  fromTaiga,
+  taigaMove,
+  taigaWork,
+  toTaiga,
+  updateTaiga,
+  type TaigaState,
+} from "@/lib/taiga";
 
 export type Vec = { x: number; y: number };
 
@@ -293,6 +302,11 @@ export type EquipSpec = {
   capacity?: { stove: string; plus: number };
   /** 建物どうしをつなぐ道（通ると足が速くなる） */
   road?: { from: Vec; to: Vec };
+  /**
+   * この設備（水門）を買うと、この水路が優先になり、流れが速くなる。
+   * 上流に多く流すと下流が細る ―― その分配を、買い物で選ばせる
+   */
+  priority?: EquipId;
 };
 
 export type UpgradeId = "carry" | "speed" | "cook" | "price" | "gate";
@@ -856,6 +870,8 @@ export type Persisted = {
   stored?: Record<string, number>;
   /** 火のはじまりの集落の様子（昼夜・人口・冬・谷） */
   fire?: unknown;
+  /** 大河の文明の季節と増水 */
+  taiga?: unknown;
 };
 
 export type ShopState = Persisted & {
@@ -867,6 +883,8 @@ export type ShopState = Persisted & {
   parts: Record<string, Record<string, number>>;
   /** 火のはじまりの集落（昼夜・人口・冬・谷・川） */
   fire: FireState;
+  /** 大河の文明の季節と増水 */
+  taiga: TaigaState;
   /** 次に新しい枠を出すまでの間（一度に増やしすぎない） */
   revealWait: number;
   player: Player;
@@ -1028,6 +1046,7 @@ export const createState = (): ShopState => ({
   built: [],
   parts: {},
   fire: createFire(),
+  taiga: createTaiga(),
   revealWait: 0,
   padProgress: {},
   levels: { carry: 0, speed: 0, cook: 0, price: 0, gate: 0 },
@@ -1090,6 +1109,7 @@ export const toPersisted = (state: ShopState): Persisted => ({
   parts: state.parts,
   stored: storedNow(state),
   fire: toFire(state.fire),
+  taiga: toTaiga(state.taiga),
   padProgress: state.padProgress,
   levels: state.levels,
   served: state.served,
@@ -1203,6 +1223,7 @@ export const fromPersisted = (input: unknown): ShopState => {
     }
   }
   state.fire = fromFire(raw.fire);
+  state.taiga = fromTaiga(raw.taiga);
 
   for (const stove of stoves) {
     if (state.unlocked.includes(stove.id)) {
@@ -1942,8 +1963,9 @@ const updateStoves = (state: ShopState, dt: number) => {
     // 人の手が要る作業場（薪割り場）は、担当者かプレイヤーがそばにいるあいだだけ進む。
     // 途中まで割った進みは残しておく（近づき直せば続きから）
     if (stove.manual && !isManned(state, stove)) continue;
-    // 夜と吹雪は外の仕事を止める。寒いとみんな遅くなる（第2・第4区画）
-    const weather = fireWork(state, stove);
+    // 夜と吹雪は外の仕事を止める。寒いとみんな遅くなる（第2・第4区画）。
+    // 大河の文明は、季節と増水でここが変わる
+    const weather = fireWork(state, stove) * taigaWork(state, stove);
     if (weather <= 0) continue;
     const boost = stoveHasCook(state, stove.id) ? cookBoost() : 1;
     const work = stove.work ?? 1;
@@ -1970,8 +1992,13 @@ const flowLinks = (state: ShopState, dt: number) => {
     if (!state.unlocked.includes(from) || !state.unlocked.includes(to)) continue;
     const key = `link-${item.id}`;
     state.autoTimer[key] = (state.autoTimer[key] ?? 0) + dt;
-    // だいたい 0.5 秒に1つ流す（速いはこび手より速い）
-    if (state.autoTimer[key] < 0.5) continue;
+    /*
+     * だいたい 0.5 秒に1つ流す（速いはこび手より速い）。
+     * 大河の文明では、水門を据えた水路だけ 0.3 秒になる。
+     * 取水口の水はみんなで分け合うので、どの畑を優先するかが効いてくる
+     */
+    const gap = item.priority && hasEquip(state, item.priority) ? 0.3 : 0.5;
+    if (state.autoTimer[key] < gap) continue;
     const fromStove = stoveById.get(from);
     const toStove = stoveById.get(to);
     if (!fromStove || !toStove) continue;
@@ -2731,7 +2758,7 @@ export const roadBonus = (state: ShopState) =>
 
 /** スタッフの足の速さ。強化（厨房シューズ／園内カート）の半分だけ効く */
 export const staffSpeedFactor = (state: ShopState) =>
-  (1 + state.levels.speed * 0.05) * fireMove(state) * roadBonus(state);
+  (1 + state.levels.speed * 0.05) * fireMove(state) * taigaMove(state) * roadBonus(state);
 
 const staffSpeed = (state: ShopState) => STAFF_SPEED * staffSpeedFactor(state);
 
@@ -3685,6 +3712,7 @@ export const update = (state: ShopState, input: Input, dt: number) => {
   state.playTime += dt;
   // 昼夜・天気・住民・谷・探索は、ほかの何より先に決める
   updateFire(state, dt, coinValue(state.levels.price));
+  updateTaiga(state, dt);
   updateStoves(state, dt);
   updateHunt(state, dt);
   updateForest(state, dt);

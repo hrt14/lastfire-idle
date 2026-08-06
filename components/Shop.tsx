@@ -89,6 +89,22 @@ import {
   beastZone,
 } from "@/lib/fire";
 import {
+  SEASON_TIME,
+  fertile,
+  flooding as taigaFlooding,
+  riverRise,
+  fieldCount,
+  flooding,
+  season,
+  seasonLeft,
+  seasonMark,
+  seasonName,
+  taigaLive,
+  townPop,
+  TOWN_BUILDS,
+  TOWN_POP,
+} from "@/lib/taiga";
+import {
   catchUp,
   equippedSkin,
   equippedStars,
@@ -2750,13 +2766,18 @@ const drawSettlement = (
   /* --- 水くみ場: 川の水ぎわ。水面が流れ、岸に水がめが並ぶ --- */
   if (art === "river" || art === "intake") {
     const intake = art === "intake";
-    // 川そのもの（上の帯）。作業場の左右いっぱいに広がって見えるようにする
-    const top = y - 96;
-    const grad = ctx.createLinearGradient(0, top, 0, y - 18);
-    grad.addColorStop(0, "#1d4b5c");
-    grad.addColorStop(1, "#2f7d8c");
+    /*
+     * 川そのもの（上の帯）。作業場の左右いっぱいに広がって見えるようにする。
+     * 雨季は水かさが増して岸に迫り、乾季は引いて川原が広がる
+     */
+    const rise = riverRise(state);
+    const top = y - 96 - rise * 14;
+    const edge = y - 18 + rise * 12;
+    const grad = ctx.createLinearGradient(0, top, 0, edge);
+    grad.addColorStop(0, rise > 0.8 ? "#2a5a48" : "#1d4b5c");
+    grad.addColorStop(1, rise > 0.8 ? "#4a8c72" : "#2f7d8c");
     ctx.fillStyle = grad;
-    ctx.fillRect(x - 150, top, 300, 78);
+    ctx.fillRect(x - 150, top, 300, edge - top);
     // 流れ（横に走る白い筋）
     ctx.strokeStyle = "rgba(220,245,255,0.32)";
     ctx.lineWidth = 1.6;
@@ -2771,10 +2792,15 @@ const drawSettlement = (
       }
       ctx.stroke();
     }
-    // 岸辺
+    // 岸辺（水が引くと川原が広がる）
     ctx.fillStyle = "#6d5a3c";
-    roundRect(ctx, x - 150, y - 20, 300, 10, 4);
+    roundRect(ctx, x - 150, edge - 2, 300, 10 - rise * 4, 4);
     ctx.fill();
+    if (rise < -0.2) {
+      ctx.fillStyle = "rgba(150,128,92,0.5)";
+      roundRect(ctx, x - 150, edge + 6, 300, -rise * 16, 4);
+      ctx.fill();
+    }
 
     if (intake) {
       // 取水口: 石で囲った切りこみ。水が水路の口へ吸いこまれていく
@@ -2944,6 +2970,23 @@ const drawSettlement = (
         ctx.beginPath();
         ctx.ellipse(sx + sway, base - h - 1, 2, 4, sway * 0.06, 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+    // 増水で水につかっているあいだは、うねの上に水が乗る
+    if (taigaFlooding(state)) {
+      ctx.fillStyle = "rgba(70,140,165,0.45)";
+      roundRect(ctx, x - 40, y - 26, 80, 44, 6);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(220,245,255,0.4)";
+      ctx.lineWidth = 1.2;
+      for (const oy of [-14, 0]) {
+        ctx.beginPath();
+        for (let sx = -36; sx <= 36; sx += 8) {
+          const yy = y + oy + Math.sin((sx + time * 50) * 0.09) * 1.8;
+          if (sx === -36) ctx.moveTo(x + sx, yy);
+          else ctx.lineTo(x + sx, yy);
+        }
+        ctx.stroke();
       }
     }
     // 刈り取りを待っている束
@@ -8351,6 +8394,163 @@ export default function Shop({ onSample, paused }: Props) {
             ctx.fillRect(sx, sy, 2, 2);
           }
         }
+      }
+
+      /* --- 大河の文明: 季節の色あいと、増水 --- */
+      if (isTaiga && taigaLive(state)) {
+        const now = season(state);
+        // 季節ごとに、光の色をうっすら変える（言葉より先に、色で分かるように）
+        const tint: Record<string, string> = {
+          spring: "rgba(150,220,140,0.07)",
+          summer: "rgba(255,190,90,0.09)",
+          rain: "rgba(90,140,190,0.13)",
+          harvest: "rgba(255,200,110,0.10)",
+          dry: "rgba(210,170,110,0.10)",
+        };
+        ctx.fillStyle = tint[now] ?? "rgba(0,0,0,0)";
+        ctx.fillRect(camX, camY, view, viewH0);
+        if (now === "rain") {
+          // 雨。斜めの筋を降らせる
+          ctx.strokeStyle = "rgba(180,215,240,0.35)";
+          ctx.lineWidth = 1.2;
+          for (let i = 0; i < 60; i += 1) {
+            const sx = camX + ((i * 137 + time * 220) % view);
+            const sy = camY + ((i * 79 + time * 620) % viewH0);
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx - 3, sy + 11);
+            ctx.stroke();
+          }
+        }
+        if (flooding(state)) {
+          // 川があふれて、低いところが水につかる
+          const line = camY + viewH0 * 0.18;
+          ctx.fillStyle = "rgba(60,130,155,0.32)";
+          ctx.fillRect(camX, camY, view, line - camY + 120);
+          ctx.strokeStyle = "rgba(220,245,255,0.35)";
+          ctx.lineWidth = 1.4;
+          for (let i = 0; i < 4; i += 1) {
+            const wy = line + 26 + i * 26 + Math.sin(time * 1.6 + i) * 3;
+            ctx.beginPath();
+            for (let sx = camX; sx <= camX + view; sx += 12) {
+              const yy = wy + Math.sin((sx + time * 60) * 0.05 + i) * 2.4;
+              if (sx === camX) ctx.moveTo(sx, yy);
+              else ctx.lineTo(sx, yy);
+            }
+            ctx.stroke();
+          }
+        }
+      }
+
+      /* --- 大河の文明: 季節と、町の育ちぐあい --- */
+      if (isTaiga && taigaLive(state)) {
+        const now = season(state);
+        const left = Math.max(0, Math.ceil(seasonLeft(state)));
+        const pop = townPop(state);
+        const town = state.unlocked.includes("area-5");
+        const rows: { text: string; ok: boolean }[] = [
+          { text: `畑 ${fieldCount(state)}面${town ? " / 5" : ""}`, ok: fieldCount(state) >= (town ? 5 : 1) },
+          { text: `町の人 ${pop} / ${TOWN_POP}`, ok: pop >= TOWN_POP },
+          // 町づくりに入ったら、完成に要る建物をならべて出す
+          ...(town
+            ? TOWN_BUILDS.map((item) => ({
+                text: `${item.label}${state.built.includes(item.id) ? " ✓" : ""}`,
+                ok: state.built.includes(item.id),
+              }))
+            : []),
+          ...(flooding(state)
+            ? [{ text: "増水中", ok: hasEquip(state, "levee") }]
+            : fertile(state)
+              ? [{ text: "泥が肥えている", ok: true }]
+              : []),
+        ];
+        const title = `${seasonMark[now]} ${seasonName[now]} ― あと${left}秒`;
+        ctx.font = SMALL;
+        const width =
+          Math.max(
+            ctx.measureText(title).width,
+            ...rows.map((row) => ctx.measureText(row.text).width),
+          ) + 20;
+        const height = 20 + rows.length * 13;
+        const px = camX + view - width - 8;
+        const py = camY + 8;
+        ctx.fillStyle = "rgba(10,8,6,0.62)";
+        roundRect(ctx, px, py, width, height, 8);
+        ctx.fill();
+        ctx.strokeStyle = flooding(state)
+          ? "rgba(120,190,235,0.7)"
+          : "rgba(255,209,102,0.35)";
+        ctx.lineWidth = 1;
+        roundRect(ctx, px, py, width, height, 8);
+        ctx.stroke();
+        // 季節の残りは、わくの下ぶちの帯で出す
+        ctx.fillStyle = "rgba(255,209,102,0.5)";
+        ctx.fillRect(px + 2, py + height - 3, (width - 4) * (1 - left / SEASON_TIME), 2);
+        ctx.fillStyle = "#ffd166";
+        ctx.fillText(title, px + width / 2, py + 10);
+        rows.forEach((row, i) => {
+          ctx.fillStyle = row.ok ? "rgba(226,240,226,0.85)" : "#ff9f8a";
+          ctx.fillText(row.text, px + width / 2, py + 24 + i * 13);
+        });
+        ctx.font = FONT;
+      }
+
+      /* --- 大河の文明の終わり: 使者とともに、大型交易船が上流へ --- */
+      if (isTaiga && state.taiga.sailed) {
+        const t = (time * 0.06) % 1;
+        const bx = camX + view * (0.15 + t * 0.7);
+        const by = camY + viewH0 * 0.16;
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        // 船体
+        ctx.fillStyle = "#6b4a2b";
+        ctx.beginPath();
+        ctx.moveTo(bx - 34, by);
+        ctx.quadraticCurveTo(bx, by + 14, bx + 34, by);
+        ctx.lineTo(bx + 26, by - 7);
+        ctx.lineTo(bx - 26, by - 7);
+        ctx.closePath();
+        ctx.fill();
+        // 帆
+        ctx.fillStyle = "#e8ddc8";
+        ctx.beginPath();
+        ctx.moveTo(bx, by - 8);
+        ctx.lineTo(bx, by - 44);
+        ctx.lineTo(bx + 24, by - 14);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "#4f3d26";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bx, by - 8);
+        ctx.lineTo(bx, by - 46);
+        ctx.stroke();
+        // 引き波
+        ctx.strokeStyle = "rgba(220,245,255,0.5)";
+        ctx.lineWidth = 1.4;
+        for (const oy of [2, 6]) {
+          ctx.beginPath();
+          ctx.moveTo(bx - 40, by + oy);
+          ctx.lineTo(bx - 66, by + oy);
+          ctx.stroke();
+        }
+        ctx.restore();
+        // 締めのことば
+        ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+        const words = "大河の文明 ― 使者とともに、次の都市へ";
+        const w = ctx.measureText(words).width + 34;
+        const wx = camX + view / 2 - w / 2;
+        const wy = camY + viewH0 * 0.3;
+        ctx.fillStyle = "rgba(10,8,6,0.72)";
+        roundRect(ctx, wx, wy, w, 30, 10);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,209,102,0.6)";
+        ctx.lineWidth = 1.2;
+        roundRect(ctx, wx, wy, w, 30, 10);
+        ctx.stroke();
+        ctx.fillStyle = "#ffd166";
+        ctx.fillText(words, camX + view / 2, wy + 15);
+        ctx.font = FONT;
       }
 
       /* --- 集落の様子（日にち・時間帯・備蓄・気温・人口） --- */
