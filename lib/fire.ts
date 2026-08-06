@@ -17,6 +17,7 @@
  */
 
 import { stageDefs } from "@/data/stages";
+import { taigaSail } from "@/lib/taiga";
 import type { ShopState, StoveSpec, Vec } from "@/lib/shop";
 
 /* ---------- 時間 ---------- */
@@ -188,14 +189,19 @@ export const fromFire = (raw: unknown): FireState => {
 
 /* ---------- 区画のなかを見る ---------- */
 
-const specs = () => stageDefs.fire.stoves;
+/*
+ * いま遊んでいるステージの作業場。
+ * 建築予定地は「火のはじまり」だけの仕組みではなくなったので、
+ * ここを fire に固定したままだと、ほかのステージの建物が永久に建たない
+ */
+const specs = (state: ShopState) => stageDefs[state.stageId].stoves;
 
 const areaOpen = (state: ShopState, area: number) =>
   area === 0 || state.unlocked.includes(`area-${area}`);
 
 /** いま動いている作業場（買ってあって、区画も開いているもの） */
 export const liveStoves = (state: ShopState): StoveSpec[] =>
-  specs().filter(
+  specs(state).filter(
     (stove) => state.unlocked.includes(stove.id) && areaOpen(state, stove.area),
   );
 
@@ -204,7 +210,7 @@ export const isBuilt = (state: ShopState, id: string) => state.built.includes(id
 
 /** 建てあがった建築予定地 */
 export const builtSites = (state: ShopState): StoveSpec[] =>
-  specs().filter((stove) => stove.needs && isBuilt(state, stove.id));
+  specs(state).filter((stove) => stove.needs && isBuilt(state, stove.id));
 
 /** 集落の様子を見て回るのに使う、ちいさな道具 */
 const dist = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -932,7 +938,11 @@ const finishBuilds = (state: ShopState) => {
       state.fire.pop = Math.min(popCap(state), state.fire.pop + 1);
     }
     toast(state, gives.note ?? `${site.label ?? "建物"}ができた！`);
-    if (gives.sail) sailAway(state);
+    // 旅の終わり。ステージごとに、出ていく舟がちがう
+    if (gives.sail) {
+      if (state.stageId === "taiga") taigaSail(state);
+      else sailAway(state);
+    }
   }
 };
 
@@ -940,7 +950,7 @@ const sailAway = (state: ShopState) => {
   if (state.fire.sailed) return;
   state.fire.sailed = true;
   state.fire.flash = "sail";
-  toast(state, "大型いかだが川へ出た ― 「火のはじまり」の旅はここまで");
+  toast(state, `大型いかだが川へ出た ― 「${stageDefs[state.stageId].name}」の旅はここまで`);
 };
 
 /* ---------- 進み具合の合図 ---------- */
@@ -1033,11 +1043,16 @@ export const firePriorityPads = (state: ShopState): string[] => {
  * 昼夜 → 天気 → 住民 → 谷 → 探索 → 建てあがり、の順に見る。
  */
 export const updateFire = (state: ShopState, dt: number, coinValue: number) => {
-  if (state.stageId !== "fire") return;
   const fire = state.fire;
-  fire.flash = null;
+  if (state.stageId === "fire") fire.flash = null;
+  /*
+   * 建築予定地は「火のはじまり」だけの仕組みではない。
+   * 大河の文明の船着き場・市場・町の建物も、材料を運びこめば建ちあがる。
+   * ここから下（昼夜・寒さ・谷・住民）は、火のはじまりだけのもの。
+   */
   finishBuilds(state);
   countWants(state);
+  if (state.stageId !== "fire") return;
   updateMarks(state);
   // 住むところが減ることはないが、古いセーブから来たときのために合わせておく
   fire.pop = Math.min(fire.pop, popCap(state));

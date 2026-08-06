@@ -15,7 +15,7 @@ import type {
   Upgrade,
 } from "@/lib/shop";
 
-export type StageId = "ramen" | "park" | "fire";
+export type StageId = "ramen" | "park" | "fire" | "taiga";
 
 export type StageLabels = {
   /** 運ぶもの */
@@ -86,6 +86,8 @@ export type StageDef = {
    * 指定すると、条件を満たした枠を順ぐりに少しずつ出す
    */
   revealLimit?: number;
+  /** 一度に新しく出す枠の数（省略で2つずつ） */
+  revealBurst?: number;
   /**
    * ここに書いたものを開くと、同時に見せる枠の数がこの数まで増える。
    * 1区画目は「次の一手」だけ、2区画目からは 5〜10個から選べるようにする。
@@ -1266,6 +1268,13 @@ const fireSeats: SeatSpec[] = [
     { x: 4770, price: 500000, reveal: 105 },
     { x: 4910, price: 900000, reveal: 108 },
   ]),
+  // 網（net-1）で獲れ高が伸びるわりに席が2つしかなく、供給過多で
+  // 魚がだぶついていた（プレイテストのフィードバック）ので、
+  // ひとつ手前の段にもう2席足して受け止め先を増やした
+  ...benchRow(5, 480, "fish", 2.6, "川辺の席", [
+    { x: 4770, price: 1300000, reveal: 118 },
+    { x: 4910, price: 1800000, reveal: 120 },
+  ], "f"),
   ...benchRow(5, 390, "hide", 5, "交易の席", [
     { x: 5060, price: 1500000, unlockAfter: "found-village", reveal: 109 },
     { x: 5200, price: 2600000, reveal: 111 },
@@ -1405,6 +1414,409 @@ const fireUpgrades: Upgrade[] = [
   { id: "price", name: "味つけの石塩", detail: (n) => `ひとつ ${Math.round(8 * Math.pow(1.4, n))}貝`, pos: { x: 40, y: 510 }, basePrice: 600, growth: 1.75, max: 20, unlockAfter: "robot-1", reveal: 11.5 },
 ];
 
+/* ==================== ワーキングプラネット: 大河の文明 ==================== */
+
+/**
+ * 「火のはじまり」の次のステージ（仕様書は docs/taiga-civilization.md）。
+ *
+ * 狩って得る生産から、育てて得る生産へ。
+ *
+ *   川 ──(水)──┐
+ *               ├─▶ 畑 ──(穀物)──┬─▶ 川辺の食事場
+ *   種置き場 ─(種)┘                └─▶ 石臼 ─(粉)─▶ パン窯 ─(パン)─▶ 席
+ *
+ * 畑は「水1こ + 種1こ → 穀物1こ」。作るのに時間がかかるところが作物らしさで、
+ * 水を手で運ぶあいだは畑がよく止まる。第2区画の水路（直結の設備）を引くと、
+ * その手運びが消える ―― これがこのステージのいちばんの山になる。
+ */
+const taigaAreas: AreaSpec[] = [
+  {
+    id: "area-0",
+    label: "川辺の畑",
+    price: 0,
+    rect: { x0: 0, y0: 0, x1: 720, y1: 520 },
+    padPos: { x: 0, y: 0 },
+    palette: { floor: "#2f3a22", deep: "#1d2415", prop: "none" },
+  },
+  {
+    id: "area-1",
+    label: "水路をひらく",
+    price: 2400,
+    rect: { x0: 720, y0: 0, x1: 1620, y1: 760 },
+    padPos: { x: 690, y: 300 },
+    palette: { floor: "#2b3a2c", deep: "#1a251b", prop: "none" },
+    // 1区画目が自分の手だけでひととおり回ってから、水路の話が出る
+    unlockAfter: "robot-1",
+    reveal: 11.6,
+  },
+  {
+    id: "area-2",
+    label: "土と火の工房をひらく",
+    price: 18000,
+    rect: { x0: 1620, y0: 0, x1: 2520, y1: 760 },
+    padPos: { x: 1590, y: 300 },
+    palette: { floor: "#3d3327", deep: "#251e16", prop: "none" },
+    // 水路が2本つながって、穀物が余りはじめるころ
+    unlockAfter: "equip-canal-2",
+    reveal: 40,
+  },
+  {
+    id: "area-3",
+    label: "牧草地へ広げる",
+    price: 180000,
+    rect: { x0: 2520, y0: 0, x1: 3420, y1: 760 },
+    padPos: { x: 2490, y: 300 },
+    palette: { floor: "#33421f", deep: "#1f2914", prop: "none" },
+    unlockAfter: "equip-chute-flour",
+    reveal: 60,
+  },
+  {
+    id: "area-4",
+    label: "大河の市場へ下る",
+    price: 700000,
+    rect: { x0: 3420, y0: 0, x1: 4320, y1: 760 },
+    padPos: { x: 3390, y: 300 },
+    palette: { floor: "#2f4247", deep: "#1b2a2f", prop: "ship" },
+    unlockAfter: "seat-3-t1",
+    reveal: 80,
+  },
+  {
+    id: "area-5",
+    label: "村を町にする",
+    price: 3000000,
+    rect: { x0: 4320, y0: 0, x1: 5220, y1: 760 },
+    padPos: { x: 4290, y: 300 },
+    palette: { floor: "#414a3a", deep: "#282e23", prop: "market" },
+    unlockAfter: "built-build-market",
+    reveal: 100,
+  },
+];
+
+const taigaStoves: StoveSpec[] = [
+  /* --- area-0 第1区画「川辺の畑」 --------------------------------------
+   *
+   * 川で水を汲み、種を取り、畑へ入れる。あとは育つのを待って収穫する。
+   * 水くみ場は人の手が要る（そばに立つとたまる）。ここが「川へ行く理由」になる。
+   */
+  {
+    id: "river-1",
+    pos: { x: 150, y: 150 },
+    price: 0,
+    area: 0,
+    item: "water",
+    art: "river",
+    label: "水くみ場",
+    /*
+     * 川べりに置いた水がめに、勝手に水がたまっていく。
+     * ここに人を張りつかせる遊びにはしない ―― 最初に覚えるのは「運ぶ」ことで、
+     * 最初に雇うのも運ぶ人。水の自動化は、第2区画の取水口と水路でやる
+     */
+    work: 0.45,
+    hold: 6,
+  },
+  {
+    id: "seed-1",
+    pos: { x: 574, y: 150 },
+    price: 0,
+    area: 0,
+    item: "seed",
+    art: "seedhut",
+    label: "種置き場",
+    work: 0.9,
+    hold: 6,
+  },
+  {
+    id: "field-1",
+    pos: { x: 344, y: 300 },
+    price: 0,
+    area: 0,
+    item: "grain",
+    takes: "water",
+    fuel: "seed",
+    art: "field",
+    label: "畑",
+    work: 1.2,
+  },
+  {
+    id: "field-2",
+    pos: { x: 494, y: 300 },
+    price: 150,
+    area: 0,
+    item: "grain",
+    takes: "water",
+    fuel: "seed",
+    art: "field",
+    label: "2面目の畑",
+    work: 1.2,
+    reveal: 5,
+  },
+
+  /* --- area-1 第2区画「水路の村」 --------------------------------------
+   *
+   * 取水口は、水くみ場とちがって人が要らない。
+   * そこから畑へ水路（直結の設備）を引くと、水の手運びが消えていく。
+   */
+  { id: "intake-1", pos: { x: 860, y: 150 }, price: 1200, area: 1, item: "water", art: "intake", label: "取水口", work: 0.5, hold: 6, reveal: 22 },
+  { id: "field-3", pos: { x: 1020, y: 300 }, price: 1000, area: 1, item: "grain", takes: "water", fuel: "seed", art: "field", label: "3面目の畑", work: 1.2, reveal: 23 },
+  { id: "seed-2", pos: { x: 1480, y: 150 }, price: 900, area: 1, item: "seed", art: "seedhut", label: "村の種置き場", work: 0.9, hold: 6, reveal: 24 },
+  { id: "field-4", pos: { x: 1180, y: 300 }, price: 1800, area: 1, item: "grain", takes: "water", fuel: "seed", art: "field", label: "4面目の畑", work: 1.2, reveal: 25 },
+  { id: "field-5", pos: { x: 1340, y: 300 }, price: 3400, area: 1, item: "grain", takes: "water", fuel: "seed", art: "field", label: "5面目の畑", work: 1.2, reveal: 33 },
+
+  /* --- area-2 第3区画「土と火の工房」 ----------------------------------
+   *
+   *   粘土穴 ─(粘土)─▶ 窯 ─(土器)─▶ 土器の市
+   *   森 ─(丸太)─▶ 薪割り場 ─(薪)─┬▶ 窯
+   *                                 └▶ パン窯
+   *   畑の穀物 ─▶ 石臼 ─(粉)─▶ パン窯 ─(パン)─▶ パンの席
+   *
+   * 穀物をそのまま配るより、粉にしてパンに焼いたほうがずっと高く売れる。
+   */
+  { id: "clay-1", pos: { x: 1700, y: 240 }, price: 3000, area: 2, item: "clay", art: "clay", label: "粘土穴", manual: true, work: 0.8, hold: 6, reveal: 43 },
+  { id: "kiln-1", pos: { x: 1860, y: 240 }, price: 6000, area: 2, item: "pot", takes: "clay", fuel: "wood", art: "kiln", label: "窯", work: 1.4, reveal: 45 },
+  { id: "mill-1", pos: { x: 2020, y: 240 }, price: 4000, area: 2, item: "flour", takes: "grain", art: "mill", label: "石臼", manual: true, work: 0.6, reveal: 47 },
+  { id: "oven-1", pos: { x: 2180, y: 240 }, price: 8000, area: 2, item: "bread", takes: "flour", fuel: "wood", art: "oven", label: "パン窯", work: 1.0, reveal: 49 },
+  { id: "forest-1", pos: { x: 2380, y: 360 }, price: 1700, area: 2, item: "log", art: "forest", label: "川辺の林", zone: { x0: 2250, y0: 90, x1: 2500, y1: 320 }, hold: 6, reveal: 41 },
+  { id: "split-1", pos: { x: 2320, y: 450 }, price: 1900, area: 2, item: "wood", takes: "log", art: "split", label: "薪割り場", manual: true, work: 0.5, reveal: 42 },
+
+  /* --- area-3 第4区画「牧草地」 ----------------------------------------
+   *
+   *   牧草地 ─(草)─┬▶ ヤギの囲い（水も要る）─(乳)─▶ 牧場の席
+   *                 └▶ 羊の囲い（水も要る）─(毛)─▶ 毛織の市
+   *
+   * 家畜は草と水を食べる。水路を家畜まで引くかどうかが、この区画の判断になる。
+   */
+  { id: "graze-1", pos: { x: 2700, y: 380 }, price: 30000, area: 3, item: "grass", art: "pasture", label: "牧草地", manual: true, work: 0.5, hold: 8, reveal: 61 },
+  { id: "goat-1", pos: { x: 2960, y: 230 }, price: 60000, area: 3, item: "milk", takes: "grass", fuel: "water", art: "pen", label: "ヤギの囲い", work: 1.2, reveal: 63 },
+  { id: "sheep-1", pos: { x: 3140, y: 230 }, price: 90000, area: 3, item: "wool", takes: "grass", fuel: "water", art: "pen", label: "羊の囲い", work: 1.6, reveal: 66 },
+
+  /* --- area-4 第5区画「大河の市場」 ------------------------------------
+   *
+   * 川の瀬で魚を取り、干して交易品にする。
+   * 船着き場と中央市場は建築予定地。材料を運びこむと建ちあがる。
+   */
+  { id: "fish-1", pos: { x: 3600, y: 380 }, price: 120000, area: 4, item: "fish", art: "fish", label: "川の瀬", manual: true, hold: 6, zone: { x0: 3470, y0: 100, x1: 3760, y1: 340 }, reveal: 81 },
+  { id: "dry-1", pos: { x: 3840, y: 230 }, price: 200000, area: 4, item: "dried", takes: "fish", fuel: "wood", art: "smoke", label: "干し場", work: 1.2, reveal: 83 },
+  {
+    id: "build-dock", pos: { x: 3560, y: 620 }, price: 90000, area: 4,
+    art: "raft", label: "船着き場", needs: { log: 8, wood: 6 },
+    gives: { note: "船着き場ができた。川から荷が上がるようになった" }, reveal: 84,
+  },
+  {
+    id: "build-market", pos: { x: 3900, y: 620 }, price: 260000, area: 4,
+    art: "hall", label: "中央市場", needs: { clay: 10, pot: 6 },
+    gives: { note: "中央市場が開いた。よその集落の船が寄りはじめる" },
+    unlockAfter: "built-build-dock", reveal: 89,
+  },
+
+  /* --- area-5 第6区画「川の町」 ----------------------------------------
+   *
+   * 生産はもう回っている。ここは「運びこんで建てる」区画。
+   * 最後の大型交易船が建つと、上流から使者が来てステージが終わる。
+   */
+  // 町の材木。ここが無いと、最後の建築が遠くの林からの丸太待ちになる
+  { id: "forest-2", pos: { x: 5100, y: 330 }, price: 300000, area: 5, item: "log", art: "forest", label: "町はずれの林", zone: { x0: 4960, y0: 90, x1: 5200, y1: 300 }, hold: 6, reveal: 100.6 },
+  { id: "split-2", pos: { x: 5040, y: 420 }, price: 340000, area: 5, item: "wood", takes: "log", art: "split", label: "町の薪割り場", manual: true, work: 0.5, reveal: 100.8 },
+  {
+    id: "build-granary", pos: { x: 4420, y: 600 }, price: 400000, area: 5,
+    art: "bighut", label: "大型穀物庫", needs: { wood: 10, clay: 12 },
+    gives: { note: "大型穀物庫が建った。町の蓄えができた" }, reveal: 101,
+  },
+  {
+    id: "build-well", pos: { x: 4620, y: 600 }, price: 600000, area: 5,
+    art: "well", label: "公共井戸", needs: { clay: 8, pot: 6 },
+    gives: { note: "公共井戸ができた。町のどこでも水が汲める" },
+    unlockAfter: "built-build-granary", reveal: 103,
+  },
+  {
+    id: "build-temple", pos: { x: 4840, y: 600 }, price: 1400000, area: 5,
+    art: "hall", label: "記念塔", needs: { pot: 12, clay: 14 },
+    gives: { note: "記念塔が立った。遠くの集落からも町が見える" },
+    unlockAfter: "built-build-well", reveal: 106,
+  },
+  {
+    id: "build-ship", pos: { x: 5060, y: 600 }, price: 2600000, area: 5,
+    art: "bigraft", label: "大型交易船", needs: { log: 14, wood: 12, pot: 10 },
+    // これが建つと、上流から使者が来てステージが終わる
+    gives: { sail: true, note: "大型交易船ができた。代表団が上流へ発つ" },
+    // 町が完成する（人80人・畑5面・穀物庫・井戸・記念塔）まで、まだ出られない
+    unlockAfter: "mark-town-done", reveal: 110,
+  },
+];
+
+const taigaSeats: SeatSpec[] = [
+  // 第1区画: 川辺の食事場。穀物を渡すと粒が落ちる
+  ...benchRow(0, 424, "grain", 1, "川辺の食事場", [
+    { x: 120, price: 0 },
+    { x: 248, price: 76, reveal: 4 },
+    { x: 376, price: 90, unlockAfter: "seat-0-2", reveal: 7 },
+  ]),
+  // 第2区画: 水路の村の食事場
+  ...benchRow(1, 420, "grain", 1.6, "村の食事場", [
+    { x: 790, price: 1400, reveal: 27 },
+    { x: 910, price: 3400, reveal: 34 },
+    { x: 1030, price: 8000, reveal: 37 },
+  ]),
+  // 第3区画: 焼きたてのパンと、土器の市
+  ...benchRow(2, 420, "bread", 3.4, "パンの席", [
+    { x: 1760, price: 24000, reveal: 51 },
+    { x: 1900, price: 52000, reveal: 54 },
+  ]),
+  ...benchRow(2, 420, "pot", 4.2, "土器の市", [
+    { x: 2100, price: 60000, reveal: 56 },
+    { x: 2240, price: 110000, reveal: 58 },
+  ], "t"),
+  // 第4区画: 乳と毛織
+  ...benchRow(3, 400, "milk", 6, "牧場の席", [
+    { x: 2620, price: 150000, reveal: 68 },
+    { x: 2760, price: 280000, reveal: 70 },
+  ]),
+  ...benchRow(3, 400, "wool", 8, "毛織の市", [
+    { x: 3240, price: 420000, reveal: 72 },
+    { x: 3380, price: 700000, reveal: 74 },
+  ], "t"),
+  // 第5区画: 干し魚の市と、よその集落との交易
+  ...benchRow(4, 400, "dried", 14, "川の市", [
+    { x: 3980, price: 900000, reveal: 86 },
+    { x: 4120, price: 1500000, reveal: 88 },
+  ]),
+  ...benchRow(4, 400, "pot", 18, "交易の席", [
+    { x: 4200, price: 2600000, unlockAfter: "built-build-market", reveal: 91 },
+    { x: 4300, price: 4200000, reveal: 93 },
+  ], "t"),
+  // 第6区画: 町の食卓
+  ...benchRow(5, 400, "bread", 26, "町の食卓", [
+    { x: 4420, price: 5000000, reveal: 102 },
+    { x: 4560, price: 9000000, reveal: 104 },
+  ]),
+  ...benchRow(5, 400, "wool", 34, "港の市", [
+    { x: 4980, price: 15000000, reveal: 107 },
+    { x: 5120, price: 26000000, reveal: 109 },
+  ], "t"),
+];
+
+/**
+ * 雇う順。
+ * 5食ぶんを自分の手でやりきってから、水 → 種 → 畑 → 運び …と
+ * 「いま覚えた仕事の次の改善」だけを出していく。
+ */
+const taigaHires: HireSpec[] = [
+  /* --- area-0 --- */
+  /*
+   * 最初に見えている枠は「水がめ・農民・はこび手・2席目・2面目の畑」の5つ。
+   * どれも遊びはじめから見えていて、いちばん安いものは3回ぶん運べば買える。
+   * 何のために稼ぐのかが、最初の1分で分かるようにするため
+   */
+  { id: "farmer-1", kind: "cook", pos: { x: 344, y: 366 }, price: 48, label: "農民", stoveId: "field-1", area: 0, reveal: 2 },
+  { id: "waiter-1", kind: "waiter", pos: { x: 268, y: 230 }, price: 64, label: "はこび手", area: 0, reveal: 3 },
+  { id: "waiter-2", kind: "waiter", pos: { x: 420, y: 230 }, price: 96, label: "はこび手", area: 0, unlockAfter: "seat-0-2", reveal: 6 },
+  { id: "farmer-2", kind: "cook", pos: { x: 494, y: 366 }, price: 240, label: "農民", stoveId: "field-2", area: 0, unlockAfter: "field-2", reveal: 8 },
+  { id: "collector-1", kind: "collector", pos: { x: 574, y: 300 }, price: 140, label: "拾い手", area: 0, reveal: 9 },
+  { id: "robot-1", kind: "robot", pos: { x: 574, y: 366 }, price: 320, label: "荷車", area: 0, unlockAfter: "collector-1", reveal: 11 },
+
+  /* --- area-1 水路の村 --- */
+  { id: "gateman-1", kind: "cook", pos: { x: 790, y: 210 }, price: 2800, label: "水門番", stoveId: "intake-1", area: 1, reveal: 26.5 },
+  { id: "farmer-3", kind: "cook", pos: { x: 1020, y: 366 }, price: 2000, label: "農民", stoveId: "field-3", area: 1, reveal: 23.5 },
+  { id: "sower-2", kind: "cook", pos: { x: 1420, y: 210 }, price: 1800, label: "種まき", stoveId: "seed-2", area: 1, reveal: 24.5 },
+  { id: "farmer-4", kind: "cook", pos: { x: 1180, y: 366 }, price: 2400, label: "農民", stoveId: "field-4", area: 1, reveal: 25.5 },
+  { id: "waiter-3", kind: "waiter", pos: { x: 900, y: 300 }, price: 3200, label: "はこび手", area: 1, reveal: 29 },
+  { id: "farmer-5", kind: "cook", pos: { x: 1340, y: 366 }, price: 3000, label: "農民", stoveId: "field-5", area: 1, reveal: 33.5 },
+  { id: "robot-2", kind: "robot", pos: { x: 960, y: 300 }, price: 26000, label: "荷車", area: 1, reveal: 39 },
+
+  /* --- area-2 土と火の工房 --- */
+  { id: "logger-1", kind: "logger", pos: { x: 2440, y: 420 }, price: 12000, label: "木こり", stoveId: "forest-1", area: 2, reveal: 41.5 },
+  { id: "splitter-1", kind: "splitter", pos: { x: 2390, y: 480 }, price: 14000, label: "薪割り", stoveId: "split-1", area: 2, reveal: 42.5 },
+  { id: "digger-1", kind: "splitter", pos: { x: 1700, y: 320 }, price: 16000, label: "粘土掘り", stoveId: "clay-1", area: 2, reveal: 43.5 },
+  { id: "potter-1", kind: "cook", pos: { x: 1860, y: 320 }, price: 20000, label: "陶工", stoveId: "kiln-1", area: 2, reveal: 45.5 },
+  { id: "miller-1", kind: "splitter", pos: { x: 2020, y: 320 }, price: 18000, label: "製粉係", stoveId: "mill-1", area: 2, reveal: 47.5 },
+  { id: "baker-1", kind: "cook", pos: { x: 2180, y: 320 }, price: 24000, label: "パン職人", stoveId: "oven-1", area: 2, reveal: 49.5 },
+  { id: "waiter-4", kind: "waiter", pos: { x: 1980, y: 480 }, price: 24000, label: "はこび手", area: 2, reveal: 52 },
+  { id: "robot-3", kind: "robot", pos: { x: 2060, y: 480 }, price: 60000, label: "荷車", area: 2, reveal: 57 },
+
+  /* --- area-3 牧草地 --- */
+  { id: "mower-1", kind: "splitter", pos: { x: 2700, y: 450 }, price: 40000, label: "草刈り", stoveId: "graze-1", area: 3, reveal: 61.5 },
+  { id: "herder-1", kind: "cook", pos: { x: 2960, y: 320 }, price: 70000, label: "牧畜係", stoveId: "goat-1", area: 3, reveal: 63.5 },
+  { id: "shearer-1", kind: "cook", pos: { x: 3140, y: 320 }, price: 110000, label: "毛刈り係", stoveId: "sheep-1", area: 3, reveal: 66.5 },
+  { id: "waiter-5", kind: "waiter", pos: { x: 2860, y: 450 }, price: 90000, label: "はこび手", area: 3, reveal: 69 },
+  { id: "robot-4", kind: "robot", pos: { x: 2920, y: 450 }, price: 220000, label: "荷車", area: 3, reveal: 73 },
+
+  /* --- area-4 大河の市場 --- */
+  { id: "fisher-1", kind: "splitter", pos: { x: 3600, y: 450 }, price: 150000, label: "漁師", stoveId: "fish-1", area: 4, reveal: 81.5 },
+  { id: "drier-1", kind: "cook", pos: { x: 3840, y: 320 }, price: 200000, label: "干し場番", stoveId: "dry-1", area: 4, reveal: 83.5 },
+  { id: "builder-1", kind: "builder", pos: { x: 3480, y: 540 }, price: 260000, label: "建築係", area: 4, reveal: 84.5 },
+  { id: "waiter-6", kind: "waiter", pos: { x: 3700, y: 480 }, price: 300000, label: "はこび手", area: 4, reveal: 87 },
+  { id: "trader-1", kind: "master", pos: { x: 4020, y: 480 }, price: 900000, label: "商人", area: 4, unlockAfter: "built-build-market", reveal: 90 },
+  // 川の物流。船着き場ができてはじめて、船が出せる
+  { id: "boat-1", kind: "boat", pos: { x: 3620, y: 540 }, price: 700000, label: "運搬船", area: 4, unlockAfter: "built-build-dock", reveal: 91.5 },
+  { id: "robot-5", kind: "robot", pos: { x: 3760, y: 480 }, price: 500000, label: "荷車", area: 4, reveal: 92 },
+
+  /* --- area-5 川の町 --- */
+  { id: "builder-2", kind: "builder", pos: { x: 4380, y: 520 }, price: 1200000, label: "建築係", area: 5, reveal: 100.5 },
+  { id: "logger-2", kind: "logger", pos: { x: 5160, y: 380 }, price: 400000, label: "木こり", stoveId: "forest-2", area: 5, reveal: 100.7 },
+  { id: "splitter-2", kind: "splitter", pos: { x: 4980, y: 470 }, price: 440000, label: "薪割り", stoveId: "split-2", area: 5, reveal: 100.9 },
+  { id: "waiter-7", kind: "waiter", pos: { x: 4700, y: 480 }, price: 1500000, label: "はこび手", area: 5, reveal: 105 },
+  { id: "robot-6", kind: "robot", pos: { x: 4780, y: 480 }, price: 2400000, label: "荷車", area: 5, reveal: 108 },
+  { id: "boat-2", kind: "boat", pos: { x: 4620, y: 420 }, price: 2200000, label: "交易船", area: 5, reveal: 106.5 },
+  { id: "elder-1", kind: "master", pos: { x: 4880, y: 480 }, price: 6000000, label: "町長", area: 5, unlockAfter: "built-build-temple", reveal: 111 },
+];
+
+const taigaEquipment: EquipSpec[] = [
+  /* --- 第1区画: 手運びを減らす --- */
+  { id: "canal-0", name: "はじまりの用水路", detail: "川の水を、畑へ直接おくる", pos: { x: 232, y: 226 }, price: 6000, area: 0, link: { from: "river-1", to: "field-1" }, unlockAfter: "robot-1", reveal: 12 },
+  { id: "seedway-0", name: "種の道", detail: "種を、畑へ直接おくる", pos: { x: 456, y: 226 }, price: 9000, area: 0, link: { from: "seed-1", to: "field-1" }, unlockAfter: "equip-canal-0", reveal: 13 },
+  { id: "noodle", name: "石の農具", detail: "すべての作業場が +30%速くなる", pos: { x: 660, y: 300 }, price: 24000, area: 0, unlockAfter: "equip-seedway-0", reveal: 15 },
+  { id: "fridge", name: "編みかごの棚", detail: "受け口・出し口に積める数 +4", pos: { x: 660, y: 220 }, price: 45000, area: 0, unlockAfter: "equip-noodle", reveal: 16 },
+  { id: "ticket", name: "粒の壺", detail: "粒が自動でサイフに入る・拾い手は運びへ", pos: { x: 250, y: 0 }, price: 30000, area: 0, outside: true, unlockAfter: "equip-noodle", reveal: 17 },
+  { id: "flag", name: "川辺ののろし", detail: "遠くの人を呼ぶ。集まりが 1.25倍", pos: { x: 120, y: 0 }, price: 1200, area: 0, outside: true, row: 1, draw: 1.25, unlockAfter: "collector-1", reveal: 18 },
+  { id: "sign", name: "物見やぐら", detail: "人が 1.5倍のはやさで来る", pos: { x: 380, y: 0 }, price: 60000, area: 0, outside: true, unlockAfter: "equip-ticket", reveal: 19 },
+
+  /* --- 第2区画: 水路をのばす。ここがこのステージの本題 --- */
+  { id: "canal-1", name: "主水路", detail: "取水口の水を、3面目の畑へ流す", pos: { x: 940, y: 220 }, price: 3000, area: 1, link: { from: "intake-1", to: "field-3" }, priority: "gate-up", unlockAfter: "field-3", reveal: 26 },
+  { id: "pond-1", name: "貯水池", detail: "取水口にためられる水 +6", pos: { x: 800, y: 230 }, price: 2400, area: 1, capacity: { stove: "intake-1", plus: 6 }, unlockAfter: "intake-1", reveal: 28 },
+  { id: "canal-2", name: "分岐水路", detail: "取水口の水を、4面目の畑へも流す", pos: { x: 1100, y: 220 }, price: 6000, area: 1, link: { from: "intake-1", to: "field-4" }, unlockAfter: "equip-canal-1", reveal: 30 },
+  { id: "seedway-1", name: "村の種の道", detail: "種を、3面目の畑へ直接おくる", pos: { x: 1400, y: 300 }, price: 4000, area: 1, link: { from: "seed-2", to: "field-3" }, unlockAfter: "seed-2", reveal: 31 },
+  { id: "canal-3", name: "下流の水路", detail: "取水口の水を、5面目の畑へも流す", pos: { x: 1260, y: 220 }, price: 12000, area: 1, link: { from: "intake-1", to: "field-5" }, priority: "gate-down", unlockAfter: "equip-canal-2", reveal: 36 },
+  { id: "lantern", name: "たいこ", detail: "音で人を集める。集まりが 1.4倍", pos: { x: 470, y: 0 }, price: 90000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-1", reveal: 36.5 },
+  { id: "canal-home", name: "川辺への水路", detail: "取水口の水を、はじまりの畑へも流す", pos: { x: 740, y: 220 }, price: 17000, area: 1, link: { from: "intake-1", to: "field-2" }, unlockAfter: "equip-canal-3", reveal: 38 },
+  /*
+   * 水門と、増水への備え（仕様書 §3.5 / §6.4）。
+   * 取水口の水はみんなで分け合うので、水門を据えた水路が先に飲む。
+   * 土手は雨季の増水から畑を守り、排水路は水が引くのを早める
+   */
+  { id: "gate-up", name: "上流の水門", detail: "3面目の畑へ、水を先に流す", pos: { x: 1020, y: 220 }, price: 9000, area: 1, unlockAfter: "equip-canal-1", reveal: 30.5 },
+  { id: "levee", name: "土手", detail: "川があふれても、畑と足もとを守る", pos: { x: 880, y: 380 }, price: 14000, area: 1, unlockAfter: "area-1", reveal: 32 },
+  { id: "drain", name: "排水路", detail: "あふれた水が、はやく引く", pos: { x: 1480, y: 380 }, price: 26000, area: 1, unlockAfter: "equip-levee", reveal: 35 },
+  { id: "gate-down", name: "下流の水門", detail: "5面目の畑へ、水を先に流す", pos: { x: 1340, y: 220 }, price: 30000, area: 1, unlockAfter: "equip-canal-3", reveal: 37.5 },
+
+  /* --- 第3区画: 工房をつなぐ --- */
+  { id: "chute-log", name: "丸太ころがし", detail: "丸太を、薪割り場へ直接おくる", pos: { x: 2400, y: 480 }, price: 9000, area: 2, link: { from: "forest-1", to: "split-1" }, unlockAfter: "splitter-1", reveal: 44 },
+  { id: "chute-clay", name: "粘土のとい", detail: "粘土を、窯へ直接おくる", pos: { x: 1780, y: 320 }, price: 20000, area: 2, link: { from: "clay-1", to: "kiln-1" }, unlockAfter: "potter-1", reveal: 46 },
+  { id: "chute-wood", name: "薪のとい", detail: "薪を、パン窯へ直接おくる", pos: { x: 2260, y: 400 }, price: 14000, area: 2, link: { from: "split-1", to: "oven-1" }, unlockAfter: "baker-1", reveal: 48 },
+  { id: "chute-flour", name: "粉のとい", detail: "粉を、パン窯へ直接おくる", pos: { x: 2100, y: 320 }, price: 30000, area: 2, link: { from: "mill-1", to: "oven-1" }, unlockAfter: "equip-chute-wood", reveal: 50 },
+  { id: "kiln-rack", name: "土器の乾燥棚", detail: "窯に積める数 +4", pos: { x: 1940, y: 320 }, price: 40000, area: 2, capacity: { stove: "kiln-1", plus: 4 }, unlockAfter: "equip-chute-clay", reveal: 53 },
+  { id: "queue", name: "かがり火", detail: "夜通し明るい。集まりが 1.6倍", pos: { x: 590, y: 0 }, price: 240000, area: 0, outside: true, row: 1, draw: 1.6, unlockAfter: "area-2", reveal: 59 },
+
+  /* --- 第4区画: 家畜へ水を引く --- */
+  { id: "canal-pen", name: "家畜用水路", detail: "取水口の水を、ヤギの囲いへ流す", pos: { x: 2860, y: 300 }, price: 120000, area: 3, link: { from: "intake-1", to: "goat-1" }, unlockAfter: "goat-1", reveal: 64 },
+  { id: "canal-pen2", name: "羊への水路", detail: "取水口の水を、羊の囲いへ流す", pos: { x: 3240, y: 300 }, price: 200000, area: 3, link: { from: "intake-1", to: "sheep-1" }, unlockAfter: "sheep-1", reveal: 67 },
+  { id: "grass-way", name: "草の運び道", detail: "草を、ヤギの囲いへ直接おくる", pos: { x: 2800, y: 380 }, price: 260000, area: 3, link: { from: "graze-1", to: "goat-1" }, unlockAfter: "equip-canal-pen", reveal: 71 },
+  { id: "lookout", name: "見張り小屋", detail: "遠くの人まで見える。集まりが 1.5倍", pos: { x: 3340, y: 420 }, price: 400000, area: 3, draw: 1.5, reveal: 75 },
+
+  /* --- 第5区画: 川と市場 --- */
+  { id: "net-1", name: "網", detail: "川の瀬でとれる魚が増える", pos: { x: 3480, y: 420 }, price: 300000, area: 4, capacity: { stove: "fish-1", plus: 6 }, unlockAfter: "fisher-1", reveal: 85 },
+  { id: "road-1", name: "市場の道", detail: "市場じゅうの足が速くなる", pos: { x: 3900, y: 460 }, price: 600000, area: 4, road: { from: { x: 3460, y: 460 }, to: { x: 4300, y: 460 } }, reveal: 94 },
+
+  /* --- 第6区画: 町の道 --- */
+  { id: "road-2", name: "町の道", detail: "町と市場がつながる。さらに足が速くなる", pos: { x: 4400, y: 460 }, price: 2000000, area: 5, road: { from: { x: 4300, y: 460 }, to: { x: 5160, y: 460 } }, unlockAfter: "equip-road-1", reveal: 101.5 },
+];
+
+const taigaUpgrades: Upgrade[] = [
+  // 水がめは、遊びはじめの「いちばん近い目標」。3回ぶん運べば買える
+  { id: "carry", name: "水がめ", detail: (n) => `${3 + n}こまで持てる・はこび手も 品種ごとに ${3 + Math.floor(n / 2)}こ`, pos: { x: 60, y: 340 }, basePrice: 24, growth: 1.7, max: 9, reveal: 1 },
+  { id: "cook", name: "石の鍬", detail: (n) => `作る速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 60, y: 400 }, basePrice: 150, growth: 1.7, max: 14, unlockAfter: "farmer-1", reveal: 7.5 },
+  { id: "speed", name: "わらじ", detail: (n) => `足の速さ +${n * 10}%・みんなも +${n * 5}%`, pos: { x: 60, y: 460 }, basePrice: 110, growth: 1.65, max: 12, unlockAfter: "collector-1", reveal: 10 },
+  { id: "price", name: "実りの選別", detail: (n) => `ひとつ ${Math.round(8 * Math.pow(1.4, n))}粒`, pos: { x: 60, y: 520 }, basePrice: 600, growth: 1.75, max: 20, unlockAfter: "robot-1", reveal: 11.5 },
+];
+
 /* ==================== 登録 ==================== */
 
 export const stageDefs: Record<StageId, StageDef> = {
@@ -1451,6 +1863,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         nightman: "夜番",
         explorer: "探索者",
         runner: "仕込み係",
+        boat: "運搬船",
       },
       objective: {
         pickup: "厨房で丼を受け取ろう",
@@ -1506,6 +1919,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         nightman: "夜番",
         explorer: "探索者",
         runner: "仕込み係",
+        boat: "運搬船",
       },
       objective: {
         pickup: "券売所でチケットを受け取ろう",
@@ -1589,6 +2003,7 @@ export const stageDefs: Record<StageId, StageDef> = {
         nightman: "夜番",
         explorer: "探索者",
         runner: "仕込み係",
+        boat: "運搬船",
       },
       objective: {
         pickup: "出し口でしなものを受け取ろう",
@@ -1602,9 +2017,89 @@ export const stageDefs: Record<StageId, StageDef> = {
       outsideDetail: "のろし・たいこはこの外に置く",
     },
   },
+  taiga: {
+    id: "taiga",
+    name: "大河の文明",
+    subtitle: "川辺の畑からはじめる",
+    icon: "🌾",
+    itemIcon: "🌾",
+    frontRoom: { top: 38, bottom: 300 },
+    areas: taigaAreas,
+    stoves: taigaStoves,
+    seats: taigaSeats,
+    hires: taigaHires,
+    equipment: taigaEquipment,
+    upgrades: taigaUpgrades,
+    baseValue: 8,
+    requiresAreas: 0,
+    chain: true,
+    queue: true,
+    currency: "粒",
+    view: 400,
+    entranceX: 360,
+    startPos: { x: 344, y: 300 },
+    // 畑は 4.0秒に1こ。農民が付くと 2.0秒（作物は待つものなので、火より遅くない）
+    cookTime: 4.0,
+    cookBoost: 2.0,
+    // 次の自動化に必要な枠が、いつも5つ先まで見えているようにする
+    revealLimit: 5,
+    // ふたつずつだと、次の目標が出そろうまでが長い
+    revealBurst: 3,
+    revealLimitBy: {
+      "area-1": 6,
+      "area-2": 7,
+      "area-3": 7,
+      "area-4": 7,
+      "area-5": 7,
+    },
+    // 1こ目の収穫は「水を汲んで、畑へ入れる」だけ。種は最初からまいてある
+    startFuel: { "field-1": 2 },
+    // 川・種置き場・畑・最初の食事場だけ見えている
+    start: ["river-1", "seed-1", "field-1", "seat-0-1"],
+    labels: {
+      item: "しなもの",
+      producer: "作業場",
+      tray: "食事場",
+      guest: "住民",
+      using: "食べている",
+      staff: {
+        waiter: "はこび手",
+        robot: "荷車",
+        collector: "拾い手",
+        cook: "担当の人",
+        master: "町長",
+        busser: "片づけ手",
+        stocker: "並べ手",
+        server: "はこび手",
+        seller: "受付",
+        gatekeeper: "門番",
+        hunter: "狩人",
+        logger: "木こり",
+        splitter: "係の人",
+        butcher: "解体係",
+        builder: "建築係",
+        keeper: "倉庫番",
+        nightman: "夜番",
+        explorer: "船頭",
+        boat: "運搬船",
+        runner: "仕込み係",
+      },
+      objective: {
+        pickup: "出し口でしなものを受け取ろう",
+        serve: "次の作業場か、住民まで運ぼう",
+        coin: "落ちた粒を拾おう",
+        waitItem: "できあがるまで待とう",
+        waitGuest: "住民を待っています",
+      },
+      auto: "自動送り",
+      outside: "川原",
+      outsideDetail: "のろし・たいこはこの外に置く",
+    },
+  },
 };
+
 
 export const stageList: StageDef[] = [stageDefs.ramen, stageDefs.park];
 
 /** ワーキングプラネットの並び（トップページで別のかたまりに出す） */
-export const planetStages: StageDef[] = [stageDefs.fire];
+export const planetStages: StageDef[] = [stageDefs.fire, stageDefs.taiga];

@@ -38,6 +38,7 @@ import {
   heldAt,
   holdCap,
   huntZone,
+  RIVER_LANE,
   seatById,
   stoveById,
   type ItemKind,
@@ -92,6 +93,26 @@ import {
   beastZone,
 } from "@/lib/fire";
 import {
+  SEASON_TIME,
+  fertile,
+  flooding as taigaFlooding,
+  riverRise,
+  fieldCount,
+  flooding,
+  season,
+  seasonLeft,
+  seasonMark,
+  seasonName,
+  taigaLive,
+  townPop,
+  handCount,
+  handsLeft,
+  jobsOpen,
+  type Job,
+  TOWN_BUILDS,
+  TOWN_POP,
+} from "@/lib/taiga";
+import {
   catchUp,
   equippedSkin,
   equippedStars,
@@ -117,6 +138,14 @@ export type Sample = {
   muted: boolean;
   bgmMuted: boolean;
   offline: OfflineReport | null;
+  /** 大河の文明の、人手の割りふり（それ以外のステージでは null） */
+  crew: {
+    open: boolean;
+    hands: number;
+    left: number;
+    pop: number;
+    jobs: Record<Job, number>;
+  } | null;
 };
 
 type Props = {
@@ -1511,6 +1540,204 @@ const chainItem = (
     return;
   }
 
+  /* ---------- 大河の文明 ---------- */
+
+  if (item === "water") {
+    // 水: 水を張った土の器。ふちで水面がゆれる
+    ctx.fillStyle = "#a8724a";
+    ctx.beginPath();
+    ctx.moveTo(-7, -4);
+    ctx.quadraticCurveTo(-8, 6, 0, 7);
+    ctx.quadraticCurveTo(8, 6, 7, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#3f9bb0";
+    ctx.beginPath();
+    ctx.ellipse(0, -4, 7, 2.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(220,245,255,0.6)";
+    ctx.beginPath();
+    ctx.ellipse(-2.4, -4.4, 2.6, 1.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "seed") {
+    // 種: 小さな粒が3つ、麻の袋に入っている
+    ctx.fillStyle = "#c2ad84";
+    ctx.beginPath();
+    ctx.ellipse(0, 1.5, 6.5, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#8a7350";
+    roundRect(ctx, -3, -6.5, 6, 4, 2);
+    ctx.fill();
+    ctx.fillStyle = "#e0c268";
+    for (const [dx, dy] of [[-2.4, 2], [0.6, 3.4], [2.6, 1]]) {
+      ctx.beginPath();
+      ctx.ellipse(dx, dy, 1.5, 2.1, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "grain") {
+    // 穀物: 刈り取った穂の束。縄でしばってある
+    ctx.strokeStyle = "#c9a95e";
+    ctx.lineWidth = 1.4;
+    for (const dx of [-3.5, 0, 3.5]) {
+      ctx.beginPath();
+      ctx.moveTo(dx * 0.6, 7);
+      ctx.lineTo(dx, -7);
+      ctx.stroke();
+      ctx.fillStyle = "#e8c86a";
+      ctx.beginPath();
+      ctx.ellipse(dx, -6.5, 2, 4, dx * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = "#8a6a44";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-4.5, 2);
+    ctx.lineTo(4.5, 2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "flour") {
+    // 粉: 白い粉を盛った浅い器
+    ctx.fillStyle = "#9a8f7c";
+    ctx.beginPath();
+    ctx.ellipse(0, 3, 8, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f2ecdc";
+    ctx.beginPath();
+    ctx.moveTo(-7, 2.5);
+    ctx.quadraticCurveTo(0, -7, 7, 2.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.beginPath();
+    ctx.ellipse(-2, -0.5, 2.4, 1.4, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "bread") {
+    // パン: 焼き目の入った丸パン。切りこみが2本
+    ctx.fillStyle = "#c98a45";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 8, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e0a95c";
+    ctx.beginPath();
+    ctx.ellipse(-1, -1.4, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#a86a32";
+    ctx.lineWidth = 1.2;
+    for (const dx of [-2.4, 1.6]) {
+      ctx.beginPath();
+      ctx.moveTo(dx - 1.6, -3);
+      ctx.lineTo(dx + 1.6, 1.4);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "grass") {
+    // 草: 刈った草の束
+    for (const [i, dx] of [-4, 0, 4].entries()) {
+      ctx.strokeStyle = i === 1 ? "#8fc464" : "#6f9c46";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(dx * 0.4, 7);
+      ctx.quadraticCurveTo(dx, 0, dx * 1.5, -7);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "#8a6a44";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-4, 3);
+    ctx.lineTo(4, 3);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "milk") {
+    // 乳: 白い乳の入った小さな壺
+    ctx.fillStyle = "#b98a5a";
+    ctx.beginPath();
+    ctx.moveTo(-6, -3);
+    ctx.quadraticCurveTo(-8, 7, 0, 7.5);
+    ctx.quadraticCurveTo(8, 7, 6, -3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#f4f1e8";
+    ctx.beginPath();
+    ctx.ellipse(0, -3, 6, 2.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#8a5a3c";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(6, -1);
+    ctx.quadraticCurveTo(9.5, 1, 6, 4);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "wool") {
+    // 毛: 刈った羊毛のかたまり
+    ctx.fillStyle = "#efe9dc";
+    for (const [dx, dy, r] of [[-3.4, 0.5, 4.6], [3, -1, 4.2], [0, 2.6, 4]]) {
+      ctx.beginPath();
+      ctx.arc(dx, dy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = "rgba(150,140,124,0.7)";
+    ctx.lineWidth = 0.9;
+    for (const [dx, dy] of [[-3.4, 0.5], [3, -1]]) {
+      ctx.beginPath();
+      ctx.arc(dx, dy, 2.4, 0.4, 3.4);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "dried") {
+    // 干し魚: 縄に2尾つるした干物
+    ctx.strokeStyle = "#8a6a44";
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(-8, -5);
+    ctx.lineTo(8, -5);
+    ctx.stroke();
+    for (const dx of [-3.5, 3.5]) {
+      ctx.fillStyle = "#c2a17a";
+      ctx.beginPath();
+      ctx.ellipse(dx, 1, 3, 5.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(dx, 6);
+      ctx.lineTo(dx - 2.6, 9);
+      ctx.lineTo(dx + 2.6, 9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#6f5a45";
+      ctx.beginPath();
+      ctx.arc(dx, -2.4, 0.9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
   // 知らない品は、まるい包みで出しておく
   ctx.fillStyle = "#b98a4a";
   ctx.beginPath();
@@ -2546,6 +2773,434 @@ const drawSettlement = (
       ctx.beginPath();
       ctx.arc(x + Math.sin(t * 7 + i) * 16, y - 30 - t * 46, 2.2 - t, 0, Math.PI * 2);
       ctx.fill();
+    }
+    return true;
+  }
+
+  /* ================= 大河の文明 ================= */
+
+  /* --- 水くみ場: 川の水ぎわ。水面が流れ、岸に水がめが並ぶ --- */
+  if (art === "river" || art === "intake") {
+    const intake = art === "intake";
+    // 川そのものは、区画をまたぐ1本を先に描いてある。ここは岸まわりだけ
+
+    if (intake) {
+      // 取水口: 石で囲った切りこみ。水が水路の口へ吸いこまれていく
+      ctx.fillStyle = "#8a8272";
+      roundRect(ctx, x - 26, y - 26, 52, 22, 4);
+      ctx.fill();
+      ctx.fillStyle = "#2f7d8c";
+      roundRect(ctx, x - 18, y - 24, 36, 16, 3);
+      ctx.fill();
+      ctx.fillStyle = "rgba(220,245,255,0.5)";
+      for (let i = 0; i < 3; i += 1) {
+        const t = (time * 0.7 + i * 0.33) % 1;
+        ctx.beginPath();
+        ctx.arc(x - 12 + t * 24, y - 16 + Math.sin(t * 6) * 2, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // 石積みの水門
+      ctx.fillStyle = "#7a7264";
+      for (const ox of [-26, 26]) {
+        roundRect(ctx, x + ox - 5, y - 38, 10, 20, 2);
+        ctx.fill();
+      }
+    } else {
+      /*
+       * 水くみ場: 岸に降りる段と、水をためている大きな水がめ。
+       * 「いま水がたまっているところ」が、ひと目で分かるようにする。
+       * ―― かめの中の水位が上がる／上から水が落ちる／たまったかめが岸に並ぶ
+       */
+      ctx.fillStyle = "#7a6142";
+      for (let i = 0; i < 3; i += 1) {
+        roundRect(ctx, x - 26 + i * 4, y - 16 + i * 5, 52 - i * 8, 5, 2);
+        ctx.fill();
+      }
+      const fill = Math.max(0, Math.min(1, state.cooking[stove.id] ?? 0));
+      // 川から落ちてくる水すじ（かめは、人が立つ場所から少し左にずらす）
+      const jx = x - 20;
+      ctx.strokeStyle = "rgba(150,220,240,0.65)";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(jx - 4, y - 20);
+      ctx.quadraticCurveTo(jx - 2, y - 14, jx, y - 8);
+      ctx.stroke();
+      for (let i = 0; i < 3; i += 1) {
+        const t = (time * 1.4 + i * 0.33) % 1;
+        ctx.fillStyle = `rgba(190,235,250,${0.8 - t * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(jx + Math.sin(t * 3) * 1.5, y - 20 + t * 14, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // 水をためている大きなかめ（中の水位が上がっていく）
+      const jarY = y + 2;
+      ctx.fillStyle = "#a8724a";
+      ctx.beginPath();
+      ctx.moveTo(jx - 11, jarY - 10);
+      ctx.quadraticCurveTo(jx - 14, jarY + 8, jx, jarY + 9);
+      ctx.quadraticCurveTo(jx + 14, jarY + 8, jx + 11, jarY - 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(jx - 10, jarY - 9);
+      ctx.quadraticCurveTo(jx - 12.5, jarY + 7, jx, jarY + 8);
+      ctx.quadraticCurveTo(jx + 12.5, jarY + 7, jx + 10, jarY - 9);
+      ctx.closePath();
+      ctx.clip();
+      const level = jarY + 8 - fill * 16;
+      ctx.fillStyle = "#3f9bb0";
+      ctx.fillRect(jx - 13, level, 26, 20);
+      ctx.fillStyle = "rgba(220,245,255,0.55)";
+      ctx.fillRect(jx - 13, level, 26, 1.6);
+      ctx.restore();
+      ctx.fillStyle = "#8a5a3c";
+      roundRect(ctx, jx - 12, jarY - 12, 24, 4, 2);
+      ctx.fill();
+      // たまったぶんは、かめごと岸に並ぶ（持っていける数）
+      const ready = state.ready[stove.id] ?? 0;
+      for (let i = 0; i < Math.min(4, ready); i += 1) {
+        chainItem(ctx, "water", x + 14 + (i % 2) * 13, y + 2 - Math.floor(i / 2) * 11, 0.66, time);
+      }
+      ctx.font = SMALL;
+      ctx.fillStyle = ready > 0 ? "#7ee7a8" : "rgba(240,228,206,0.85)";
+      ctx.fillText(
+        ready > 0 ? `水 ${ready}こ・持っていける` : `水をためている ${Math.round(fill * 100)}%`,
+        x,
+        y + 22,
+      );
+      ctx.font = FONT;
+    }
+    return true;
+  }
+
+  /* --- 種置き場: 干した穂を吊るした小屋。下に種の袋 --- */
+  if (art === "seedhut") {
+    hutShape(ctx, x, y, 40, 26, "#8a7350", "#5e4a2e");
+    // 軒からつるした穂
+    for (const ox of [-12, 0, 12]) {
+      ctx.strokeStyle = "#c9a95e";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y - 26);
+      ctx.lineTo(x + ox + Math.sin(time * 1.4 + ox) * 1.5, y - 12);
+      ctx.stroke();
+      ctx.fillStyle = "#e0c268";
+      ctx.beginPath();
+      ctx.ellipse(x + ox + Math.sin(time * 1.4 + ox) * 1.5, y - 12, 2.4, 4.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 種の袋
+    ctx.fillStyle = "#c2ad84";
+    ctx.beginPath();
+    ctx.ellipse(x + 16, y - 4, 8, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#8a7350";
+    roundRect(ctx, x + 13, y - 12, 6, 4, 2);
+    ctx.fill();
+    return true;
+  }
+
+  /*
+   * 畑: このステージの主役。
+   * 水と種が入っているか、いま何分どおり育ったかが、地面と作物で分かる。
+   */
+  if (art === "field") {
+    const grow = Math.max(0, Math.min(1, state.cooking[stove.id] ?? 0));
+    const water = heldAt(state, stove.id);
+    const seed = fuelAt(state, stove.id);
+    const ready = state.ready[stove.id] ?? 0;
+    // 土。水があるうちは黒っぽく、切れると白茶けて乾く
+    const wet = water > 0;
+    ctx.fillStyle = wet ? "#4a3320" : "#7a6446";
+    roundRect(ctx, x - 40, y - 26, 80, 44, 6);
+    ctx.fill();
+    // うねの筋
+    ctx.strokeStyle = wet ? "rgba(0,0,0,0.28)" : "rgba(120,100,70,0.5)";
+    ctx.lineWidth = 2;
+    for (const oy of [-16, -4, 8]) {
+      ctx.beginPath();
+      ctx.moveTo(x - 36, y + oy);
+      ctx.lineTo(x + 36, y + oy);
+      ctx.stroke();
+    }
+    // 作物。芽 → 苗 → 穂と、育ちに合わせて背が伸びて色が変わる
+    const stalks = 7;
+    for (let i = 0; i < stalks; i += 1) {
+      const sx = x - 30 + i * 10;
+      const base = y + 10 - (i % 3) * 12;
+      const h = 4 + grow * 22;
+      const sway = Math.sin(time * 1.6 + i) * (1 + grow * 1.6);
+      ctx.strokeStyle = grow > 0.75 ? "#d8b451" : grow > 0.35 ? "#8fc464" : "#7ee7a8";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(sx, base);
+      ctx.quadraticCurveTo(sx + sway * 0.5, base - h * 0.6, sx + sway, base - h);
+      ctx.stroke();
+      if (grow > 0.35) {
+        // 葉
+        ctx.strokeStyle = grow > 0.75 ? "#c9a95e" : "#8fc464";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(sx + sway * 0.4, base - h * 0.55);
+        ctx.lineTo(sx + sway * 0.4 + 4, base - h * 0.72);
+        ctx.stroke();
+      }
+      if (grow > 0.75) {
+        // 穂
+        ctx.fillStyle = "#e8c86a";
+        ctx.beginPath();
+        ctx.ellipse(sx + sway, base - h - 1, 2, 4, sway * 0.06, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // 増水で水につかっているあいだは、うねの上に水が乗る
+    if (taigaFlooding(state)) {
+      ctx.fillStyle = "rgba(70,140,165,0.45)";
+      roundRect(ctx, x - 40, y - 26, 80, 44, 6);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(220,245,255,0.4)";
+      ctx.lineWidth = 1.2;
+      for (const oy of [-14, 0]) {
+        ctx.beginPath();
+        for (let sx = -36; sx <= 36; sx += 8) {
+          const yy = y + oy + Math.sin((sx + time * 50) * 0.09) * 1.8;
+          if (sx === -36) ctx.moveTo(x + sx, yy);
+          else ctx.lineTo(x + sx, yy);
+        }
+        ctx.stroke();
+      }
+    }
+    // 刈り取りを待っている束
+    if (ready > 0) {
+      for (let i = 0; i < Math.min(3, ready); i += 1) {
+        chainItem(ctx, "grain", x - 12 + i * 12, y + 22, 0.7, time);
+      }
+    }
+    // 足りないものを、名前で言う（アイコンだけだと分からない）
+    ctx.font = SMALL;
+    if (water <= 0) {
+      ctx.fillStyle = "#ff9f8a";
+      ctx.fillText("水がない", x, y - 34);
+    } else if (seed <= 0) {
+      ctx.fillStyle = "#ffd166";
+      ctx.fillText("種がない", x, y - 34);
+    } else {
+      ctx.fillStyle = "rgba(240,228,206,0.85)";
+      ctx.fillText(grow > 0.75 ? "もうすぐ実る" : "育っている", x, y - 34);
+    }
+    ctx.fillStyle = "rgba(240,228,206,0.7)";
+    ctx.fillText(`水 ${water}・種 ${seed}`, x, y + 32);
+    ctx.font = FONT;
+    return true;
+  }
+
+  /* --- 石臼: 上の石が回って粉が出る。人の手が要る --- */
+  if (art === "mill") {
+    // 台
+    ctx.fillStyle = "#5e5346";
+    roundRect(ctx, x - 22, y - 8, 44, 12, 3);
+    ctx.fill();
+    // 下石
+    ctx.fillStyle = "#9a9384";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 12, 22, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 上石（回る）
+    const spin = isManned(state, stove) ? time * 2.2 : 0;
+    ctx.fillStyle = "#b6ae9c";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 20, 17, 7.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(60,52,40,0.5)";
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 4; i += 1) {
+      const a = spin + (i * Math.PI) / 4;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * 15, y - 20 + Math.sin(a) * 6.5);
+      ctx.lineTo(x - Math.cos(a) * 15, y - 20 - Math.sin(a) * 6.5);
+      ctx.stroke();
+    }
+    // 取っ手
+    ctx.strokeStyle = "#6b4a2b";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(x + Math.cos(spin) * 15, y - 22 + Math.sin(spin) * 6);
+    ctx.lineTo(x + Math.cos(spin) * 15, y - 34 + Math.sin(spin) * 6);
+    ctx.stroke();
+    // こぼれた粉
+    ctx.fillStyle = "rgba(240,232,210,0.75)";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 6, 16, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    return true;
+  }
+
+  /* --- 窯: 丸い焼き物の窯。中が赤く、上から煙が出る --- */
+  if (art === "kiln" || art === "oven") {
+    const bread = art === "oven";
+    const burning = fuelAt(state, stove.id) > 0;
+    // 本体（土のドーム）
+    ctx.fillStyle = bread ? "#8a6a44" : "#7a6152";
+    ctx.beginPath();
+    ctx.moveTo(x - 26, y);
+    ctx.quadraticCurveTo(x - 26, y - 40, x, y - 40);
+    ctx.quadraticCurveTo(x + 26, y - 40, x + 26, y);
+    ctx.closePath();
+    ctx.fill();
+    // 石積みの目
+    ctx.strokeStyle = "rgba(0,0,0,0.22)";
+    ctx.lineWidth = 1;
+    for (const oy of [-10, -22]) {
+      ctx.beginPath();
+      ctx.moveTo(x - 24, y + oy);
+      ctx.lineTo(x + 24, y + oy);
+      ctx.stroke();
+    }
+    // 投入口。焼いているあいだは赤い
+    ctx.fillStyle = burning ? "#ff7a3c" : "#2a1d14";
+    roundRect(ctx, x - 11, y - 18, 22, 18, 5);
+    ctx.fill();
+    if (burning) {
+      const flick = 0.6 + Math.sin(time * 9) * 0.25;
+      ctx.fillStyle = `rgba(255,209,102,${flick})`;
+      ctx.beginPath();
+      ctx.ellipse(x, y - 8, 7, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // 煙
+      for (let i = 0; i < 4; i += 1) {
+        const t = (time * 0.4 + i * 0.25) % 1;
+        ctx.fillStyle = `rgba(200,200,196,${(1 - t) * 0.4})`;
+        ctx.beginPath();
+        ctx.arc(x + Math.sin(t * 5 + i) * 5, y - 44 - t * 30, 2 + t * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // 横に積んだ薪
+    ctx.fillStyle = "#8a6a44";
+    for (const oy of [-6, -11]) {
+      roundRect(ctx, x + 28, y + oy, 14, 4, 2);
+      ctx.fill();
+    }
+    // できあがったものを棚に並べる
+    const done = state.ready[stove.id] ?? 0;
+    for (let i = 0; i < Math.min(3, done); i += 1) {
+      chainItem(ctx, bread ? "bread" : "pot", x - 34 + i * 11, y - 4, 0.62, time);
+    }
+    return true;
+  }
+
+  /* --- 牧草地: 草が風になびく。刈ると短くなる --- */
+  if (art === "pasture") {
+    const zone = huntZone(state, stove);
+    ctx.fillStyle = "rgba(96,132,52,0.32)";
+    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 22);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(150,190,110,0.35)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, zone.x0, zone.y0, zone.x1 - zone.x0, zone.y1 - zone.y0, 22);
+    ctx.stroke();
+    // 草むら
+    for (let i = 0; i < 26; i += 1) {
+      const gx = zone.x0 + ((i * 97) % (zone.x1 - zone.x0));
+      const gy = zone.y0 + ((i * 53) % (zone.y1 - zone.y0));
+      const sway = Math.sin(time * 1.3 + i) * 2;
+      ctx.strokeStyle = i % 3 === 0 ? "#8fc464" : "#6f9c46";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(gx, gy);
+      ctx.quadraticCurveTo(gx + sway, gy - 6, gx + sway * 2, gy - 11);
+      ctx.stroke();
+    }
+    // 刈り取った草の山
+    ctx.fillStyle = "#9cbf5e";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 6, 20, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(90,120,50,0.6)";
+    ctx.lineWidth = 1;
+    for (const ox of [-10, 0, 10]) {
+      ctx.beginPath();
+      ctx.moveTo(x + ox - 6, y - 4);
+      ctx.lineTo(x + ox + 6, y - 10);
+      ctx.stroke();
+    }
+    return true;
+  }
+
+  /* --- 家畜の囲い: 柵の中にヤギか羊。餌と水があると動く --- */
+  if (art === "pen") {
+    const sheep = stove.item === "wool";
+    const fed = heldAt(state, stove.id) > 0 && fuelAt(state, stove.id) > 0;
+    // 地面
+    ctx.fillStyle = "rgba(120,140,70,0.35)";
+    roundRect(ctx, x - 46, y - 34, 92, 46, 10);
+    ctx.fill();
+    // 柵
+    ctx.strokeStyle = "#8a6a44";
+    ctx.lineWidth = 2.4;
+    for (const ox of [-46, -23, 0, 23, 46]) {
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y - 36);
+      ctx.lineTo(x + ox, y - 20);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(x - 46, y - 32);
+    ctx.lineTo(x + 46, y - 32);
+    ctx.stroke();
+    // 家畜2頭。餌と水があるときだけ、もぐもぐ動く
+    for (const [i, ox] of [-18, 14].entries()) {
+      const bob = fed ? Math.sin(time * 2.6 + i * 1.7) * 1.6 : 0;
+      const by = y - 8 + bob;
+      ctx.fillStyle = sheep ? "#e8e2d4" : "#c8b49a";
+      ctx.beginPath();
+      ctx.ellipse(x + ox, by, 11, 7.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (sheep) {
+        // 羊はもこもこ
+        ctx.fillStyle = "#f2eee2";
+        for (const cx of [-6, 0, 6]) {
+          ctx.beginPath();
+          ctx.arc(x + ox + cx, by - 4, 4.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      // 顔
+      ctx.fillStyle = sheep ? "#6f6252" : "#8a7358";
+      ctx.beginPath();
+      ctx.ellipse(x + ox + 11, by - 3, 4.6, 3.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (!sheep) {
+        // ヤギの角
+        ctx.strokeStyle = "#6f5a45";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x + ox + 11, by - 6);
+        ctx.lineTo(x + ox + 15, by - 11);
+        ctx.stroke();
+      }
+      // 脚
+      ctx.strokeStyle = sheep ? "#b9b0a0" : "#9a8468";
+      ctx.lineWidth = 1.6;
+      for (const lx of [-5, 5]) {
+        ctx.beginPath();
+        ctx.moveTo(x + ox + lx, by + 6);
+        ctx.lineTo(x + ox + lx, by + 12);
+        ctx.stroke();
+      }
+    }
+    // 餌おけ
+    ctx.fillStyle = "#7a5a3a";
+    roundRect(ctx, x - 40, y + 2, 20, 7, 3);
+    ctx.fill();
+    ctx.font = SMALL;
+    if (!fed) {
+      ctx.fillStyle = "#ff9f8a";
+      ctx.fillText(heldAt(state, stove.id) <= 0 ? "草がない" : "水がない", x, y - 44);
+      ctx.font = FONT;
+    } else {
+      ctx.font = FONT;
     }
     return true;
   }
@@ -5780,6 +6435,143 @@ const sledDog = (
  * 2頭の犬・引き綱・荷台でできている。ロボットの部品は使わない。
  * 進む向きに犬とそりが向き、荷物は荷台に品種ごとに載る。
  */
+/**
+ * 荷車（大河の文明）。牛が引く二輪の荷車。
+ * 犬ぞりと同じ「低いところを走る運び屋」だが、車輪と牛で見分けがつく。
+ */
+/**
+ * 川を行く運搬船（大河の文明）。
+ * 船頭が棹（さお）を差し、荷を積んで水の上を進む。
+ */
+const drawRiverBoat = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  face: number,
+  moving: boolean,
+  t: number,
+) => {
+  const bob = Math.sin(t * 2.2) * 1.4;
+  const by = y + bob;
+  // 水しぶきと引き波
+  if (moving) {
+    ctx.strokeStyle = "rgba(220,245,255,0.45)";
+    ctx.lineWidth = 1.4;
+    for (const oy of [2, 6]) {
+      ctx.beginPath();
+      ctx.moveTo(x - 26 * face, by + oy);
+      ctx.lineTo(x - 46 * face, by + oy);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  ctx.beginPath();
+  ctx.ellipse(x, by + 8, 26, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 船体
+  ctx.fillStyle = "#6b4a2b";
+  ctx.beginPath();
+  ctx.moveTo(x - 26, by - 2);
+  ctx.quadraticCurveTo(x, by + 12, x + 26, by - 2);
+  ctx.lineTo(x + 21, by - 9);
+  ctx.lineTo(x - 21, by - 9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#8a6440";
+  roundRect(ctx, x - 22, by - 11, 44, 4, 2);
+  ctx.fill();
+  // 積み荷のむしろ
+  ctx.fillStyle = "#c2ad84";
+  roundRect(ctx, x - 12, by - 19, 22, 9, 3);
+  ctx.fill();
+  // 船頭と棹
+  ctx.fillStyle = "#e8c9a0";
+  ctx.beginPath();
+  ctx.arc(x + 15 * face, by - 20, 4.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#4f7f6a";
+  roundRect(ctx, x + 15 * face - 4, by - 17, 8, 9, 3);
+  ctx.fill();
+  ctx.strokeStyle = "#8a6a44";
+  ctx.lineWidth = 1.8;
+  const pole = moving ? Math.sin(t * 3) * 4 : 0;
+  ctx.beginPath();
+  ctx.moveTo(x + 19 * face, by - 24);
+  ctx.lineTo(x + (26 + pole) * face, by + 6);
+  ctx.stroke();
+};
+
+const drawCart = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  face: number,
+  moving: boolean,
+  t: number,
+) => {
+  shadow(ctx, x, y + 8, 22);
+  // 荷台（うしろ側）
+  const bx = x - 16 * face;
+  ctx.fillStyle = "#6b4a2b";
+  roundRect(ctx, bx - 13, y - 10, 26, 12, 3);
+  ctx.fill();
+  ctx.fillStyle = "#8a6440";
+  roundRect(ctx, bx - 13, y - 10, 26, 4, 2);
+  ctx.fill();
+  // 車輪（走ると回る）
+  const spin = moving ? t * 6 : 0;
+  for (const ox of [-7, 7]) {
+    ctx.fillStyle = "#4a3524";
+    ctx.beginPath();
+    ctx.arc(bx + ox, y + 3, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#a08858";
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 4; i += 1) {
+      const a = spin + (i * Math.PI) / 4;
+      ctx.beginPath();
+      ctx.moveTo(bx + ox + Math.cos(a) * 5, y + 3 + Math.sin(a) * 5);
+      ctx.lineTo(bx + ox - Math.cos(a) * 5, y + 3 - Math.sin(a) * 5);
+      ctx.stroke();
+    }
+  }
+  // 引き棒
+  ctx.strokeStyle = "#7a5836";
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(bx + 12 * face, y - 4);
+  ctx.lineTo(x + 8 * face, y - 6);
+  ctx.stroke();
+  // 牛（前）
+  const step = moving ? Math.sin(t * 8) * 2 : 0;
+  ctx.fillStyle = "#9a8468";
+  ctx.beginPath();
+  ctx.ellipse(x + 16 * face, y - 8, 12, 7.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#8a7358";
+  ctx.beginPath();
+  ctx.ellipse(x + 26 * face, y - 11, 5.4, 4.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 角
+  ctx.strokeStyle = "#e8ddc8";
+  ctx.lineWidth = 1.6;
+  for (const dy of [-2, 2]) {
+    ctx.beginPath();
+    ctx.moveTo(x + 27 * face, y - 14);
+    ctx.lineTo(x + (30 + dy) * face, y - 18);
+    ctx.stroke();
+  }
+  // 脚
+  ctx.strokeStyle = "#7a6650";
+  ctx.lineWidth = 2;
+  for (const [i, ox] of [8, 22].entries()) {
+    ctx.beginPath();
+    ctx.moveTo(x + ox * face, y - 2);
+    ctx.lineTo(x + ox * face + (i === 0 ? step : -step), y + 6);
+    ctx.stroke();
+  }
+};
+
 const drawSled = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -5845,7 +6637,14 @@ const currentScene = (state: ShopState): Scene => {
     }
   }
   return {
-    stage: stage().id === "fire" ? "fire" : stage().id === "park" ? "park" : "ramen",
+    stage:
+      stage().id === "fire"
+        ? "fire"
+        : stage().id === "taiga"
+          ? "taiga"
+          : stage().id === "park"
+            ? "park"
+            : "ramen",
     area,
     phase: state.fire.phase,
     weather: state.fire.weather,
@@ -5900,11 +6699,18 @@ export default function Shop({ onSample, paused }: Props) {
 
       const isPark = stage().id === "park";
       const isFire = stage().id === "fire";
+      const isTaiga = stage().id === "taiga";
+      /*
+       * 原始の見た目（火のはじまり・大河の文明）。
+       * 床・区画の看板・作業場・ベンチ・働く人を、こちらの絵で描く。
+       * 雪と夜、犬ぞりは「火のはじまり」だけのものなので、isFire のまま。
+       */
+      const wild = isFire || isTaiga;
       /** 画面に映るワールドの横幅。広い区画のステージは少し引いて見せる */
       const view = viewWidth();
 
       /* --- 床 --- */
-      ctx.fillStyle = isFire ? "#20160f" : isPark ? "#101826" : "#191512";
+      ctx.fillStyle = wild ? "#20160f" : isPark ? "#101826" : "#191512";
       ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
       for (const area of openAreas(state)) {
         const { rect, palette } = area;
@@ -5989,66 +6795,6 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fillRect((x0 + x1) / 2 - 1.5, y0 + 3, 3, 10);
         }
       }
-      // 冬が来ると、地面が少しずつ白くなる（第4区画）
-      const snow = isFire ? snowDepth(state) : 0;
-      if (snow > 0) {
-        ctx.fillStyle = `rgba(224,235,246,${0.14 + snow * 0.26})`;
-        ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
-      }
-      // 敷いた道（村の道）。通る人みんなが速くなる
-      if (isFire) {
-        for (const item of equipment) {
-          if (!item.road || !hasEquip(state, item.id)) continue;
-          ctx.strokeStyle = "rgba(196,176,140,0.34)";
-          ctx.lineWidth = 26;
-          ctx.lineCap = "round";
-          ctx.beginPath();
-          ctx.moveTo(item.road.from.x, item.road.from.y);
-          ctx.lineTo(item.road.to.x, item.road.to.y);
-          ctx.stroke();
-          ctx.lineCap = "butt";
-          ctx.fillStyle = "rgba(120,102,74,0.35)";
-          const span = Math.hypot(
-            item.road.to.x - item.road.from.x,
-            item.road.to.y - item.road.from.y,
-          );
-          for (let i = 0; i < span / 30; i += 1) {
-            const t = i / (span / 30);
-            ctx.beginPath();
-            ctx.ellipse(
-              item.road.from.x + (item.road.to.x - item.road.from.x) * t,
-              item.road.from.y + (item.road.to.y - item.road.from.y) * t + ((i % 2) - 0.5) * 8,
-              6,
-              4,
-              0,
-              0,
-              Math.PI * 2,
-            );
-            ctx.fill();
-          }
-        }
-      }
-      if (isPark) {
-        // 園内の遊歩道（区画をつなぐ石畳）
-        for (const area of openAreas(state)) {
-          const { rect } = area;
-          ctx.fillStyle = "rgba(236,226,206,0.13)";
-          ctx.fillRect(rect.x0, rect.y1 - 34, rect.x1 - rect.x0, 26);
-          ctx.fillStyle = "rgba(255,255,255,0.07)";
-          for (let x = rect.x0 + 4; x < rect.x1 - 8; x += 26) {
-            ctx.fillRect(x, rect.y1 - 30, 18, 18);
-          }
-        }
-      } else {
-        ctx.strokeStyle = "rgba(0,0,0,0.16)";
-        ctx.lineWidth = 1;
-        for (let y = KITCHEN.bottom + 20; y < worldH; y += 34) {
-          ctx.beginPath();
-          ctx.moveTo(box.x0, y);
-          ctx.lineTo(box.x1, y);
-          ctx.stroke();
-        }
-      }
 
       /* --- 作業場（歩いて入れる） --- */
       for (const area of openAreas(state)) {
@@ -6128,14 +6874,16 @@ export default function Shop({ onSample, paused }: Props) {
               ctx.fill();
             }
           }
-        } else if (isFire) {
+        } else if (wild) {
           ctx.fillStyle = area.price === 0 ? "#7a3b1f" : "#4a3524";
           roundRect(ctx, x0 + 10, 4, x1 - x0 - 20, 30, 6);
           ctx.fill();
           ctx.fillStyle = "#f6d9a8";
           ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
           ctx.fillText(
-            area.price === 0 ? "火 の は じ ま り" : areaTitle(area.label),
+            area.price === 0
+              ? stage().name.split("").join(" ")
+              : areaTitle(area.label),
             mid,
             20,
           );
@@ -6156,6 +6904,104 @@ export default function Shop({ onSample, paused }: Props) {
           for (let i = 1; i < 5; i += 1) {
             ctx.fillRect(x0 + 10 + ((x1 - x0 - 20) / 5) * i - 1, 4, 2, 30);
           }
+        }
+      }
+
+      /*
+       * 大河。区画をまたいで、世界のはしからはしまで流れている。
+       * 水くみ場や取水口はこの岸に立ち、運搬船はこの上を行き来する。
+       * 季節で水かさが変わる（雨季は岸に迫り、乾季は川原が広がる）
+       */
+      if (isTaiga) {
+        const rise = riverRise(state);
+        const top = box.y0 + 26 - rise * 14;
+        const edge = RIVER_LANE + 24 + rise * 12;
+        const wide = box.x1 - box.x0;
+        const water = ctx.createLinearGradient(0, top, 0, edge);
+        water.addColorStop(0, rise > 0.8 ? "#2a5a48" : "#1d4b5c");
+        water.addColorStop(1, rise > 0.8 ? "#4a8c72" : "#2f7d8c");
+        ctx.fillStyle = water;
+        ctx.fillRect(box.x0, top, wide, edge - top);
+        // 流れの筋
+        ctx.strokeStyle = "rgba(220,245,255,0.28)";
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 5; i += 1) {
+          const ly = top + 12 + i * ((edge - top - 16) / 5);
+          const shift = (time * (26 + i * 7)) % 240;
+          ctx.beginPath();
+          for (let sx = box.x0; sx <= box.x1; sx += 14) {
+            const yy = ly + Math.sin((sx + shift) * 0.03 + i) * 2.4;
+            if (sx === box.x0) ctx.moveTo(sx, yy);
+            else ctx.lineTo(sx, yy);
+          }
+          ctx.stroke();
+        }
+        // 岸（水が引くと川原が広がる）
+        ctx.fillStyle = "#6d5a3c";
+        ctx.fillRect(box.x0, edge - 2, wide, 10 - rise * 4);
+        if (rise < -0.2) {
+          ctx.fillStyle = "rgba(150,128,92,0.5)";
+          ctx.fillRect(box.x0, edge + 6, wide, -rise * 16);
+        }
+      }
+      // 冬が来ると、地面が少しずつ白くなる（第4区画）
+      const snow = isFire ? snowDepth(state) : 0;
+      if (snow > 0) {
+        ctx.fillStyle = `rgba(224,235,246,${0.14 + snow * 0.26})`;
+        ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+      }
+      // 敷いた道（村の道）。通る人みんなが速くなる
+      if (wild) {
+        for (const item of equipment) {
+          if (!item.road || !hasEquip(state, item.id)) continue;
+          ctx.strokeStyle = "rgba(196,176,140,0.34)";
+          ctx.lineWidth = 26;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(item.road.from.x, item.road.from.y);
+          ctx.lineTo(item.road.to.x, item.road.to.y);
+          ctx.stroke();
+          ctx.lineCap = "butt";
+          ctx.fillStyle = "rgba(120,102,74,0.35)";
+          const span = Math.hypot(
+            item.road.to.x - item.road.from.x,
+            item.road.to.y - item.road.from.y,
+          );
+          for (let i = 0; i < span / 30; i += 1) {
+            const t = i / (span / 30);
+            ctx.beginPath();
+            ctx.ellipse(
+              item.road.from.x + (item.road.to.x - item.road.from.x) * t,
+              item.road.from.y + (item.road.to.y - item.road.from.y) * t + ((i % 2) - 0.5) * 8,
+              6,
+              4,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fill();
+          }
+        }
+      }
+      if (isPark) {
+        // 園内の遊歩道（区画をつなぐ石畳）
+        for (const area of openAreas(state)) {
+          const { rect } = area;
+          ctx.fillStyle = "rgba(236,226,206,0.13)";
+          ctx.fillRect(rect.x0, rect.y1 - 34, rect.x1 - rect.x0, 26);
+          ctx.fillStyle = "rgba(255,255,255,0.07)";
+          for (let x = rect.x0 + 4; x < rect.x1 - 8; x += 26) {
+            ctx.fillRect(x, rect.y1 - 30, 18, 18);
+          }
+        }
+      } else {
+        ctx.strokeStyle = "rgba(0,0,0,0.16)";
+        ctx.lineWidth = 1;
+        for (let y = KITCHEN.bottom + 20; y < worldH; y += 34) {
+          ctx.beginPath();
+          ctx.moveTo(box.x0, y);
+          ctx.lineTo(box.x1, y);
+          ctx.stroke();
         }
       }
 
@@ -6187,7 +7033,7 @@ export default function Shop({ onSample, paused }: Props) {
       for (const stove of openStoves(state)) {
         const { x, y } = stove.pos;
         const made = stoveItem(stove);
-        if (isFire) {
+        if (wild) {
           drawFireStation(ctx, stove, x, y, time, state);
         } else if (made === "food") {
           // 厨房（レストラン）
@@ -6376,7 +7222,7 @@ export default function Shop({ onSample, paused }: Props) {
       }
 
       /* --- カウンター（ラーメンだけ） --- */
-      if (!isPark && !isFire) {
+      if (!isPark && !wild) {
         ctx.fillStyle = "#6b4a2f";
         roundRect(ctx, 16, 306, 328, 34, 10);
         ctx.fill();
@@ -6480,7 +7326,7 @@ export default function Shop({ onSample, paused }: Props) {
           const cost = seatCost(seat);
           ctx.fillText(cost > 1 ? `${seat.label}（${cost}枚）` : seat.label, x, y + 25);
           ctx.font = FONT;
-        } else if (isFire) {
+        } else if (wild) {
           // 丸太のベンチ
           const bx = seat.pos.x;
           const by = seat.pos.y + 4;
@@ -7034,8 +7880,9 @@ export default function Shop({ onSample, paused }: Props) {
         keeper: "#4f7a5c",
         nightman: "#5b4f9e",
         explorer: "#3f8fa0",
-              runner: "#c98b5a",
-};
+        runner: "#c98b5a",
+        boat: "#4f7f6a",
+      };
 
       // 谷のマンモス（人と同じ列にならべて、前後が分かるようにする）
       const beast = state.fire.beast;
@@ -7179,9 +8026,27 @@ export default function Shop({ onSample, paused }: Props) {
               ctx.rotate(0.9);
               ctx.translate(-worker.pos.x, -worker.pos.y);
             }
-            if (worker.kind === "robot") {
-              // 火のはじまりの「犬ぞり」は犬が引く。ほかのステージは配膳ロボ
-              if (isFire) {
+            if (worker.kind === "boat") {
+              drawRiverBoat(
+                ctx,
+                worker.pos.x,
+                worker.pos.y,
+                worker.face ?? 1,
+                worker.moving ?? false,
+                time,
+              );
+            } else if (worker.kind === "robot") {
+              // 火のはじまりの「犬ぞり」は犬が引く。大河の文明は牛の荷車
+              if (isTaiga) {
+                drawCart(
+                  ctx,
+                  worker.pos.x,
+                  worker.pos.y,
+                  worker.face ?? 1,
+                  worker.moving ?? false,
+                  time,
+                );
+              } else if (isFire) {
                 drawSled(
                   ctx,
                   worker.pos.x,
@@ -7222,7 +8087,7 @@ export default function Shop({ onSample, paused }: Props) {
               const wy = worker.pos.y;
               const face = worker.face ?? 1;
               if (worker.kind === "cook") {
-                if (isFire) {
+                if (wild) {
                   // 火の番: すすけた頭巾と、火かき棒。火をつつく手つき
                   ctx.fillStyle = "#7a4a2b";
                   roundRect(ctx, wx - 8, wy - 30, 16, 8, 4);
@@ -7418,7 +8283,7 @@ export default function Shop({ onSample, paused }: Props) {
                 ctx.fill();
               }
               if (worker.kind === "waiter") {
-                if (isFire) {
+                if (wild) {
                   // はこび手: 背負子（せおいこ）と、肩にかけた帯
                   ctx.fillStyle = "#6b4a2b";
                   roundRect(ctx, wx - 13 * face, wy - 20, 9, 18, 3);
@@ -7461,7 +8326,7 @@ export default function Shop({ onSample, paused }: Props) {
                 ctx.fill();
               }
               if (worker.kind === "collector") {
-                if (isFire) {
+                if (wild) {
                   // 拾い手: 腰に下げた貝がら入れ（編みかご）と、拾う前かがみの手
                   ctx.fillStyle = "#a98a52";
                   roundRect(ctx, wx + 6, wy - 8, 12, 11, 3);
@@ -7579,10 +8444,12 @@ export default function Shop({ onSample, paused }: Props) {
               ctx,
               worker.bag,
               worker.pos.x,
-              worker.kind === "robot" && isFire
-                ? worker.pos.y - 12
+              (worker.kind === "robot" && wild) || worker.kind === "boat"
+                ? worker.pos.y - 22
                 : worker.pos.y - 30,
-              worker.kind === "robot" && isFire ? (worker.face ?? 1) * -16 : 0,
+              (worker.kind === "robot" && wild) || worker.kind === "boat"
+                ? (worker.face ?? 1) * -14
+                : 0,
               time,
             );
             if (knocked) {
@@ -7713,6 +8580,163 @@ export default function Shop({ onSample, paused }: Props) {
             ctx.fillRect(sx, sy, 2, 2);
           }
         }
+      }
+
+      /* --- 大河の文明: 季節の色あいと、増水 --- */
+      if (isTaiga && taigaLive(state)) {
+        const now = season(state);
+        // 季節ごとに、光の色をうっすら変える（言葉より先に、色で分かるように）
+        const tint: Record<string, string> = {
+          spring: "rgba(150,220,140,0.07)",
+          summer: "rgba(255,190,90,0.09)",
+          rain: "rgba(90,140,190,0.13)",
+          harvest: "rgba(255,200,110,0.10)",
+          dry: "rgba(210,170,110,0.10)",
+        };
+        ctx.fillStyle = tint[now] ?? "rgba(0,0,0,0)";
+        ctx.fillRect(camX, camY, view, viewH0);
+        if (now === "rain") {
+          // 雨。斜めの筋を降らせる
+          ctx.strokeStyle = "rgba(180,215,240,0.35)";
+          ctx.lineWidth = 1.2;
+          for (let i = 0; i < 60; i += 1) {
+            const sx = camX + ((i * 137 + time * 220) % view);
+            const sy = camY + ((i * 79 + time * 620) % viewH0);
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx - 3, sy + 11);
+            ctx.stroke();
+          }
+        }
+        if (flooding(state)) {
+          // 川があふれて、低いところが水につかる
+          const line = camY + viewH0 * 0.18;
+          ctx.fillStyle = "rgba(60,130,155,0.32)";
+          ctx.fillRect(camX, camY, view, line - camY + 120);
+          ctx.strokeStyle = "rgba(220,245,255,0.35)";
+          ctx.lineWidth = 1.4;
+          for (let i = 0; i < 4; i += 1) {
+            const wy = line + 26 + i * 26 + Math.sin(time * 1.6 + i) * 3;
+            ctx.beginPath();
+            for (let sx = camX; sx <= camX + view; sx += 12) {
+              const yy = wy + Math.sin((sx + time * 60) * 0.05 + i) * 2.4;
+              if (sx === camX) ctx.moveTo(sx, yy);
+              else ctx.lineTo(sx, yy);
+            }
+            ctx.stroke();
+          }
+        }
+      }
+
+      /* --- 大河の文明: 季節と、町の育ちぐあい --- */
+      if (isTaiga && taigaLive(state)) {
+        const now = season(state);
+        const left = Math.max(0, Math.ceil(seasonLeft(state)));
+        const pop = townPop(state);
+        const town = state.unlocked.includes("area-5");
+        const rows: { text: string; ok: boolean }[] = [
+          { text: `畑 ${fieldCount(state)}面${town ? " / 5" : ""}`, ok: fieldCount(state) >= (town ? 5 : 1) },
+          { text: `町の人 ${pop} / ${TOWN_POP}`, ok: pop >= TOWN_POP },
+          // 町づくりに入ったら、完成に要る建物をならべて出す
+          ...(town
+            ? TOWN_BUILDS.map((item) => ({
+                text: `${item.label}${state.built.includes(item.id) ? " ✓" : ""}`,
+                ok: state.built.includes(item.id),
+              }))
+            : []),
+          ...(flooding(state)
+            ? [{ text: "増水中", ok: hasEquip(state, "levee") }]
+            : fertile(state)
+              ? [{ text: "泥が肥えている", ok: true }]
+              : []),
+        ];
+        const title = `${seasonMark[now]} ${seasonName[now]} ― あと${left}秒`;
+        ctx.font = SMALL;
+        const width =
+          Math.max(
+            ctx.measureText(title).width,
+            ...rows.map((row) => ctx.measureText(row.text).width),
+          ) + 20;
+        const height = 20 + rows.length * 13;
+        const px = camX + view - width - 8;
+        const py = camY + 8;
+        ctx.fillStyle = "rgba(10,8,6,0.62)";
+        roundRect(ctx, px, py, width, height, 8);
+        ctx.fill();
+        ctx.strokeStyle = flooding(state)
+          ? "rgba(120,190,235,0.7)"
+          : "rgba(255,209,102,0.35)";
+        ctx.lineWidth = 1;
+        roundRect(ctx, px, py, width, height, 8);
+        ctx.stroke();
+        // 季節の残りは、わくの下ぶちの帯で出す
+        ctx.fillStyle = "rgba(255,209,102,0.5)";
+        ctx.fillRect(px + 2, py + height - 3, (width - 4) * (1 - left / SEASON_TIME), 2);
+        ctx.fillStyle = "#ffd166";
+        ctx.fillText(title, px + width / 2, py + 10);
+        rows.forEach((row, i) => {
+          ctx.fillStyle = row.ok ? "rgba(226,240,226,0.85)" : "#ff9f8a";
+          ctx.fillText(row.text, px + width / 2, py + 24 + i * 13);
+        });
+        ctx.font = FONT;
+      }
+
+      /* --- 大河の文明の終わり: 使者とともに、大型交易船が上流へ --- */
+      if (isTaiga && state.taiga.sailed) {
+        const t = (time * 0.06) % 1;
+        const bx = camX + view * (0.15 + t * 0.7);
+        const by = camY + viewH0 * 0.16;
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        // 船体
+        ctx.fillStyle = "#6b4a2b";
+        ctx.beginPath();
+        ctx.moveTo(bx - 34, by);
+        ctx.quadraticCurveTo(bx, by + 14, bx + 34, by);
+        ctx.lineTo(bx + 26, by - 7);
+        ctx.lineTo(bx - 26, by - 7);
+        ctx.closePath();
+        ctx.fill();
+        // 帆
+        ctx.fillStyle = "#e8ddc8";
+        ctx.beginPath();
+        ctx.moveTo(bx, by - 8);
+        ctx.lineTo(bx, by - 44);
+        ctx.lineTo(bx + 24, by - 14);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "#4f3d26";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bx, by - 8);
+        ctx.lineTo(bx, by - 46);
+        ctx.stroke();
+        // 引き波
+        ctx.strokeStyle = "rgba(220,245,255,0.5)";
+        ctx.lineWidth = 1.4;
+        for (const oy of [2, 6]) {
+          ctx.beginPath();
+          ctx.moveTo(bx - 40, by + oy);
+          ctx.lineTo(bx - 66, by + oy);
+          ctx.stroke();
+        }
+        ctx.restore();
+        // 締めのことば
+        ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+        const words = "大河の文明 ― 使者とともに、次の都市へ";
+        const w = ctx.measureText(words).width + 34;
+        const wx = camX + view / 2 - w / 2;
+        const wy = camY + viewH0 * 0.3;
+        ctx.fillStyle = "rgba(10,8,6,0.72)";
+        roundRect(ctx, wx, wy, w, 30, 10);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,209,102,0.6)";
+        ctx.lineWidth = 1.2;
+        roundRect(ctx, wx, wy, w, 30, 10);
+        ctx.stroke();
+        ctx.fillStyle = "#ffd166";
+        ctx.fillText(words, camX + view / 2, wy + 15);
+        ctx.font = FONT;
       }
 
       /* --- 集落の様子（日にち・時間帯・備蓄・気温・人口） --- */
@@ -8167,6 +9191,15 @@ export default function Shop({ onSample, paused }: Props) {
           muted: isMuted(),
           bgmMuted: isBgmMuted(),
           offline: pendingOffline,
+          crew: jobsOpen(state)
+            ? {
+                open: true,
+                hands: handCount(state),
+                left: handsLeft(state),
+                pop: townPop(state),
+                jobs: { ...state.taiga.jobs },
+              }
+            : null,
         });
         pendingOffline = null;
       }

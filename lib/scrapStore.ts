@@ -11,7 +11,7 @@ import {
 
 type SharedVault = {
   savedAt?: number;
-  active?: "ramen" | "park" | "fire";
+  active?: "ramen" | "park" | "fire" | "taiga";
   stages?: Record<string, Persisted | ScrapPersisted | unknown>;
   skins?: string[];
   stars?: Record<string, number>;
@@ -52,7 +52,8 @@ export const loadScrap = (): ScrapState => {
 export const saveScrap = (state: ScrapState) => {
   if (typeof window === "undefined") return;
   const shared = readShared();
-  const { scrap: _legacyScrap, ...withoutLegacy } = shared;
+  const { scrap: legacyScrap, ...withoutLegacy } = shared;
+  void legacyScrap;
   const next: SharedVault = {
     ...withoutLegacy,
     savedAt: Date.now(),

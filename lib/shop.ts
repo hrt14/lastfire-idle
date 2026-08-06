@@ -33,6 +33,16 @@ import {
   updateFire,
   type FireState,
 } from "@/lib/fire";
+import {
+  createTaiga,
+  fromTaiga,
+  taigaCrew,
+  taigaMove,
+  taigaWork,
+  toTaiga,
+  updateTaiga,
+  type TaigaState,
+} from "@/lib/taiga";
 
 export type Vec = { x: number; y: number };
 
@@ -203,7 +213,12 @@ export type StaffKind =
   /** いかだで川を下り、新しい土地を見つけてくる係 */
   | "explorer"
   /** 作業場から作業場へ材料を運ぶ係（2号店の工程） */
-  | "runner";
+  | "runner"
+  /**
+   * 川を行き来する運搬船（大河の文明）。
+   * 陸の運び手より多く積めて速いが、遠くへ行くときは必ず川を通る
+   */
+  | "boat";
 
 export type HireSpec = {
   id: string;
@@ -327,6 +342,11 @@ export type EquipSpec = {
    * 両はしが触れている棟の壁に穴が開く（客も店員も自分も通れる）
    */
   corridor?: Rect;
+  /**
+   * この設備（水門）を買うと、この水路が優先になり、流れが速くなる。
+   * 上流に多く流すと下流が細る ―― その分配を、買い物で選ばせる
+   */
+  priority?: EquipId;
 };
 
 export type UpgradeId = "carry" | "speed" | "cook" | "price" | "gate";
@@ -481,6 +501,7 @@ const hireSub: Record<StaffKind, string> = {
   nightman: "夜に共同たき火の薪を絶やさない",
   explorer: "先まわりして、獲物や土地を見つけてくる",
   runner: "作業場のあいだを運んでくれる",
+  boat: "川を行き来して、まとめて運んでくれる",
 };
 
 const buildPads = (): Pad[] => [
@@ -904,6 +925,8 @@ export type Persisted = {
   stored?: Record<string, number>;
   /** 火のはじまりの集落の様子（昼夜・人口・冬・谷） */
   fire?: unknown;
+  /** 大河の文明の季節と増水 */
+  taiga?: unknown;
 };
 
 export type ShopState = Persisted & {
@@ -915,6 +938,8 @@ export type ShopState = Persisted & {
   parts: Record<string, Record<string, number>>;
   /** 火のはじまりの集落（昼夜・人口・冬・谷・川） */
   fire: FireState;
+  /** 大河の文明の季節と増水 */
+  taiga: TaigaState;
   /** 次に新しい枠を出すまでの間（一度に増やしすぎない） */
   revealWait: number;
   player: Player;
@@ -953,6 +978,10 @@ export type ShopState = Persisted & {
 export const PLAYER_BASE_SPEED = 128;
 export const STAFF_SPEED = 92;
 export const ROBOT_SPEED = 150;
+/** 川を行く運搬船の速さ。陸の運び手より速いが、川へ出るまでの手間がある */
+export const BOAT_SPEED = 205;
+/** 川の水路。船はこの高さを通る */
+export const RIVER_LANE = 108;
 export const PICK_RADIUS = 44;
 export const SERVE_RADIUS = 46;
 export const COIN_RADIUS = 34;
@@ -1081,6 +1110,7 @@ export const createState = (): ShopState => ({
   built: [],
   parts: {},
   fire: createFire(),
+  taiga: createTaiga(),
   revealWait: 0,
   padProgress: {},
   levels: { carry: 0, speed: 0, cook: 0, price: 0, gate: 0 },
@@ -1143,6 +1173,7 @@ export const toPersisted = (state: ShopState): Persisted => ({
   parts: state.parts,
   stored: storedNow(state),
   fire: toFire(state.fire),
+  taiga: toTaiga(state.taiga),
   padProgress: state.padProgress,
   levels: state.levels,
   served: state.served,
@@ -1256,6 +1287,7 @@ export const fromPersisted = (input: unknown): ShopState => {
     }
   }
   state.fire = fromFire(raw.fire);
+  state.taiga = fromTaiga(raw.taiga);
 
   for (const stove of stoves) {
     if (state.unlocked.includes(stove.id)) {
@@ -1370,6 +1402,16 @@ const itemNames: Record<string, string> = {
   gomoku: "五目ラーメン",
   koku: "濃厚ラーメン",
   tokusei: "特製ラーメン",
+  // 大河の文明
+  water: "水",
+  seed: "種",
+  grain: "穀物",
+  flour: "粉",
+  bread: "パン",
+  grass: "草",
+  milk: "乳",
+  wool: "毛",
+  dried: "干し魚",
 };
 
 export const itemLabel = (kind: ItemKind): string =>
@@ -1948,9 +1990,18 @@ const updateReveals = (state: ShopState, dt: number) => {
     .filter((pad) => !seen.has(pad.id))
     .sort((a, b) => (a.reveal ?? 999) - (b.reveal ?? 999));
 
+  /*
+   * 一度に出す数。ふだんは2つずつだが、いま1つも出ていないとき
+   *（＝遊びはじめと、見えていた枠をぜんぶ買ったとき）は、
+   * 上限までまとめて出す。何のために稼ぐのかが分からない時間を作らないため。
+   * ステージごとに revealBurst で変えられる（大河の文明は最初から5つ）
+   */
+  const burst =
+    showing === 0 ? Math.max(limit, REVEAL_BURST) : stage().revealBurst ?? REVEAL_BURST;
+
   const added: Pad[] = [];
   for (const pad of queue) {
-    if (added.length >= REVEAL_BURST) break;
+    if (added.length >= burst) break;
     if (pad.kind !== "upgrade") {
       if (showing >= limit) continue;
       showing += 1;
@@ -2124,10 +2175,17 @@ const spawnCustomers = (state: ShopState, dt: number) => {
       .filter((customer) => customer.state !== "leaving")
       .map((customer) => customer.seatId),
   );
-  const free = openSeats(state).find(
+  // 空席の中から毎回くじで選ぶ（先頭固定だと、あとから出す席
+  // ＝川辺の席・交易の席のような枠に、空きがあっても客がまず来ない）。
+  // 誰にも運べない数を要る席は、そもそも案内しない
+  const freeCandidates = openSeats(state).filter(
     (seat) =>
       !taken.has(seat.id) && !isDirty(state, seat.id) && seatServable(state, seat),
   );
+  const free =
+    freeCandidates.length > 0
+      ? freeCandidates[Math.floor(Math.random() * freeCandidates.length)]
+      : undefined;
 
   const newGuest = (over: Partial<Customer>): Customer => ({
     id: state.nextId++,
@@ -2226,8 +2284,9 @@ const updateStoves = (state: ShopState, dt: number) => {
     // 人の手が要る作業場（薪割り場）は、担当者かプレイヤーがそばにいるあいだだけ進む。
     // 途中まで割った進みは残しておく（近づき直せば続きから）
     if (stove.manual && !isManned(state, stove)) continue;
-    // 夜と吹雪は外の仕事を止める。寒いとみんな遅くなる（第2・第4区画）
-    const weather = fireWork(state, stove);
+    // 夜と吹雪は外の仕事を止める。寒いとみんな遅くなる（第2・第4区画）。
+    // 大河の文明は、季節と増水でここが変わる
+    const weather = fireWork(state, stove) * taigaWork(state, stove);
     if (weather <= 0) continue;
     const boost = stoveHasCook(state, stove.id) ? cookBoost() : 1;
     const work = stove.work ?? 1;
@@ -2262,8 +2321,13 @@ const flowLinks = (state: ShopState, dt: number) => {
     if (!state.unlocked.includes(from) || !state.unlocked.includes(to)) continue;
     const key = `link-${item.id}`;
     state.autoTimer[key] = (state.autoTimer[key] ?? 0) + dt;
-    // だいたい 0.5 秒に1つ流す（速いはこび手より速い）
-    if (state.autoTimer[key] < 0.5) continue;
+    /*
+     * だいたい 0.5 秒に1つ流す（速いはこび手より速い）。
+     * 大河の文明では、水門を据えた水路だけ 0.3 秒になる。
+     * 取水口の水はみんなで分け合うので、どの畑を優先するかが効いてくる
+     */
+    const gap = item.priority && hasEquip(state, item.priority) ? 0.3 : 0.5;
+    if (state.autoTimer[key] < gap) continue;
     const fromStove = stoveById.get(from);
     const toStove = stoveById.get(to);
     if (!fromStove || !toStove) continue;
@@ -3058,9 +3122,12 @@ export const inShop = (worker: Staff, area: number) =>
 
 /** スタッフが一度に運べる数。強化（両手鍋／チケットホルダー）で増える */
 export const carrierLimit = (state: ShopState, worker: Staff) =>
-  worker.kind === "robot"
-    ? Math.max(5, maxCarry(state))
-    : 3 + Math.floor(state.levels.carry / 2);
+  // 船は荷が積める。陸の運び手より一段多い
+  worker.kind === "boat"
+    ? Math.max(10, maxCarry(state) * 2)
+    : worker.kind === "robot"
+      ? Math.max(5, maxCarry(state))
+      : 3 + Math.floor(state.levels.carry / 2);
 
 /** 敷いた道のぶんの足の速さ（村の道は、通る人みんなが速くなる） */
 export const roadBonus = (state: ShopState) =>
@@ -3071,12 +3138,19 @@ export const roadBonus = (state: ShopState) =>
 
 /** スタッフの足の速さ。強化（厨房シューズ／園内カート）の半分だけ効く */
 export const staffSpeedFactor = (state: ShopState) =>
-  (1 + state.levels.speed * 0.05) * fireMove(state) * roadBonus(state);
+  (1 + state.levels.speed * 0.05) * fireMove(state) * taigaMove(state) * roadBonus(state);
 
 const staffSpeed = (state: ShopState) => STAFF_SPEED * staffSpeedFactor(state);
 
 const carrierSpeed = (state: ShopState, worker: Staff) =>
-  (worker.kind === "robot" ? ROBOT_SPEED : STAFF_SPEED) * staffSpeedFactor(state);
+  (worker.kind === "boat"
+    ? BOAT_SPEED
+    : worker.kind === "robot"
+      ? ROBOT_SPEED
+      : STAFF_SPEED) *
+  staffSpeedFactor(state) *
+  // 運びへ人手を配ると、運ぶ人みんなが速くなる（大河の文明）
+  taigaCrew(state, worker.kind);
 
 /** 調理人の立ち位置（寸胴の奥） */
 export const cookPost = (worker: Staff): Vec => {
@@ -3113,6 +3187,32 @@ const go = (
 };
 
 /**
+ * 船の動き。遠くへ行くときは、いったん川へ出て、水の上を走り、
+ * 目的地の正面まで来てから岸へ寄る。陸をまっすぐ突っ切らない。
+ */
+const sail = (
+  state: ShopState,
+  worker: Staff,
+  target: Vec,
+  speed: number,
+  dt: number,
+) => {
+  const far = Math.abs(target.x - worker.pos.x) > 150;
+  const onRiver = worker.pos.y <= RIVER_LANE + 24;
+  if (far && !onRiver) {
+    // まず川へ出る（いま居るところの真上）
+    go(state, worker, { x: worker.pos.x, y: RIVER_LANE }, speed, dt);
+    return;
+  }
+  if (far) {
+    // 川の上を、目的地の正面まで走る
+    go(state, worker, { x: target.x, y: RIVER_LANE }, speed, dt);
+    return;
+  }
+  go(state, worker, target, speed, dt);
+};
+
+/**
  * その場所を、ほかのスタッフが担当していないか。
  * 配膳ロボは最初のとおり素直に動かすので、予約を見ない
  */
@@ -3126,6 +3226,7 @@ const claimedByOther = (state: ShopState, worker: Staff, id: string) =>
  */
 const approach = (_state: ShopState, worker: Staff, at: Vec): Vec => {
   // まっすぐ向かう。重ならないように行き先だけ少しずらす
+  if (worker.kind === "boat") return { x: at.x, y: RIVER_LANE };
   if (worker.kind === "robot") return at;
   return { x: at.x + ((worker.id % 3) - 1) * 10, y: at.y };
 };
@@ -3143,6 +3244,7 @@ const spread = (state: ShopState, dt: number) => {
       if (a.kind === "cook" || b.kind === "cook") continue;
       // ロボはぶつかり判定を持たない（すり抜ける）
       if (a.kind === "robot" || b.kind === "robot") continue;
+      if (a.kind === "boat" || b.kind === "boat") continue;
       // 着いて作業している人は押さない（押し合いで震えないように）
       if (a.settled || b.settled) continue;
       if (a.charge > 0 || b.charge > 0) continue;
@@ -3400,12 +3502,17 @@ const updateHauler = (state: ShopState, worker: Staff, dt: number) => {
     keep ?? jobs.reduce((best, job) => (score(job) < score(best) ? job : best));
 
   worker.target = pick.id;
-  go(state, worker, approach(state, worker, pick.at), speed, dt);
+  const to = approach(state, worker, pick.at);
+  if (worker.kind === "boat") sail(state, worker, to, speed, dt);
+  else go(state, worker, to, speed, dt);
   const reach = pick.drop ? SERVE_RADIUS : PICK_RADIUS;
   if (dist(worker.pos, pick.at) <= reach && pick.run() > 0) {
     worker.target = null;
-    // 犬ぞりは荷台にまとめて積めるので、積み下ろしが速い
-    worker.charge = worker.kind === "robot" ? HAUL_PAUSE * 0.4 : HAUL_PAUSE;
+    // 犬ぞりと船は荷台にまとめて積めるので、積み下ろしが速い
+    worker.charge =
+      worker.kind === "robot" || worker.kind === "boat"
+        ? HAUL_PAUSE * 0.4
+        : HAUL_PAUSE;
   }
 };
 
@@ -3843,6 +3950,7 @@ const updateStaff = (state: ShopState, dt: number) => {
         isChainStage() &&
         (worker.kind === "waiter" ||
           worker.kind === "robot" ||
+          worker.kind === "boat" ||
           worker.kind === "builder" ||
           worker.kind === "keeper" ||
           worker.kind === "nightman"))
@@ -4034,6 +4142,7 @@ export const update = (state: ShopState, input: Input, dt: number) => {
   state.playTime += dt;
   // 昼夜・天気・住民・谷・探索は、ほかの何より先に決める
   updateFire(state, dt, coinValue(state.levels.price));
+  updateTaiga(state, dt);
   updateStoves(state, dt);
   updateHunt(state, dt);
   updateForest(state, dt);
@@ -4172,7 +4281,7 @@ const chainObjective = (state: ShopState): Objective | null => {
         return {
           kind: "serve",
           pos: seat.tray,
-          label: `${itemLabel(kind)}を、待っている仲間へ渡そう`,
+          label: `${itemLabel(kind)}を、待っている${stageLabels().guest}へ渡そう`,
         };
       }
       const station = near(stationsWanting(state, kind), (item) => item.pos);
@@ -4183,7 +4292,8 @@ const chainObjective = (state: ShopState): Objective | null => {
           pos: station.pos,
           label:
             slot === "fuel"
-              ? `${station.label ?? "たき火"}に薪をくべよう`
+              // 第2の材料はステージで違う（薪をくべる／畑に種をまく）
+              ? `${station.label ?? "たき火"}に${itemLabel(kind)}を入れよう`
               : `${itemLabel(kind)}を${station.label ?? "作業場"}へ置こう`,
         };
       }
@@ -4205,7 +4315,8 @@ const chainObjective = (state: ShopState): Objective | null => {
     return {
       kind: "pickup",
       pos: done.pos,
-      label: `焼けた${itemLabel(stoveItem(done))}を受け取ろう`,
+      // 「焼けた」はたき火の言葉。できあがったものの名前だけで言う
+      label: `${done.label ?? "出し口"}の${itemLabel(stoveItem(done))}を受け取ろう`,
     };
   }
 
@@ -4286,6 +4397,21 @@ const chainObjective = (state: ShopState): Objective | null => {
         };
         continue;
       }
+      /*
+       * 素材の作業場（水くみ場・種置き場・粘土穴・牧草地・川の瀬）。
+       * 狩り場と森だけが特別で、それ以外の採取場には案内が出ていなかった。
+       * できるのを待つあいだも、どこで待つのかは必ず指しておく。
+       */
+      if (!isStation(stove)) {
+        waitAt ??= {
+          kind: "wait" as const,
+          pos: stove.pos,
+          label: stove.manual
+            ? `${stove.label ?? "作業場"}に立つと、${itemLabel(stoveItem(stove))}がたまる`
+            : `${stove.label ?? "作業場"}で${itemLabel(stoveItem(stove))}ができるのを待とう`,
+        };
+        continue;
+      }
       // 加工の作業場（薪割り場）
       if (isStation(stove)) {
         if (heldAt(state, stove.id) > 0) {
@@ -4293,7 +4419,8 @@ const chainObjective = (state: ShopState): Objective | null => {
             kind: "serve" as const,
             pos: stove.pos,
             label: stove.manual
-              ? `${stove.label ?? "作業場"}に立って、丸太を割ろう`
+              // 人の手が要る作業場（薪割り場・石臼）。作るものはステージで違う
+              ? `${stove.label ?? "作業場"}に立って、${itemLabel(stoveItem(stove))}にしよう`
               : `${stove.label ?? "作業場"}でできるのを待とう`,
           };
         }
@@ -4577,8 +4704,13 @@ const padInspect = (state: ShopState, pad: Pad): Inspect => {
     }
     if (hire?.kind === "logger") lines.push("森で立木を切り、丸太を出し口へ積む");
     if (hire?.kind === "splitter") {
-      lines.push("薪割り場に立ちっぱなしで、丸太を薪に変え続ける");
-      lines.push("雇うまでは、自分で薪割り場に立って割る");
+      // 持ち場はステージごとに違う（薪割り場・水くみ場・石臼・牧草地…）。
+      // その人が付く作業場の名前と、そこで作るもので言う
+      const post = hire.stoveId ? stoveById.get(hire.stoveId) : null;
+      const place = post?.label ?? "その作業場";
+      const made = post ? itemLabel(stoveItem(post)) : "しなもの";
+      lines.push(`${place}に立ちっぱなしで、${made}を作り続ける`);
+      lines.push(`雇うまでは、自分で${place}に立つ`);
     }
     if (hire?.kind === "hunter") lines.push("草原の動物を追って、生肉を出し口へ積む");
     if (hire?.kind === "collector") {
@@ -4906,14 +5038,21 @@ export const inspectAt = (state: ShopState, at: Vec): Inspect | null => {
           isChainStage()
             ? `品種ごとに ${carrierLimit(state, worker)}${unit}まで（生肉と薪を同時に持てる）`
             : `一度に ${carrierLimit(state, worker)}${unit}${
-                worker.kind === "robot" ? "・足が速い" : ""
+                worker.kind === "boat"
+                  ? "・川を通ってまとめて運ぶ"
+                  : worker.kind === "robot"
+                    ? "・足が速い"
+                    : ""
               }`,
           load ? `いま ${load} を持っている` : "いまは手ぶら",
         );
       }
       if (
         !isChainStage() &&
-        (worker.kind === "robot" || worker.kind === "waiter" || worker.kind === "server")
+        (worker.kind === "robot" ||
+          worker.kind === "boat" ||
+          worker.kind === "waiter" ||
+          worker.kind === "server")
       ) {
         lines.push(
           worker.wait > 0
