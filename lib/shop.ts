@@ -1585,7 +1585,14 @@ const demandFor = (state: ShopState, item: ItemKind) => {
     if (!seat || seatMode(seat) === "shelf" || seatNeeds(seat) !== item) continue;
     need += seatCost(seat);
   }
-  for (const other of state.staff) need -= carryOf(other, item);
+  /*
+   * 引くのは「もう行き先が決まっている荷」だけ。
+   * 持っているだけの荷まで引くと、遠くの誰かが1つ抱えているせいで
+   * 目の前で材料待ちの作業場に誰も動かなくなる（実際そうなった）
+   */
+  for (const other of state.staff) {
+    if (other.target?.startsWith(`${item}@`)) need -= carryOf(other, item);
+  }
   return Math.max(0, need);
 };
 
@@ -3349,6 +3356,25 @@ const jobAllowed = (worker: Staff, job: HaulJob) => {
 };
 
 /**
+ * 持っている荷の、行き先のそば（空きが出るのを待つ場所）。
+ * 満杯でもいい。そこに立っていれば、空いた瞬間に下ろせる
+ */
+const waitNear = (state: ShopState, worker: Staff): Vec | null => {
+  let best: StoveSpec | null = null;
+  let bestGap = Infinity;
+  for (const kind of carryKinds(worker)) {
+    for (const stove of stationsWanting(state, kind)) {
+      const gap = dist(worker.pos, stove.pos);
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = stove;
+      }
+    }
+  }
+  return best ? { x: best.pos.x, y: best.pos.y + 40 } : null;
+};
+
+/**
  * 抱えたままの荷を返せる場所（その品を作った作業場の出し口）。
  * 空きのあるところだけを返す先にする
  */
@@ -3451,7 +3477,12 @@ const dropJobs = (state: ShopState, worker: Staff): HaulJob[] => {
  * 持っている品が届けられなくても、別の品種に空きがあれば拾いに行ける（§4.5）。
  * 拾うのは「行き先があって、そこに空きのある品」だけ。
  */
-const pickJobs = (state: ShopState, worker: Staff): HaulJob[] => {
+const pickJobs = (
+  state: ShopState,
+  worker: Staff,
+  /** 持っている荷を、いまどこへも下ろせないか（そのときは品種の上限を外す） */
+  stuck = false,
+): HaulJob[] => {
   const jobs: HaulJob[] = [];
   for (const source of openStoves(state)) {
     if (!inShop(worker, source.area)) continue;
@@ -3467,7 +3498,11 @@ const pickJobs = (state: ShopState, worker: Staff): HaulJob[] => {
      *（品種の多い「大河の文明」で実際に起きた）。
      * すでに持っている品はいくらでも足していい
      */
-    if (carryOf(worker, kind) <= 0 && carryKinds(worker).length >= KINDS_AT_ONCE) {
+    if (
+      !stuck &&
+      carryOf(worker, kind) <= 0 &&
+      carryKinds(worker).length >= KINDS_AT_ONCE
+    ) {
       continue;
     }
     // その品を待って止まっている先があるか
@@ -3534,7 +3569,10 @@ const updateHauler = (state: ShopState, worker: Staff, dt: number) => {
     return;
   }
 
-  const jobs = [...dropJobs(state, worker), ...pickJobs(state, worker)].filter(
+  // 下ろす先が1つもないなら「詰まっている」。そのときは拾う品種を選ばない
+  const drops = dropJobs(state, worker).filter((job) => jobAllowed(worker, job));
+  const stuck = drops.length === 0 && carryTotal(worker) > 0;
+  const jobs = [...drops, ...pickJobs(state, worker, stuck)].filter(
     (job) => jobAllowed(worker, job) && claimCount(state, worker, job.id) < job.slots,
   );
 
@@ -3547,7 +3585,7 @@ const updateHauler = (state: ShopState, worker: Staff, dt: number) => {
      */
     worker.idleTime = (worker.idleTime ?? 0) + dt;
     const back =
-      carryTotal(worker) > 0 && (worker.idleTime ?? 0) > 6
+      carryTotal(worker) > 0 && (worker.idleTime ?? 0) > 3
         ? putBack(state, worker)
         : null;
     if (back) {
@@ -3564,8 +3602,12 @@ const updateHauler = (state: ShopState, worker: Staff, dt: number) => {
       }
       return;
     }
-    // 仕事がないときは待機場所へ戻る
-    go(state, worker, idleSpot(state, worker), speed * 0.4, dt);
+    /*
+     * 置き場も空いていないときは、下ろす先のそばまで行って待つ。
+     * 何もないところで荷を抱えて突っ立っていると、止まって見える
+     */
+    const wait = carryTotal(worker) > 0 ? waitNear(state, worker) : null;
+    go(state, worker, wait ?? idleSpot(state, worker), speed * 0.4, dt);
     return;
   }
   worker.idleTime = 0;

@@ -1707,20 +1707,20 @@ const taigaHires: HireSpec[] = [
    * 何のために稼ぐのかが、最初の1分で分かるようにするため
    */
   { id: "farmer-1", kind: "cook", pos: { x: 344, y: 366 }, price: 48, label: "農民", stoveId: "field-1", area: 0, reveal: 2 },
-  { id: "waiter-1", kind: "waiter", pos: { x: 268, y: 230 }, price: 64, label: "はこび手", area: 0, reveal: 3 },
-  { id: "waiter-2", kind: "waiter", pos: { x: 420, y: 230 }, price: 96, label: "はこび手", area: 0, unlockAfter: "seat-0-2", reveal: 6 },
+  { id: "waiter-1", kind: "waiter", pos: { x: 176, y: 366 }, price: 64, label: "はこび手", area: 0, reveal: 3 },
+  { id: "waiter-2", kind: "waiter", pos: { x: 246, y: 366 }, price: 96, label: "はこび手", area: 0, unlockAfter: "seat-0-2", reveal: 6 },
   { id: "farmer-2", kind: "cook", pos: { x: 494, y: 366 }, price: 240, label: "農民", stoveId: "field-2", area: 0, unlockAfter: "field-2", reveal: 8 },
-  { id: "collector-1", kind: "collector", pos: { x: 574, y: 300 }, price: 140, label: "拾い手", area: 0, reveal: 9 },
-  { id: "robot-1", kind: "robot", pos: { x: 574, y: 366 }, price: 320, label: "荷車", area: 0, unlockAfter: "collector-1", reveal: 11 },
+  { id: "collector-1", kind: "collector", pos: { x: 620, y: 366 }, price: 140, label: "拾い手", area: 0, reveal: 9 },
+  { id: "robot-1", kind: "robot", pos: { x: 620, y: 430 }, price: 320, label: "荷車", area: 0, unlockAfter: "collector-1", reveal: 11 },
 
   /* --- area-1 水路の村 --- */
   { id: "gateman-1", kind: "cook", pos: { x: 790, y: 210 }, price: 2800, label: "水門番", stoveId: "intake-1", area: 1, reveal: 26.5 },
   { id: "farmer-3", kind: "cook", pos: { x: 1020, y: 366 }, price: 2000, label: "農民", stoveId: "field-3", area: 1, reveal: 23.5 },
   { id: "sower-2", kind: "cook", pos: { x: 1420, y: 210 }, price: 1800, label: "種まき", stoveId: "seed-2", area: 1, reveal: 24.5 },
   { id: "farmer-4", kind: "cook", pos: { x: 1180, y: 366 }, price: 2400, label: "農民", stoveId: "field-4", area: 1, reveal: 25.5 },
-  { id: "waiter-3", kind: "waiter", pos: { x: 900, y: 300 }, price: 3200, label: "はこび手", area: 1, reveal: 29 },
+  { id: "waiter-3", kind: "waiter", pos: { x: 800, y: 560 }, price: 3200, label: "はこび手", area: 1, reveal: 29 },
   { id: "farmer-5", kind: "cook", pos: { x: 1340, y: 366 }, price: 3000, label: "農民", stoveId: "field-5", area: 1, reveal: 33.5 },
-  { id: "robot-2", kind: "robot", pos: { x: 960, y: 300 }, price: 26000, label: "荷車", area: 1, reveal: 39 },
+  { id: "robot-2", kind: "robot", pos: { x: 870, y: 560 }, price: 26000, label: "荷車", area: 1, reveal: 39 },
 
   /* --- area-2 土と火の工房 --- */
   { id: "logger-1", kind: "logger", pos: { x: 2440, y: 420 }, price: 12000, label: "木こり", stoveId: "forest-1", area: 2, reveal: 41.5 },
@@ -1729,32 +1729,32 @@ const taigaHires: HireSpec[] = [
   { id: "potter-1", kind: "cook", pos: { x: 1860, y: 320 }, price: 20000, label: "陶工", stoveId: "kiln-1", area: 2, reveal: 45.5 },
   { id: "miller-1", kind: "splitter", pos: { x: 2020, y: 320 }, price: 18000, label: "製粉係", stoveId: "mill-1", area: 2, reveal: 47.5 },
   { id: "baker-1", kind: "cook", pos: { x: 2180, y: 320 }, price: 24000, label: "パン職人", stoveId: "oven-1", area: 2, reveal: 49.5 },
-  { id: "waiter-4", kind: "waiter", pos: { x: 1980, y: 480 }, price: 24000, label: "はこび手", area: 2, reveal: 52 },
-  { id: "robot-3", kind: "robot", pos: { x: 2060, y: 480 }, price: 60000, label: "荷車", area: 2, reveal: 57 },
+  { id: "waiter-4", kind: "waiter", pos: { x: 1700, y: 580 }, price: 24000, label: "はこび手", area: 2, reveal: 52 },
+  { id: "robot-3", kind: "robot", pos: { x: 1780, y: 580 }, price: 60000, label: "荷車", area: 2, reveal: 57 },
 
   /* --- area-3 牧草地 --- */
   { id: "mower-1", kind: "splitter", pos: { x: 2700, y: 450 }, price: 40000, label: "草刈り", stoveId: "graze-1", area: 3, reveal: 61.5 },
   { id: "herder-1", kind: "cook", pos: { x: 2960, y: 320 }, price: 70000, label: "牧畜係", stoveId: "goat-1", area: 3, reveal: 63.5 },
   { id: "shearer-1", kind: "cook", pos: { x: 3140, y: 320 }, price: 110000, label: "毛刈り係", stoveId: "sheep-1", area: 3, reveal: 66.5 },
-  { id: "waiter-5", kind: "waiter", pos: { x: 2860, y: 450 }, price: 90000, label: "はこび手", area: 3, reveal: 69 },
-  { id: "robot-4", kind: "robot", pos: { x: 2920, y: 450 }, price: 220000, label: "荷車", area: 3, reveal: 73 },
+  { id: "waiter-5", kind: "waiter", pos: { x: 2600, y: 580 }, price: 90000, label: "はこび手", area: 3, reveal: 69 },
+  { id: "robot-4", kind: "robot", pos: { x: 2680, y: 580 }, price: 220000, label: "荷車", area: 3, reveal: 73 },
 
   /* --- area-4 大河の市場 --- */
   { id: "fisher-1", kind: "splitter", pos: { x: 3600, y: 450 }, price: 150000, label: "漁師", stoveId: "fish-1", area: 4, reveal: 81.5 },
   { id: "drier-1", kind: "cook", pos: { x: 3840, y: 320 }, price: 200000, label: "干し場番", stoveId: "dry-1", area: 4, reveal: 83.5 },
   { id: "builder-1", kind: "builder", pos: { x: 3480, y: 540 }, price: 260000, label: "建築係", area: 4, reveal: 84.5 },
-  { id: "waiter-6", kind: "waiter", pos: { x: 3700, y: 480 }, price: 300000, label: "はこび手", area: 4, reveal: 87 },
+  { id: "waiter-6", kind: "waiter", pos: { x: 3500, y: 580 }, price: 300000, label: "はこび手", area: 4, reveal: 87 },
   { id: "trader-1", kind: "master", pos: { x: 4020, y: 480 }, price: 900000, label: "商人", area: 4, unlockAfter: "built-build-market", reveal: 90 },
   // 川の物流。船着き場ができてはじめて、船が出せる
   { id: "boat-1", kind: "boat", pos: { x: 3620, y: 540 }, price: 700000, label: "運搬船", area: 4, unlockAfter: "built-build-dock", reveal: 91.5 },
-  { id: "robot-5", kind: "robot", pos: { x: 3760, y: 480 }, price: 500000, label: "荷車", area: 4, reveal: 92 },
+  { id: "robot-5", kind: "robot", pos: { x: 3580, y: 580 }, price: 500000, label: "荷車", area: 4, reveal: 92 },
 
   /* --- area-5 川の町 --- */
   { id: "builder-2", kind: "builder", pos: { x: 4380, y: 520 }, price: 1200000, label: "建築係", area: 5, reveal: 100.5 },
   { id: "logger-2", kind: "logger", pos: { x: 5160, y: 380 }, price: 400000, label: "木こり", stoveId: "forest-2", area: 5, reveal: 100.7 },
   { id: "splitter-2", kind: "splitter", pos: { x: 4980, y: 470 }, price: 440000, label: "薪割り", stoveId: "split-2", area: 5, reveal: 100.9 },
-  { id: "waiter-7", kind: "waiter", pos: { x: 4700, y: 480 }, price: 1500000, label: "はこび手", area: 5, reveal: 105 },
-  { id: "robot-6", kind: "robot", pos: { x: 4780, y: 480 }, price: 2400000, label: "荷車", area: 5, reveal: 108 },
+  { id: "waiter-7", kind: "waiter", pos: { x: 4700, y: 580 }, price: 1500000, label: "はこび手", area: 5, reveal: 105 },
+  { id: "robot-6", kind: "robot", pos: { x: 4780, y: 580 }, price: 2400000, label: "荷車", area: 5, reveal: 108 },
   { id: "boat-2", kind: "boat", pos: { x: 4620, y: 420 }, price: 2200000, label: "交易船", area: 5, reveal: 106.5 },
   { id: "elder-1", kind: "master", pos: { x: 4880, y: 480 }, price: 6000000, label: "町長", area: 5, unlockAfter: "built-build-temple", reveal: 111 },
 ];
@@ -2041,6 +2041,12 @@ export const stageDefs: Record<StageId, StageDef> = {
     // 畑は 4.0秒に1こ。農民が付くと 2.0秒（作物は待つものなので、火より遅くない）
     cookTime: 4.0,
     cookBoost: 2.0,
+    /*
+     * 工程の運搬を、はこび手・荷車・船・建築係にまかせる。
+     * これが無いと、運び手は席へ渡すことしかしなくなり、
+     * 畑も石臼も窯も材料待ちのまま、みんな突っ立ってしまう
+     */
+    haulers: true,
     // 次の自動化に必要な枠が、いつも5つ先まで見えているようにする
     revealLimit: 5,
     // ふたつずつだと、次の目標が出そろうまでが長い
