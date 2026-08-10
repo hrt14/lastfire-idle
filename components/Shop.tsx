@@ -8935,7 +8935,9 @@ export default function Shop({ onSample, paused }: Props) {
 
       // 集客が上がるほど、外の通りがにぎわう
       const draw = customerDraw(state);
-      const crowd = Math.min(14, Math.round((draw - 1) * 4));
+      // 壁のある店では、横切るだけの飾りの通行人が「入口を使わない客」に見える。
+      // 実際の customer だけを外に描き、戸口へ向かう動きがそのまま見えるようにする。
+      const crowd = wallsOn() ? 0 : Math.min(14, Math.round((draw - 1) * 4));
       for (let i = 0; i < crowd; i += 1) {
         const span = box.x1 - box.x0 + 120;
         const dir = i % 2 === 0 ? 1 : -1;

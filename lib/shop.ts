@@ -2240,7 +2240,12 @@ const streetFor = (state: ShopState, seat: SeatSpec | null): Vec => {
 
 const guestEntry = (state: ShopState, seat: SeatSpec | null): Vec => {
   const street = streetFor(state, seat);
-  const fallback = { x: street.x + (Math.random() * 40 - 20), y: street.y };
+  // 壁のある店は、実客を戸口の正面に出す。
+  // 入口からずれた通行人に見えたり、斜め進入で壁判定に触れたりしないようにする。
+  const fallback = {
+    x: street.x + (wallsOn() ? 0 : Math.random() * 40 - 20),
+    y: street.y,
+  };
   if (state.stageId !== "fire" || !seat) return fallback;
   const area = areaById.get(`area-${seat.area}`);
   if (!area) return fallback;
