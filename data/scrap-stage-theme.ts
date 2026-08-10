@@ -1,6 +1,18 @@
 import { stageDefs } from "@/data/stages";
 
-const original = structuredClone(stageDefs.taiga);
+const stage = stageDefs.taiga;
+const original = {
+  name: stage.name,
+  subtitle: stage.subtitle,
+  icon: stage.icon,
+  itemIcon: stage.itemIcon,
+  currency: stage.currency,
+  areaLabels: stage.areas.map((area) => area.label),
+  areaPalettes: stage.areas.map((area) => ({ ...area.palette })),
+  stoveLabels: stage.stoves.map((station) => station.label),
+  hireLabels: stage.hires.map((hire) => hire.label),
+  labels: JSON.parse(JSON.stringify(stage.labels)) as typeof stage.labels,
+};
 
 const areaNames = [
   "廃棄平原",
@@ -105,5 +117,21 @@ export const applyScrapStageTheme = () => {
 };
 
 export const restoreTaigaStageTheme = () => {
-  stageDefs.taiga = structuredClone(original);
+  const stage = stageDefs.taiga;
+  stage.name = original.name;
+  stage.subtitle = original.subtitle;
+  stage.icon = original.icon;
+  stage.itemIcon = original.itemIcon;
+  stage.currency = original.currency;
+  stage.areas.forEach((area, index) => {
+    area.label = original.areaLabels[index] ?? area.label;
+    area.palette = { ...(original.areaPalettes[index] ?? area.palette) };
+  });
+  stage.stoves.forEach((station, index) => {
+    station.label = original.stoveLabels[index];
+  });
+  stage.hires.forEach((hire, index) => {
+    hire.label = original.hireLabels[index];
+  });
+  stage.labels = JSON.parse(JSON.stringify(original.labels)) as typeof stage.labels;
 };
