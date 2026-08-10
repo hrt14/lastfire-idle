@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import AquariumStageRegistry from "@/components/AquariumStageRegistry";
 import ScrollMode from "@/components/ScrollMode";
-import ScrapTopLink from "@/components/ScrapTopLink";
 import OceanTopLink from "@/components/OceanTopLink";
 import "@/data/aquarium-balance-v2";
 import "./globals.css";
@@ -40,7 +39,6 @@ export default function RootLayout({
         <AquariumStageRegistry>
           <ScrollMode />
           {children}
-          <ScrapTopLink />
           <OceanTopLink />
         </AquariumStageRegistry>
       </body>
