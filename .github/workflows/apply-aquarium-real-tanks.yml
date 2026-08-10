@@ -35,7 +35,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add components/Shop.tsx
+          git add components/Shop.tsx data/scrap-stage-theme.ts
           git commit -m "Render aquarium exhibits as real fish tanks"
 
       - name: Remove one-time patch files
