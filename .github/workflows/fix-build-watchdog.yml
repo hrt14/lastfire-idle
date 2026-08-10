@@ -19,6 +19,24 @@ jobs:
       - name: Apply construction watchdog
         run: python scripts/fix-build-watchdog.py
 
+      - name: Fix TypeScript narrowing
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('lib/shop.ts')
+          s = p.read_text(encoding='utf-8')
+          old = '''  if (buildPlan.site?.needs) {
+    const site = buildPlan.site;
+    for (const [kind, need] of Object.entries(site.needs)) {'''
+          new = '''  if (buildPlan.site?.needs) {
+    const site = buildPlan.site;
+    const needs = site.needs ?? {};
+    for (const [kind, need] of Object.entries(needs)) {'''
+          assert old in s, 'narrowing anchor not found'
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Install dependencies
         run: npm ci
 
