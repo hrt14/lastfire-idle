@@ -2367,6 +2367,19 @@ const flowLinks = (state: ShopState, dt: number) => {
     if ((state.ready[from] ?? 0) <= 0) continue;
     // 送り先の、正しい受け口（材料 or まき）へ入れる
     const made = stoveItem(fromStove);
+    /*
+     * 建築予定地が同じ資材を必要としている間は、直結設備をいったん止める。
+     * 直結設備は運び手より速いため、たとえば大河の文明で
+     * 「丸太ころがし」が丸太をすべて薪割り場へ流すと、船着き場の
+     * 建築係が丸太を1本も拾えず、永久に建たない状態になる。
+     * 建築が必要数を受け取ったら stationAccepts が build を返さなくなり、
+     * 直結設備は自動で通常運転へ戻る。
+     */
+    const buildNeedsMade = openStoves(state).some(
+      (stove) =>
+        isBuild(stove) && stationAccepts(state, stove, made) === "build",
+    );
+    if (buildNeedsMade) continue;
     const slot = stationAccepts(state, toStove, made);
     if (!slot) continue;
     state.autoTimer[key] = 0;
