@@ -318,7 +318,7 @@ const ramenAreas: AreaSpec[] = [
     label: "スープ蔵をたてる",
     price: 48000000000,
     rect: { x0: 1500, y0: 420, x1: 1840, y1: 790 },
-    padPos: { x: 1620, y: 450 },
+    padPos: { x: 1620, y: 350 },
     palette: { floor: "#33302c", deep: "#22201d", prop: "none" },
     building: "soupgura",
     shop: 1,
