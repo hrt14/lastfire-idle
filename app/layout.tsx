@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import AquariumStageRegistry from "@/components/AquariumStageRegistry";
 import ScrollMode from "@/components/ScrollMode";
 import OceanTopLink from "@/components/OceanTopLink";
-import "@/data/aquarium-balance";
+import "@/data/aquarium-balance-v2";
 import "./globals.css";
 
 export const metadata: Metadata = {
