@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,36 +16,8 @@ jobs:
       - name: Patch direct-link construction priority
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("lib/shop.ts")
-          source = path.read_text(encoding="utf-8")
-          old = '''    const made = stoveItem(fromStove);
-    const slot = stationAccepts(state, toStove, made);
-'''
-          new = '''    const made = stoveItem(fromStove);
-    /*
-     * 建築予定地が同じ資材を必要としている間は、直結設備をいったん止める。
-     * 直結設備は運び手より速いため、たとえば大河の文明で
-     * 「丸太ころがし」が丸太をすべて薪割り場へ流すと、船着き場の
-     * 建築係が丸太を1本も拾えず、永久に建たない状態になる。
-     * 建築が必要数を受け取ったら stationAccepts が build を返さなくなり、
-     * 直結設備は自動で通常運転へ戻る。
-     */
-    const buildNeedsMade = openStoves(state).some(
-      (stove) =>
-        isBuild(stove) && stationAccepts(state, stove, made) === "build",
-    );
-    if (buildNeedsMade) continue;
-    const slot = stationAccepts(state, toStove, made);
-'''
-          if old not in source:
-              raise SystemExit("Target snippet not found; refusing to patch")
-          if source.count(old) != 1:
-              raise SystemExit(f"Target snippet count was {source.count(old)}, expected 1")
-          path.write_text(source.replace(old, new, 1), encoding="utf-8")
-          PY
+          python -c 'from pathlib import Path; p=Path("lib/shop.ts"); s=p.read_text(encoding="utf-8"); old="    const made = stoveItem(fromStove);\n    const slot = stationAccepts(state, toStove, made);\n"; new="    const made = stoveItem(fromStove);\n    /* 建築が同じ資材を必要としている間は、直結設備が資材を独占しない */\n    const buildNeedsMade = openStoves(state).some(\n      (stove) =>\n        isBuild(stove) && stationAccepts(state, stove, made) === \\"build\\",\n    );\n    if (buildNeedsMade) continue;\n    const slot = stationAccepts(state, toStove, made);\n"; assert s.count(old)==1, f"target count={s.count(old)}"; p.write_text(s.replace(old,new,1), encoding="utf-8")'
+          grep -q 'const buildNeedsMade = openStoves(state).some' lib/shop.ts
 
       - name: Install dependencies
         run: npm ci
