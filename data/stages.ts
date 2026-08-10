@@ -50,6 +50,8 @@ export type StageDef = {
   icon: string;
   /** 運ぶものの絵文字 */
   itemIcon: string;
+  /** ロジック上のstage idとは別に、画面の世界観だけを差し替える */
+  visualTheme?: "park" | "aquarium";
   /** 作る場所が並ぶ帯（歩いて入れる） */
   frontRoom: { top: number; bottom: number };
   areas: AreaSpec[];

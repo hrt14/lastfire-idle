@@ -1,6 +1,7 @@
 "use client";
 
 import { drawAquariumExhibit } from "@/lib/aquariumArt";
+import { drawAquariumHall } from "@/lib/aquariumTheme";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -1123,16 +1124,24 @@ const drawFireRoleMark = (
 const drawProps = (
   ctx: CanvasRenderingContext2D,
   area: {
+    id: string;
+    label?: string;
     rect: { x0: number; y0: number; x1: number; y1: number };
-    palette: { prop: string };
+    palette: { floor: string; deep: string; prop: string };
   },
   time: number,
 ) => {
   const { rect, palette } = area;
-  const park = stage().id === "park";
+  const aquarium = stage().visualTheme === "aquarium";
+  const park = stage().id === "park" && !aquarium;
   const cx = (rect.x0 + rect.x1) / 2;
   const spots = [rect.x0 + 34, rect.x1 - 34];
   const baseY = rect.y1 - 40;
+
+  if (aquarium) {
+    drawAquariumHall(ctx, area, time);
+    return;
+  }
 
   if (park) {
     // 区画の上にかかる万国旗と、四隅の電飾ポール
@@ -5760,7 +5769,7 @@ const drawEquip = (
   y: number,
   time: number,
 ) => {
-  const park = stage().id === "park";
+  const park = stage().id === "park" && stage().visualTheme !== "aquarium";
 
   if (id === "hand-torch") {
     ctx.strokeStyle = "#6b4a2b";

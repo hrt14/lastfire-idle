@@ -416,6 +416,7 @@ const aquariumLabels: StageLabels = {
  */
 const aquariumRuntimeDef: StageDef = {
   id: "park",
+  visualTheme: "aquarium",
   name: "世界水族館",
   subtitle: "メダカから世界の大海へ",
   icon: "🐠",
