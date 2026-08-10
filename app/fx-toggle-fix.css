@@ -1,0 +1,18 @@
+/* 演出ON/OFFはゲーム内ステータスカードと重ならない位置に置く。 */
+.fx-toggle {
+  top: 5.4rem;
+  right: 0.55rem;
+  min-width: 4.5rem;
+  padding: 0.32rem 0.52rem;
+  background: rgba(20, 15, 11, 0.9);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32);
+}
+
+@media (max-width: 400px) {
+  .fx-toggle {
+    top: 5rem;
+    right: 0.4rem;
+    min-width: 4.2rem;
+    font-size: 0.64rem;
+  }
+}
