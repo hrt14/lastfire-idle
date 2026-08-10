@@ -1,0 +1,113 @@
+from pathlib import Path
+
+p = Path("data/stages.ts")
+text = p.read_text()
+
+if 'id: "volcano-lower-1"' in text:
+    print("already patched")
+    raise SystemExit(0)
+
+old = '''  { id: "crater-1", pos: { x: 1160, y: 176 }, price: 6000000000, area: 9, label: "火口の券売所" },
+  { id: "crater-2", pos: { x: 1290, y: 880 }, price: 14000000000, area: 9, label: "溶岩原の券売所" },'''
+new = '''  { id: "crater-1", pos: { x: 1160, y: 176 }, price: 6000000000, area: 9, label: "火口の券売所" },
+  { id: "crater-2", pos: { x: 1290, y: 880 }, price: 14000000000, area: 9, label: "溶岩原の券売所" },
+  // 下層の高収益施設用。ここまで投資すると火山だけで資金を回しやすくなる
+  { id: "crater-3", pos: { x: 1210, y: 1180 }, price: 18000000000, area: 9, label: "地底の券売所", unlockAfter: "volcano-lower-1" },'''
+if old not in text:
+    raise SystemExit("stove anchor not found")
+text = text.replace(old, new, 1)
+
+old = '''  ...rideRow(9, 294, [
+    { x: 1152, price: 10000000000, label: "マグマコースター", cost: 4, art: "coaster", detail: "火口すれすれを一気に落ちる" },
+    { x: 1260, price: 26000000000, label: "溶岩ラフト", cost: 5, art: "lava", detail: "煮えたぎる流れをいかだで下る" },
+    { x: 1368, price: 60000000000, label: "大噴火タワー", cost: 6, art: "blast", detail: "噴火に合わせて空へ打ち上がる" },
+  ]),'''
+new = '''  ...rideRow(9, 294, [
+    { x: 1152, price: 10000000000, label: "マグマコースター", cost: 4, art: "coaster", detail: "火口すれすれを一気に落ちる" },
+    { x: 1260, price: 26000000000, label: "溶岩ラフト", cost: 5, art: "lava", detail: "煮えたぎる流れをいかだで下る" },
+    { x: 1368, price: 60000000000, label: "大噴火タワー", cost: 6, art: "blast", detail: "噴火に合わせて空へ打ち上がる" },
+  ]),
+
+  /*
+   * 火山の秘境・下層部。
+   * ホラーへ直行してもよいが、ここへ投資すると通常アトラクションより
+   * 1回あたりの売上倍率が大きく、次の区画資金を火山で稼ぎやすくなる。
+   */
+  {
+    id: "volcano-lower-1",
+    pos: { x: 1152, y: 838 },
+    serve: { x: 1152, y: 774 },
+    tray: { x: 1152, y: 798 },
+    price: 10000000000,
+    area: 9,
+    label: "溶岩洞窟トロッコ",
+    art: "minecart",
+    detail: "地底の溶岩洞窟を走る高単価ツアー。火山下層の収益源。",
+    cost: 5,
+    value: 12,
+    unlockAfter: "seat-9-1",
+  },
+  {
+    id: "volcano-lower-2",
+    pos: { x: 1368, y: 838 },
+    serve: { x: 1368, y: 774 },
+    tray: { x: 1368, y: 798 },
+    price: 16000000000,
+    area: 9,
+    label: "火口ロープウェイ",
+    art: "balloonride",
+    detail: "溶岩原を見下ろす絶景ライド。少ない回転でも大きく稼げる。",
+    cost: 6,
+    value: 16,
+    unlockAfter: "volcano-lower-1",
+  },
+  {
+    id: "volcano-lower-3",
+    pos: { x: 1152, y: 1318 },
+    serve: { x: 1152, y: 1254 },
+    tray: { x: 1152, y: 1278 },
+    price: 22000000000,
+    area: 9,
+    label: "地熱スパ",
+    art: "cafe",
+    detail: "火山の地熱を使ったプレミアム施設。チケット消費に対して売上が高い。",
+    cost: 4,
+    value: 18,
+    unlockAfter: "volcano-lower-1",
+  },
+  {
+    id: "volcano-lower-4",
+    pos: { x: 1368, y: 1318 },
+    serve: { x: 1368, y: 1254 },
+    tray: { x: 1368, y: 1278 },
+    price: 32000000000,
+    area: 9,
+    label: "マグマナイトショー",
+    art: "theater",
+    detail: "噴火と炎を使う火山最大の夜公演。火山エリア最高の売上倍率。",
+    cost: 7,
+    value: 25,
+    unlockAfter: "volcano-lower-2",
+  },'''
+if old not in text:
+    raise SystemExit("seat anchor not found")
+text = text.replace(old, new, 1)
+
+old = '''  { id: "cook-12", kind: "cook", pos: { x: 1200, y: 130 }, price: 8000000000, label: "券売スタッフ", stoveId: "crater-1", area: 9 },
+  { id: "cook-13", kind: "cook", pos: { x: 1330, y: 834 }, price: 18000000000, label: "券売スタッフ", stoveId: "crater-2", area: 9 },
+  { id: "waiter-6", kind: "waiter", pos: { x: 1140, y: 640 }, price: 9000000000, label: "案内係", area: 9 },
+  { id: "robot-6", kind: "robot", pos: { x: 1260, y: 640 }, price: 24000000000, label: "案内ロボ", area: 9, unlockAfter: "waiter-6" },
+  { id: "collector-4", kind: "collector", pos: { x: 1380, y: 640 }, price: 32000000000, label: "集金係", area: 9 },'''
+new = '''  { id: "cook-12", kind: "cook", pos: { x: 1200, y: 130 }, price: 8000000000, label: "券売スタッフ", stoveId: "crater-1", area: 9 },
+  { id: "cook-13", kind: "cook", pos: { x: 1330, y: 834 }, price: 18000000000, label: "券売スタッフ", stoveId: "crater-2", area: 9 },
+  { id: "cook-14", kind: "cook", pos: { x: 1250, y: 1134 }, price: 22000000000, label: "地底券売スタッフ", stoveId: "crater-3", area: 9, unlockAfter: "volcano-lower-1" },
+  { id: "waiter-6", kind: "waiter", pos: { x: 1140, y: 640 }, price: 9000000000, label: "案内係", area: 9 },
+  { id: "robot-6", kind: "robot", pos: { x: 1260, y: 640 }, price: 24000000000, label: "案内ロボ", area: 9, unlockAfter: "waiter-6" },
+  { id: "robot-volcano-lower", kind: "robot", pos: { x: 1260, y: 1100 }, price: 26000000000, label: "地底案内ロボ", area: 9, unlockAfter: "volcano-lower-2" },
+  { id: "collector-4", kind: "collector", pos: { x: 1380, y: 640 }, price: 32000000000, label: "集金係", area: 9 },'''
+if old not in text:
+    raise SystemExit("hire anchor not found")
+text = text.replace(old, new, 1)
+
+p.write_text(text)
+print("patched data/stages.ts")
