@@ -1047,7 +1047,7 @@ const updateNightForest = (state: ShopState, dt: number) => {
     state.hold["night-bait"] = bait - 2;
     fire.wolfFedDay = fire.day;
     fire.wolfTrust = Math.min(3, fire.wolfTrust + 1);
-    say(state, { x: BAIT_POS.x, y: BAIT_POS.y - 34 }, `なつき ${fire.wolfTrust}/3`);
+    say(state, { x: BAIT_POS.x, y: BAIT_POS.y - 34 }, `懐き度 ${fire.wolfTrust}/3`);
     if (fire.wolfTrust >= 3) {
       fire.dogTamed = true;
       fire.dogPos = { x: BAIT_POS.x + 22, y: BAIT_POS.y + 18 };
