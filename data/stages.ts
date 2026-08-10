@@ -1935,8 +1935,8 @@ const taigaStoves: StoveSpec[] = [
     art: "bigraft", label: "大型交易船", needs: { log: 14, wood: 12, pot: 10 },
     // ここから先も同じ農耕時代を深掘りする。時代が変わるのは次ステージ
     gives: { note: "大型交易船ができた。下流の大穀倉地帯へ人と荷を運べるようになった" },
-    // 町が完成する（人80人・畑5面・穀物庫・井戸・記念塔）まで、まだ出られない
-    unlockAfter: "mark-town-done", reveal: 110,
+    // 記念塔まで建てたら大型交易船へ。人口80人は達成目標として残すが進行は止めない
+    unlockAfter: "built-build-temple", reveal: 110,
   },
   /* --- area-6 第7区画「大穀倉地帯」 --- */
   { id: "intake-2", pos: { x: 5360, y: 150 }, price: 6000000, area: 6, item: "water", art: "intake", label: "大取水口", work: 0.45, hold: 12, reveal: 121 },

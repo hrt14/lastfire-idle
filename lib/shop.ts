@@ -34,6 +34,7 @@ import {
   type FireState,
 } from "@/lib/fire";
 import {
+  TAIGA_MARK_IDS,
   createTaiga,
   fromTaiga,
   taigaCrew,
@@ -1217,6 +1218,7 @@ export const fromPersisted = (input: unknown): ShopState => {
     ...stoves.filter((item) => item.needs).map((item) => `built-${item.id}`),
     ...FOUND_IDS,
     ...MARK_IDS,
+    ...TAIGA_MARK_IDS,
   ]);
   const migrate = (id: string) =>
     id.replace(/^seat-a(\d+)$/, "seat-0-$1").replace(/^seat-b(\d+)$/, "seat-1-$1");
@@ -2025,8 +2027,11 @@ export const availablePads = (state: ShopState) => {
   if (!Number.isFinite(revealLimit(state))) return eligible;
   const seen = new Set(state.revealed);
   return eligible.filter(
-    // 強化の枠は、効く相手を体験してから出る（数の上限には数えない）
-    (pad) => pad.kind === "upgrade" || seen.has(pad.id),
+    // 強化と次の区画は進行を止めない。区画枠を任意購入の枠に埋もれさせない
+    (pad) =>
+      pad.kind === "upgrade" ||
+      areaById.has(pad.id) ||
+      seen.has(pad.id),
   );
 };
 
@@ -2062,7 +2067,10 @@ const updateReveals = (state: ShopState, dt: number) => {
   const seen = new Set(state.revealed);
   // 買い切りの枠だけを数える。強化の枠は買っても消えないので数えない
   let showing = eligible.filter(
-    (pad) => pad.kind !== "upgrade" && seen.has(pad.id),
+    (pad) =>
+      pad.kind !== "upgrade" &&
+      !areaById.has(pad.id) &&
+      seen.has(pad.id),
   ).length;
 
   const queue = eligible
@@ -2081,7 +2089,7 @@ const updateReveals = (state: ShopState, dt: number) => {
   const added: Pad[] = [];
   for (const pad of queue) {
     if (added.length >= burst) break;
-    if (pad.kind !== "upgrade") {
+    if (pad.kind !== "upgrade" && !areaById.has(pad.id)) {
       if (showing >= limit) continue;
       showing += 1;
     }
