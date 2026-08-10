@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import AquariumStageRegistry from "@/components/AquariumStageRegistry";
 import ScrollMode from "@/components/ScrollMode";
 import OceanTopLink from "@/components/OceanTopLink";
 import "@/data/aquarium";
@@ -34,9 +35,11 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body>
-        <ScrollMode />
-        {children}
-        <OceanTopLink />
+        <AquariumStageRegistry>
+          <ScrollMode />
+          {children}
+          <OceanTopLink />
+        </AquariumStageRegistry>
       </body>
     </html>
   );
