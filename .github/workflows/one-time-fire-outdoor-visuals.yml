@@ -24,22 +24,20 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path('components/Shop.tsx')
           s = p.read_text()
-          old = '''  useEffect(() => {
-            const on = localStorage.getItem("working-planet-effects") !== "off";
-            effectsRef.current = on;
-            setEffectsOn(on);
-          }, []);'''
-          new = '''  useEffect(() => {
-            const on = localStorage.getItem("working-planet-effects") !== "off";
-            effectsRef.current = on;
-            const timer = window.setTimeout(() => setEffectsOn(on), 0);
-            return () => window.clearTimeout(timer);
-          }, []);'''
-          if old not in s:
+          pattern = re.compile(r'(?P<indent>\s*)setEffectsOn\(on\);\n(?P=indent)\}, \[\]\);')
+          m = pattern.search(s)
+          if not m:
               raise SystemExit('effects init anchor not found')
-          p.write_text(s.replace(old, new, 1))
+          indent = m.group('indent')
+          replacement = (
+              f'{indent}const timer = window.setTimeout(() => setEffectsOn(on), 0);\n'
+              f'{indent}return () => window.clearTimeout(timer);\n'
+              f'{indent}}}, []);'
+          )
+          p.write_text(s[:m.start()] + replacement + s[m.end():])
           PY
       - name: Install dependencies
         run: npm ci
