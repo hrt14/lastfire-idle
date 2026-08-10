@@ -1,0 +1,54 @@
+.shell {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(73, 214, 171, 0.16), transparent 42%),
+    linear-gradient(180deg, #071016 0%, #0d171d 42%, #11191d 100%);
+  color: #e7f4ef;
+  overflow: hidden;
+}
+
+.banner {
+  position: fixed;
+  z-index: 40;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  width: min(92vw, 560px);
+  text-align: center;
+  padding: 7px 14px 8px;
+  border: 1px solid rgba(111, 232, 190, 0.24);
+  border-radius: 14px;
+  background: rgba(5, 15, 19, 0.72);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.kicker {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: #75e6bd;
+  font-weight: 900;
+}
+
+.title {
+  display: block;
+  margin-top: 2px;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  font-weight: 950;
+}
+
+.shell canvas {
+  filter: saturate(0.62) contrast(1.08) brightness(0.86) hue-rotate(118deg);
+}
+
+.loading {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #8feac9;
+}
