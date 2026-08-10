@@ -49,13 +49,26 @@ if (firstGuide) {
   delete firstGuide.unlockAfter;
 }
 
+// 案内だけ自動化しても、売上を自分で拾い続けると「仕組み化した」感が弱い。
+// 7人ほど接客した段階で自動集金を選べるようにし、序盤で一周の自動化を完成できるようにする。
+const earlyCollector = hire("collector-1");
+if (earlyCollector) {
+  earlyCollector.area = 0;
+  earlyCollector.price = 380;
+  earlyCollector.label = "自動集金スタッフ";
+  earlyCollector.pos = { x: 70, y: 135 };
+  earlyCollector.needServed = 7;
+  earlyCollector.reveal = 6;
+  delete earlyCollector.unlockAfter;
+}
+
 // 入場まわりの自動化も、案内スタッフの購入を強制条件にしない。
-// 「魚に投資」「案内を自動化」「入口を自動化」から選べる。
+// 「魚に投資」「案内を自動化」「集金を自動化」「入口を自動化」から選べる。
 const seller = hire("seller-1");
 if (seller) {
   seller.price = 450;
   seller.needServed = 8;
-  seller.reveal = 6;
+  seller.reveal = 7;
   delete seller.unlockAfter;
 }
 
@@ -63,7 +76,7 @@ const gatekeeper = hire("gatekeeper-1");
 if (gatekeeper) {
   gatekeeper.price = 700;
   gatekeeper.needServed = 10;
-  gatekeeper.reveal = 7;
+  gatekeeper.reveal = 8;
   delete gatekeeper.unlockAfter;
 }
 
@@ -121,7 +134,7 @@ const secondArea = area(1);
 if (secondArea) {
   secondArea.price = 1_200;
   secondArea.needServed = 10;
-  secondArea.reveal = 8;
+  secondArea.reveal = 9;
   delete secondArea.unlockAfter;
 }
 
