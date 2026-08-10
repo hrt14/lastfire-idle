@@ -1,0 +1,39 @@
+name: Validate aquarium exhibit visuals
+
+on:
+  push:
+    branches:
+      - agent/aquarium-unique-exhibit-visuals
+  pull_request:
+    paths:
+      - 'lib/aquariumArt.ts'
+      - 'scripts/wire-aquarium-visuals.mjs'
+      - 'package.json'
+      - 'data/aquarium.ts'
+      - 'components/Shop.tsx'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify 54 unique exhibit definitions
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const s = fs.readFileSync('lib/aquariumArt.ts', 'utf8');
+          const names = [...s.matchAll(/name: "([^"]+)"/g)].map(m => m[1]);
+          if (names.length !== 54) throw new Error(`expected 54 exhibit visuals, got ${names.length}`);
+          if (new Set(names).size !== 54) throw new Error('duplicate exhibit visual names found');
+          console.log(`verified ${names.length} unique exhibit visual definitions`);
+          NODE
+      - name: Production build
+        run: npm run build
