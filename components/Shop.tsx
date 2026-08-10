@@ -1,5 +1,7 @@
 "use client";
 
+import { drawAquariumExhibit } from "@/lib/aquariumArt";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EAT_TIME,
@@ -3466,6 +3468,10 @@ const drawSettlement = (
   }
 
   /* --- 川の瀬（魚をとる） --- */
+  if (art.startsWith("aquarium-")) {
+    return drawAquariumExhibit(ctx, art, Math.round(x * 31 + y * 17));
+  }
+
   if (art === "fish") {
     const zone = huntZone(state, stove);
     ctx.fillStyle = "rgba(70,120,140,0.5)";
