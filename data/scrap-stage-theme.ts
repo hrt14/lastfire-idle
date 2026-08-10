@@ -85,18 +85,6 @@ export const applyScrapStageTheme = () => {
     hire.label = hireName(hire.kind);
   });
 
-  stage.equipment.forEach((item) => {
-    const id = item.id;
-    if (id.includes("road")) item.label = "磁気搬送レーン";
-    else if (id.includes("store") || id.includes("pile")) item.label = "資源ラック増設";
-    else if (id.includes("boat") || id.includes("raft")) item.label = "搬送システム強化";
-    else if (item.label) item.label = item.label
-      .replaceAll("道", "搬送レーン")
-      .replaceAll("船", "ローバー")
-      .replaceAll("水路", "コンベア")
-      .replaceAll("倉", "ストレージ");
-  });
-
   stage.labels.item = "回収資源";
   stage.labels.producer = "処理設備";
   stage.labels.tray = "出荷パレット";
