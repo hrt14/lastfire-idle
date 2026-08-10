@@ -211,3 +211,28 @@ onAuthStateChanged(auth, (user) => { /* ... */ });
 - Firebase の **Spark（無料）プラン**のまま使いたい
 - Supabase への移行は不可（無料枠が使えないため）
 - ホスティングは Vercel のまま（Firebase Hosting は使っていない）
+
+---
+
+## 追記: クラウドに何も届いていなかった原因（解決ずみ）
+
+「ログインしても、Safari の進み具合が Chrome に共有されない」と報告をもらって調べたところ、
+ログインまわりではなく **保存の中身**に原因があった。
+
+Firestore は `undefined` を受け付けない。値が1つでも混ざっていると、
+`setDoc` はその書き込みごと失敗する。セーブの入れ物には
+
+```js
+scrap: parsed.scrap && typeof parsed.scrap === "object" ? parsed.scrap : undefined,
+```
+
+のように「まだ遊んでいない分」が `undefined` で入ることがあり、
+localStorage へは `JSON.stringify` が黙って落としてくれるので気づかないが、
+クラウドへの送信だけが毎回こけていた。ログインは成功しているのに、
+クラウドには何も溜まらない状態だった。
+
+いまは送る直前に一度 JSON を通し、`undefined` の欄ごと落としている
+（`lib/cloud.ts` の `plain()`）。
+
+あわせて、読み込みのときに遊んでいたステージを
+`"park"` か `"ramen"` に丸めてしまっていたのも直した（`lib/shopStore.ts`）。

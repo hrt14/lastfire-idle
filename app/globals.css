@@ -1561,3 +1561,31 @@ button {
     font-size: 0.66rem;
   }
 }
+
+
+/* ---------- ゲーム内の演出切替 ---------- */
+.fx-toggle {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  z-index: 9;
+  min-width: 4.9rem;
+  padding: 0.34rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(246, 231, 207, 0.22);
+  background: rgba(20, 15, 11, 0.72);
+  color: rgba(246, 236, 224, 0.76);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  touch-action: manipulation;
+}
+.fx-toggle.is-on {
+  border-color: rgba(255, 209, 102, 0.42);
+  color: #f4d58a;
+}
+.fx-toggle.is-off {
+  opacity: 0.72;
+}

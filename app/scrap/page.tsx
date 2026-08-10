@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import ScrapPlanet from "@/components/ScrapPlanet";
+import ScrapGame from "@/components/ScrapGame";
+import "./scrap-clean.css";
 
 export const metadata: Metadata = {
   title: "SCRAP PLANET｜ワーキングプラネット",
-  description:
-    "宇宙ゴミを資源へ変え、自動工場と作業ロボットで荒廃した惑星を再生するアーケードアイドルゲーム。",
+  description: "廃棄物を回収・選別・加工し、止まった再生コロニーを復旧していくSCRAP PLANET。",
 };
 
 export default function ScrapPage() {
-  return <ScrapPlanet />;
+  return <ScrapGame />;
 }

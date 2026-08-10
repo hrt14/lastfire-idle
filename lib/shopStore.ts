@@ -26,21 +26,14 @@ import { setSkinShine } from "@/lib/shop";
 import { bindVault, syncVault } from "@/lib/cloud";
 
 type Vault = {
-  /** 最後に保存した時刻。クラウドと突き合わせるときに使う */
   savedAt?: number;
   active: StageId;
   stages: Partial<Record<StageId, Persisted>>;
-  /** SCRAP PLANETの専用工場データ。同じユーザーセーブ内に保存する */
+  /** SCRAP PLANET は大河エンジンを使うが、進行はここへ完全分離して保存する */
   scrap?: Record<string, unknown>;
-  /** ガチャで当てた見た目（ステージ共通） */
   skins: string[];
-  /** 見た目ごとの★（ダブるたびに増えて光り方が変わる） */
   stars: Record<string, number>;
   equipped: string;
-  /**
-   * 開いたガチャの段（1 は最初から）。
-   * 一度開いたら、あとでスキンが増えて割合が下がっても閉じない
-   */
   gacha?: Tier[];
 };
 
@@ -56,19 +49,12 @@ const emptyVault = (): Vault => ({
 let vault: Vault = emptyVault();
 let state: ShopState | null = null;
 let loaded = false;
+/** SCRAPでは内部ステージIDはtaigaのまま。保存先だけvault.scrapへ切り替える。 */
+let scrapSession = false;
 
-/** その段で、いくつの種類を持っているか（ダブりと★は数えない） */
 const countInTier = (owned: string[], tier: Tier) =>
   tierPool(tier).filter((skin) => owned.includes(skin.id)).length;
 
-/**
- * 持っている見た目から、開いているべき段を数え直す。
- *
- * 引いた瞬間だけで判定すると、下の段を集めきったあと
- * （引いてもダブりしか出ない）に上の段が永久に開かなくなる。
- * 読み込みのたびに持ち物から数え直して、条件を満たしていれば開ける。
- * 一度開いた段は、あとでスキンが増えて割合が下がっても閉じない
- */
 const openedTiers = (owned: string[], saved: Tier[]): Tier[] => {
   const open = new Set<Tier>([1, ...saved]);
   for (let i = 0; i < gachaTiers.length - 1; i += 1) {
@@ -77,7 +63,6 @@ const openedTiers = (owned: string[], saved: Tier[]): Tier[] => {
     if (!open.has(from)) continue;
     if (countInTier(owned, from) >= tierNeed(from)) open.add(next);
   }
-  // 段の順に並べる（下から上へ）
   return gachaTiers.map((item) => item.tier).filter((tier) => open.has(tier));
 };
 
@@ -86,7 +71,6 @@ const readVault = (): Vault => {
     const raw = window.localStorage.getItem(SAVE_KEY);
     if (!raw) return emptyVault();
     const parsed = JSON.parse(raw) as Partial<Vault> & Partial<Persisted>;
-    // 旧形式（ステージ1のセーブがそのまま入っている）を読み替える
     if (parsed && typeof parsed === "object" && !("stages" in parsed)) {
       return { ...emptyVault(), stages: { ramen: parsed as Persisted } };
     }
@@ -107,7 +91,10 @@ const readVault = (): Vault => {
       : [];
     return {
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : 0,
-      active: parsed.active === "park" ? "park" : "ramen",
+      active:
+        typeof parsed.active === "string" && parsed.active in stageDefs
+          ? (parsed.active as StageId)
+          : "ramen",
       stages: (parsed.stages ?? {}) as Partial<Record<StageId, Persisted>>,
       scrap:
         parsed.scrap && typeof parsed.scrap === "object"
@@ -119,12 +106,18 @@ const readVault = (): Vault => {
         typeof parsed.equipped === "string" && skinById.has(parsed.equipped)
           ? parsed.equipped
           : "default",
-      // 集めきったあとで足された段も、ここで開き直す
       gacha: openedTiers(skins, savedTiers),
     };
   } catch {
     return emptyVault();
   }
+};
+
+const ensureLoaded = () => {
+  if (loaded) return;
+  vault = readVault();
+  loaded = true;
+  setSkinShine(vault.stars[vault.equipped] ?? 0);
 };
 
 const writeVault = () => {
@@ -134,69 +127,79 @@ const writeVault = () => {
   } catch {
     // 保存できない環境ではそのまま続行する
   }
-  // ログインしているときは、少し待ってからクラウドにも送る
   syncVault(vault as unknown as Record<string, unknown>);
 };
 
+const scrapPersisted = (): Persisted | undefined =>
+  vault.scrap as unknown as Persisted | undefined;
+
 const build = (id: StageId): ShopState => {
   applyStage(id);
-  const saved = vault.stages[id];
+  const saved = scrapSession && id === "taiga" ? scrapPersisted() : vault.stages[id];
   const next = saved ? fromPersisted(saved) : createState();
   next.stageId = id;
   return next;
 };
 
-/** クラウド側と受け渡しするための出入口 */
 const readVaultForCloud = () => {
-  if (!loaded) {
-    vault = readVault();
-    loaded = true;
-  }
+  ensureLoaded();
   return vault as unknown as Record<string, unknown>;
 };
 
-/** クラウドのセーブを取り込む（新しい方が向こうにあったとき） */
 const writeVaultFromCloud = (incoming: Record<string, unknown>) => {
   try {
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(incoming));
   } catch {
     // 保存できないときは、そのまま次の保存にまかせる
   }
-  // 取り込んだ内容で遊べるように、いちど読み直す
   window.location.reload();
 };
 
 bindVault(readVaultForCloud, writeVaultFromCloud);
 
-/** クライアントでのみ呼ぶこと */
 export const getState = (): ShopState => {
-  if (!loaded) {
-    vault = readVault();
-    loaded = true;
-    setSkinShine(vault.stars[vault.equipped] ?? 0);
-  }
-  if (!state) state = build(vault.active);
+  ensureLoaded();
+  if (!state) state = build(scrapSession ? "taiga" : vault.active);
   return state;
 };
 
 export const save = () => {
   if (!state) return;
-  vault.stages[state.stageId] = toPersisted(state);
-  vault.active = state.stageId;
+  const persisted = toPersisted(state);
+  if (scrapSession && state.stageId === "taiga") {
+    vault.scrap = persisted as unknown as Record<string, unknown>;
+  } else {
+    vault.stages[state.stageId] = persisted;
+    vault.active = state.stageId;
+  }
   writeVault();
 };
 
-export const activeStage = (): StageId => {
-  getState();
-  return vault.active;
+/** SCRAP PLANET専用セッションを開始。大河の文明の進行とは完全に別保存。 */
+export const enterScrapSession = () => {
+  ensureLoaded();
+  if (state && !scrapSession) save();
+  scrapSession = true;
+  state = build("taiga");
+  return state;
 };
 
-/** そのステージを始められるか（前のステージの区画をいくつ開けたか） */
+/** SCRAPを閉じる前に専用進行を保存し、通常ステージへ戻せる状態にする。 */
+export const leaveScrapSession = () => {
+  if (scrapSession && state) save();
+  scrapSession = false;
+  state = null;
+};
+
+export const inScrapSession = () => scrapSession;
+
+export const activeStage = (): StageId => {
+  getState();
+  return scrapSession ? "taiga" : vault.active;
+};
+
 export const stageUnlocked = (id: StageId): boolean => {
-  if (!loaded) {
-    vault = readVault();
-    loaded = true;
-  }
+  ensureLoaded();
   const need = stageDefs[id].requiresAreas;
   if (need <= 0) return true;
   // どのステージの区画を数えるか（省略でラーメン一直線）
@@ -206,12 +209,8 @@ export const stageUnlocked = (id: StageId): boolean => {
   return opened + 1 >= need;
 };
 
-/** 前ステージの進み具合（トップページの表示用） */
 export const stageProgress = (id: StageId) => {
-  if (!loaded) {
-    vault = readVault();
-    loaded = true;
-  }
+  ensureLoaded();
   const saved = vault.stages[id];
   const def = stageDefs[id];
   const opened =
@@ -225,8 +224,24 @@ export const stageProgress = (id: StageId) => {
   };
 };
 
+export const scrapProgress = () => {
+  ensureLoaded();
+  const saved = scrapPersisted();
+  const def = stageDefs.taiga;
+  const opened =
+    (saved?.unlocked?.filter((key) => key.startsWith("area-")).length ?? 0) + 1;
+  return {
+    started: !!saved,
+    money: saved?.money ?? 0,
+    served: saved?.served ?? 0,
+    areas: Math.min(opened, def.areas.length),
+    totalAreas: def.areas.length,
+  };
+};
+
 export const switchStage = (id: StageId) => {
   if (state) save();
+  scrapSession = false;
   state = build(id);
   vault.active = id;
   writeVault();
@@ -234,47 +249,38 @@ export const switchStage = (id: StageId) => {
 };
 
 export const resetState = () => {
-  const id = state?.stageId ?? vault.active;
+  ensureLoaded();
+  const id = state?.stageId ?? (scrapSession ? "taiga" : vault.active);
   applyStage(id);
   state = createState();
   state.stageId = id;
-  vault.stages[id] = toPersisted(state);
+  if (scrapSession && id === "taiga") {
+    vault.scrap = toPersisted(state) as unknown as Record<string, unknown>;
+  } else {
+    vault.stages[id] = toPersisted(state);
+  }
   writeVault();
   return state;
 };
 
-export const catchUp = (): OfflineReport | null => {
-  const current = getState();
-  return applyOffline(current, Date.now());
-};
-
-/** いま何区画開いているか */
+export const catchUp = (): OfflineReport | null => applyOffline(getState(), Date.now());
 export const openedAreas = () => openAreas(getState()).length;
-
-/* ---------- ガチャ（見た目） ---------- */
 
 export type GachaResult = {
   skin: Skin;
   duplicate: boolean;
-  /** ダブりで★が上がったか */
   shined: boolean;
   stars: number;
-  /** ★が上限で、お金に変わったか */
   refunded: boolean;
-  /** この抽選で、上の段のガチャが開いたか（開いたらその段） */
   unlockedTier: Tier | null;
 };
 
-/** その段の集まりぐあい */
 export type TierProgress = {
   tier: Tier;
-  /** 取得ずみの固有スキン数（ダブりと★は数えない） */
   owned: number;
   total: number;
-  /** 次の段が開くのに要る種類数 */
   need: number;
   open: boolean;
-  /** 次の段（いちばん上ならなし） */
   next: Tier | null;
 };
 
@@ -288,7 +294,6 @@ export const equippedSkin = (): Skin => {
   return skinById.get(vault.equipped) ?? skinById.get("default")!;
 };
 
-/** その見た目の★の数 */
 export const skinStars = (id: string): number => {
   getState();
   return vault.stars[id] ?? 0;
@@ -299,7 +304,6 @@ export const equippedStars = (): number => {
   return vault.stars[vault.equipped] ?? 0;
 };
 
-/** 装備中の★を、足の速さのおまけとしてエンジンに渡す */
 const syncShine = () => {
   setSkinShine(vault.stars[vault.equipped] ?? 0);
 };
@@ -312,7 +316,6 @@ export const equipSkin = (id: string) => {
   writeVault();
 };
 
-/** その段で、いくつの種類を持っているか（ダブりと★は数えない） */
 const ownedInTier = (tier: Tier) => countInTier(vault.skins, tier);
 
 export const tierProgress = (tier: Tier): TierProgress => {
@@ -339,11 +342,6 @@ export const tierOpen = (tier: Tier): boolean => {
   return (vault.gacha ?? [1]).includes(tier);
 };
 
-/**
- * 下の段が70%そろっていたら、上の段を開ける。
- * 新しく取ったときだけでなく、引くたびに数え直す
- * （すでに集めきっている持ち物でも開くように）
- */
 const openNextTier = (): Tier | null => {
   const before = new Set<Tier>(vault.gacha ?? [1]);
   vault.gacha = openedTiers(vault.skins, Array.from(before));
@@ -371,7 +369,6 @@ export const pullGacha = (tier: Tier = 1): GachaResult | null => {
   if (duplicate) {
     const stars = vault.stars[skin.id] ?? 0;
     if (stars < MAX_STARS) {
-      // ダブると★が増えて、光り方が変わる
       vault.stars[skin.id] = stars + 1;
       vault.equipped = skin.id;
       shined = true;
@@ -383,7 +380,6 @@ export const pullGacha = (tier: Tier = 1): GachaResult | null => {
     vault.skins.push(skin.id);
     vault.equipped = skin.id;
   }
-  // この抽選で、上の段が開くことがある
   const unlockedTier = openNextTier();
   syncShine();
   save();

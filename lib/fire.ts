@@ -75,6 +75,16 @@ export type Beast = {
   rest: number;
 };
 
+/** 夜の森に現れるオオカミ。倒す敵ではなく、光で距離を取らせる。 */
+export type NightWolf = {
+  id: number;
+  pos: Vec;
+  target: Vec;
+  state: "roam" | "approach" | "flee";
+  timer: number;
+  face: number;
+};
+
 export type NightReport = {
   day: number;
   need: number;
@@ -122,6 +132,20 @@ export type FireState = {
   flash: string | null;
   /** 建てかけの建物が、まだ欲しがっている品と数（毎フレーム数え直す） */
   wants: Record<string, number>;
+
+  /* ---- 寄り道「夜の森」 ---- */
+  nightWolves: NightWolf[];
+  wolfSpawn: number;
+  /** 餌を受け取って近づいた夜の数。3で犬になる */
+  wolfTrust: number;
+  /** 同じ夜に何度も餌を食べないための日付 */
+  wolfFedDay: number;
+  /** たいまつ台へ薪を入れた日 */
+  nightFuelDay: number;
+  /** 今夜、実際に点いているたいまつ台の本数 */
+  nightLitPosts: number;
+  dogTamed: boolean;
+  dogPos: Vec;
 };
 
 export const createFire = (): FireState => ({
@@ -148,6 +172,14 @@ export const createFire = (): FireState => ({
   report: null,
   flash: null,
   wants: {},
+  nightWolves: [],
+  wolfSpawn: 2,
+  wolfTrust: 0,
+  wolfFedDay: -1,
+  nightFuelDay: -1,
+  nightLitPosts: 0,
+  dogTamed: false,
+  dogPos: { x: 2470, y: -450 },
 });
 
 /** 保存するぶん（人や獣の居場所は持ち越さない） */
@@ -162,6 +194,9 @@ export const toFire = (fire: FireState) => ({
   voyages: fire.voyages,
   finds: fire.finds,
   sailed: fire.sailed,
+  wolfTrust: fire.wolfTrust,
+  wolfFedDay: fire.wolfFedDay,
+  dogTamed: fire.dogTamed,
 });
 
 const num = (value: unknown, fallback: number) =>
@@ -181,6 +216,9 @@ export const fromFire = (raw: unknown): FireState => {
   fire.kills = Math.max(0, Math.floor(num(saved.kills, 0)));
   fire.voyages = Math.max(0, Math.floor(num(saved.voyages, 0)));
   fire.sailed = saved.sailed === true;
+  fire.wolfTrust = Math.max(0, Math.min(3, Math.floor(num(saved.wolfTrust, 0))));
+  fire.wolfFedDay = Math.floor(num(saved.wolfFedDay, -1));
+  fire.dogTamed = saved.dogTamed === true || fire.wolfTrust >= 3;
   if (Array.isArray(saved.finds)) {
     fire.finds = saved.finds.filter((id): id is string => typeof id === "string");
   }
@@ -674,7 +712,11 @@ export const beastOf = (state: ShopState) => state.fire.beast;
  * 持久力が残っているうちは体力が減らない（まず追い込む）。
  */
 const pressBeast = (state: ShopState, beast: Beast, hunters: number, dt: number) => {
-  const near = hunters + (dist(state.player.pos, beast.pos) < 90 ? 1 : 0);
+  const dogHelp =
+    state.fire.dogTamed && dist(state.fire.dogPos, beast.pos) < 110
+      ? state.unlocked.includes("equip-dog-shelter") ? 0.6 : 0.35
+      : 0;
+  const near = hunters + (dist(state.player.pos, beast.pos) < 90 ? 1 : 0) + dogHelp;
   if (near <= 0) {
     // だれも追っていないと、息を整えて回復する
     beast.stamina = Math.min(1, beast.stamina + dt * 0.02);
@@ -859,6 +901,174 @@ export const cutBeast = (state: ShopState, rate: number, dt: number) => {
   return !stuck;
 };
 
+
+/* ---------- 寄り道「夜の森」 ---------- */
+
+export const NIGHT_FOREST = { x0: 1620, y0: -820, x1: 2860, y1: 0 };
+const BAIT_POS: Vec = { x: 2470, y: -470 };
+const NIGHT_POSTS: Vec[] = [
+  { x: 1960, y: -250 },
+  { x: 2280, y: -430 },
+  { x: 2630, y: -620 },
+  { x: 2380, y: -690 },
+  { x: 2740, y: -720 },
+];
+
+export const nightForestOpen = (state: ShopState) =>
+  state.stageId === "fire" && state.unlocked.includes("area-6");
+
+const inNightForest = (pos: Vec) =>
+  pos.x >= NIGHT_FOREST.x0 &&
+  pos.x <= NIGHT_FOREST.x1 &&
+  pos.y >= NIGHT_FOREST.y0 &&
+  pos.y <= NIGHT_FOREST.y1;
+
+const randomNightSpot = (): Vec => ({
+  x: NIGHT_FOREST.x0 + 70 + Math.random() * (NIGHT_FOREST.x1 - NIGHT_FOREST.x0 - 140),
+  y: NIGHT_FOREST.y0 + 70 + Math.random() * (NIGHT_FOREST.y1 - NIGHT_FOREST.y0 - 140),
+});
+
+const newNightWolf = (state: ShopState): NightWolf => {
+  const pos = randomNightSpot();
+  const target = randomNightSpot();
+  return {
+    id: state.nextId++,
+    pos,
+    target,
+    state: "roam",
+    timer: 2 + Math.random() * 4,
+    face: target.x >= pos.x ? 1 : -1,
+  };
+};
+
+const boughtNightPosts = (state: ShopState) =>
+  NIGHT_POSTS.filter((_, i) => state.unlocked.includes(`equip-night-torch-${i + 1}`));
+
+/** 描画側も同じ光源を使う。手持ちたいまつは自分と一緒に動く。 */
+export const nightLights = (state: ShopState): { pos: Vec; r: number }[] => {
+  if (!nightForestOpen(state) || state.fire.phase === "day") return [];
+  const lights: { pos: Vec; r: number }[] = [];
+  if (state.unlocked.includes("equip-hand-torch") && inNightForest(state.player.pos)) {
+    lights.push({ pos: { ...state.player.pos }, r: 118 });
+  }
+  const posts = boughtNightPosts(state);
+  for (let i = 0; i < Math.min(posts.length, state.fire.nightLitPosts); i += 1) {
+    lights.push({ pos: posts[i], r: 145 + i * 10 });
+  }
+  return lights;
+};
+
+const litAt = (state: ShopState, pos: Vec) =>
+  nightLights(state).some((light) => dist(light.pos, pos) <= light.r);
+
+const updateDog = (state: ShopState, dt: number) => {
+  const fire = state.fire;
+  if (!fire.dogTamed) return;
+  const dx = state.player.pos.x - fire.dogPos.x;
+  const dy = state.player.pos.y - fire.dogPos.y;
+  const d = Math.hypot(dx, dy);
+  if (d > 42) {
+    const trained = state.unlocked.includes("equip-dog-shelter");
+    step(fire.dogPos, state.player.pos, d > 180 ? (trained ? 132 : 105) : (trained ? 92 : 72), dt);
+  }
+};
+
+const updateNightForest = (state: ShopState, dt: number) => {
+  const fire = state.fire;
+  updateDog(state, dt);
+  if (!nightForestOpen(state)) {
+    fire.nightWolves = [];
+    return;
+  }
+
+  if (fire.phase !== "night") {
+    fire.nightWolves = [];
+    fire.wolfSpawn = 2;
+    fire.nightLitPosts = 0;
+    return;
+  }
+
+  if (fire.nightFuelDay !== fire.day) {
+    fire.nightFuelDay = fire.day;
+    const wanted = boughtNightPosts(state).length;
+    const have = state.hold["night-wood"] ?? 0;
+    fire.nightLitPosts = Math.min(wanted, have);
+    if (fire.nightLitPosts > 0) {
+      state.hold["night-wood"] = have - fire.nightLitPosts;
+    }
+    if (wanted > fire.nightLitPosts) {
+      toast(state, `夜の森の薪が ${wanted - fire.nightLitPosts}こ 足りない ― 消えたたいまつ台がある`);
+    }
+  }
+
+  const bell = state.unlocked.includes("equip-wolf-bell") ? 2 : 0;
+  const fence = state.unlocked.includes("equip-wolf-fence") ? 1 : 0;
+  const dogGuard = fire.dogTamed ? 1 : 0;
+  const maxWolves = Math.max(1, 5 - bell - fence - dogGuard);
+  fire.wolfSpawn -= dt;
+  if (fire.wolfSpawn <= 0 && fire.nightWolves.length < maxWolves) {
+    fire.nightWolves.push(newNightWolf(state));
+    fire.wolfSpawn = 4.5 + Math.random() * 4;
+  }
+
+  for (const wolf of fire.nightWolves) {
+    wolf.timer -= dt;
+    const dogNear = fire.dogTamed && dist(fire.dogPos, wolf.pos) < 78;
+    if (litAt(state, wolf.pos) || dogNear) {
+      wolf.state = "flee";
+      const threat = dogNear ? fire.dogPos : state.player.pos;
+      const dx = wolf.pos.x - threat.x || (Math.random() - 0.5);
+      const dy = wolf.pos.y - threat.y || -1;
+      const n = Math.max(1, Math.hypot(dx, dy));
+      wolf.target = {
+        x: Math.max(NIGHT_FOREST.x0 + 20, Math.min(NIGHT_FOREST.x1 - 20, wolf.pos.x + (dx / n) * 180)),
+        y: Math.max(NIGHT_FOREST.y0 + 20, Math.min(NIGHT_FOREST.y1 - 20, wolf.pos.y + (dy / n) * 180)),
+      };
+      wolf.timer = 2.5;
+    } else if (inNightForest(state.player.pos) && dist(state.player.pos, wolf.pos) < 250) {
+      wolf.state = "approach";
+      wolf.target = { ...state.player.pos };
+    } else if (wolf.timer <= 0 || dist(wolf.pos, wolf.target) < 8) {
+      wolf.state = "roam";
+      wolf.target = randomNightSpot();
+      wolf.timer = 3 + Math.random() * 5;
+    }
+
+    const speed = wolf.state === "approach" ? 58 : wolf.state === "flee" ? 76 : 30;
+    step(wolf.pos, wolf.target, speed, dt);
+    wolf.face = wolf.target.x >= wolf.pos.x ? 1 : -1;
+
+    if (wolf.state === "approach" && dist(state.player.pos, wolf.pos) < 36) {
+      state.player.pos.y = Math.min(24, state.player.pos.y + 72);
+      fire.morale = Math.max(0.82, fire.morale - 0.08);
+      wolf.state = "flee";
+      wolf.target = randomNightSpot();
+      wolf.timer = 4;
+      toast(state, "暗闇からオオカミが飛び出した ― たいまつの光へ戻ろう");
+      say(state, { x: state.player.pos.x, y: state.player.pos.y - 30 }, "うわっ！");
+    }
+  }
+
+  const nightAge = fire.clock - DAY_TIME - DUSK_TIME;
+  const bait = state.hold["night-bait"] ?? 0;
+  const baitNeed = state.unlocked.includes("equip-wolf-feeding-rack") ? 1 : 2;
+  if (!fire.dogTamed && nightAge >= 7 && fire.wolfFedDay !== fire.day && bait >= baitNeed) {
+    state.hold["night-bait"] = bait - baitNeed;
+    fire.wolfFedDay = fire.day;
+    fire.wolfTrust = Math.min(3, fire.wolfTrust + 1);
+    say(state, { x: BAIT_POS.x, y: BAIT_POS.y - 34 }, `懐き度 ${fire.wolfTrust}/3`);
+    if (fire.wolfTrust >= 3) {
+      fire.dogTamed = true;
+      fire.dogPos = { x: BAIT_POS.x + 22, y: BAIT_POS.y + 18 };
+      fire.flash = "dog";
+      toast(state, "オオカミが逃げなくなった ― 最初の犬が仲間になった！");
+      state.sfx.push("buy");
+    } else {
+      toast(state, `オオカミが餌を食べた。こちらを見る目が変わった（${fire.wolfTrust}/3）`);
+    }
+  }
+};
+
 /* ---------- 探索と交易 ---------- */
 
 /** 見つかる土地（順ぐりに必ず見つかる） */
@@ -889,7 +1099,8 @@ const updateVoyage = (state: ShopState, dt: number) => {
   ).length;
   if (crew === 0 && fire.voyages > 0) return;
   const maps = state.unlocked.includes("equip-map-1") ? 1.6 : 1;
-  fire.voyageLeft -= dt * (1 + crew * 0.5) * maps;
+  const headwater = state.unlocked.includes("equip-headwater-marker") ? 1.25 : 1;
+  fire.voyageLeft -= dt * (1 + crew * 0.5) * maps * headwater;
   if (fire.voyageLeft > 0) return;
   fire.voyageLeft = VOYAGE_TIME;
   const found = FINDS[fire.finds.length];
@@ -968,6 +1179,7 @@ export const MARKS: { id: string; reach: (state: ShopState) => boolean }[] = [
   { id: "mark-pop-12", reach: (state) => state.fire.pop >= 12 },
   // 住居をぜんぶ建てると上限27人。24人（89%）は詰めすぎだったので20人に下げた
   { id: "mark-pop-20", reach: (state) => state.fire.pop >= 20 },
+  { id: "mark-dog", reach: (state) => state.fire.dogTamed },
   { id: "mark-sailed", reach: (state) => state.fire.sailed },
 ];
 
@@ -993,6 +1205,10 @@ export const firePriorityPads = (state: ShopState): string[] => {
   const fire = state.fire;
   const has = (id: string) => state.unlocked.includes(id);
   const readyOf = (id: string) => state.ready[id] ?? 0;
+
+  // 夜の森へ入ったら、まず光を確保する。これは本編の強制条件にはしない。
+  if (has("area-6") && !has("equip-hand-torch")) wish.push("equip-hand-torch");
+  if (has("equip-hand-torch") && !has("night-bait")) wish.push("night-bait", "night-wood");
 
   // 解体が止まっている（仮置き場が満杯）
   if (fire.beast?.stuck) wish.push("robot-3", "waiter-4", "pile-meat");
@@ -1105,5 +1321,6 @@ export const updateFire = (state: ShopState, dt: number, coinValue: number) => {
   }
   updateResidents(state, dt);
   updateBeast(state, dt);
+  updateNightForest(state, dt);
   updateVoyage(state, dt);
 };

@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+// Progression watchdog is part of the shared gameplay engine; keep this source
+// change so production deploys include the latest engine commit.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "ワーキングプラネット ― 働いて大きくする放置ゲーム",

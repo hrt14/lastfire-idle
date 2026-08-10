@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { drawAquariumExhibit } from "@/lib/aquariumArt";
+import { drawAquariumHall } from "@/lib/aquariumTheme";
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EAT_TIME,
   KITCHEN,
@@ -67,7 +70,9 @@ import {
   isDone,
   partsAt,
   recommendedPad,
+  nearestPadTarget,
   type Inspect,
+  type Vec,
   type Input,
   type OfflineReport,
   type ShopState,
@@ -103,6 +108,7 @@ import {
   tempLabel,
   winterOn,
   beastZone,
+  nightLights,
 } from "@/lib/fire";
 import {
   SEASON_TIME,
@@ -562,6 +568,34 @@ const sideDecor = (
     }
     return;
   }
+  if (prop === "horror") {
+    // 墓石と枯れ木。小物だけでも通常エリアとの境目が分かるようにする
+    for (const [i, gx] of [left - 8, left + 12, left + 28].entries()) {
+      const h = 18 + (i % 2) * 7;
+      ctx.fillStyle = i % 2 ? "#6f6878" : "#57515f";
+      roundRect(ctx, gx - 7, y - h, 14, h + 5, 5);
+      ctx.fill();
+      ctx.fillStyle = "rgba(20,15,28,0.45)";
+      ctx.fillRect(gx - 4, y - h + 7, 8, 2);
+    }
+    ctx.strokeStyle = "#3c2d43";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(right, y + 14);
+    ctx.lineTo(right, y - 34);
+    ctx.lineTo(right - 16, y - 48);
+    ctx.moveTo(right, y - 18);
+    ctx.lineTo(right + 18, y - 38);
+    ctx.moveTo(right - 4, y - 6);
+    ctx.lineTo(right - 20, y - 22);
+    ctx.stroke();
+    const glow = 0.35 + Math.abs(Math.sin(time * 2.4)) * 0.35;
+    ctx.fillStyle = `rgba(166,90,255,${glow})`;
+    ctx.beginPath();
+    ctx.arc(left + 12, y - 26, 4, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
 };
 
 /**
@@ -648,24 +682,497 @@ const drawVolcano = (
   }
 };
 
+
+/**
+ * 「火のはじまり」専用の屋外地面。
+ * 区画を一枚の床として見せず、土・草・石・枝・泥・雪がまたがって見えるようにする。
+ * 座標から決まる配置だけを使うので、毎フレームちらつかない。
+ */
+const drawFireGroundTexture = (
+  ctx: CanvasRenderingContext2D,
+  area: {
+    id: string;
+    rect: { x0: number; y0: number; x1: number; y1: number };
+    palette: { prop: string };
+  },
+  time: number,
+  effects: boolean,
+) => {
+  const { rect, palette } = area;
+  const w = rect.x1 - rect.x0;
+  const h = rect.y1 - rect.y0;
+  const seed = [...area.id].reduce((n, c) => n + c.charCodeAt(0), 0);
+  const snow = palette.prop === "snow";
+  const wet = palette.prop === "moonmarsh" || palette.prop === "headwater" || area.id === "area-5";
+  const rocky = palette.prop === "rockcave" || area.id === "area-2";
+  const village = area.id === "area-1" || area.id === "area-4";
+
+  // 大きなまだら。四角い床面の印象を先に壊す。
+  for (let i = 0; i < 24; i += 1) {
+    const x = rect.x0 + 28 + ((i * 137 + seed * 17) % Math.max(70, w - 56));
+    const y = rect.y0 + 28 + ((i * 83 + seed * 29) % Math.max(70, h - 56));
+    const rx = 24 + (i % 5) * 11;
+    const ry = 10 + (i % 4) * 6;
+    ctx.fillStyle = snow
+      ? i % 3 === 0
+        ? "rgba(238,244,242,0.14)"
+        : "rgba(78,88,84,0.08)"
+      : wet
+        ? i % 4 === 0
+          ? "rgba(30,67,61,0.20)"
+          : "rgba(80,68,42,0.10)"
+        : rocky
+          ? i % 3 === 0
+            ? "rgba(86,78,67,0.18)"
+            : "rgba(53,43,31,0.10)"
+          : village
+            ? "rgba(93,72,43,0.12)"
+            : i % 3 === 0
+              ? "rgba(83,93,50,0.11)"
+              : "rgba(90,66,38,0.11)";
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, i * 0.37, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 小石。岩場は多く、雪原では少なめ。
+  const stoneCount = snow ? 12 : rocky ? 34 : 22;
+  for (let i = 0; i < stoneCount; i += 1) {
+    const x = rect.x0 + 18 + ((i * 97 + seed * 11) % Math.max(50, w - 36));
+    const y = rect.y0 + 22 + ((i * 151 + seed * 7) % Math.max(50, h - 44));
+    const r = 1.5 + (i % 4) * 0.9;
+    ctx.fillStyle = snow
+      ? "rgba(88,92,88,0.22)"
+      : i % 3 === 0
+        ? "rgba(126,112,86,0.24)"
+        : "rgba(63,56,45,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 1.7, r, i * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 草・枯れ草。湿地は葦、冬はほぼ出さない。
+  if (!snow) {
+    const grassCount = wet ? 34 : 25;
+    for (let i = 0; i < grassCount; i += 1) {
+      const x = rect.x0 + 20 + ((i * 71 + seed * 19) % Math.max(50, w - 40));
+      const y = rect.y0 + 24 + ((i * 113 + seed * 13) % Math.max(50, h - 48));
+      const tall = wet ? 8 + (i % 4) * 3 : 5 + (i % 3) * 2;
+      ctx.strokeStyle = wet
+        ? "rgba(66,91,61,0.50)"
+        : i % 4 === 0
+          ? "rgba(118,101,61,0.42)"
+          : "rgba(68,89,53,0.44)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 3);
+      ctx.lineTo(x - 3, y - tall);
+      ctx.moveTo(x, y + 3);
+      ctx.lineTo(x + 3.5, y - tall + 2);
+      ctx.stroke();
+    }
+  }
+
+  // 枝・骨片のような横線。人工的な床目と違い、向きも長さもばらす。
+  if (!wet) {
+    for (let i = 0; i < 10; i += 1) {
+      const x = rect.x0 + 35 + ((i * 179 + seed * 23) % Math.max(80, w - 70));
+      const y = rect.y0 + 35 + ((i * 127 + seed * 5) % Math.max(80, h - 70));
+      const a = ((i * 43 + seed) % 90) * (Math.PI / 180) - Math.PI / 4;
+      const len = 8 + (i % 5) * 4;
+      ctx.strokeStyle = snow ? "rgba(78,67,53,0.24)" : "rgba(63,43,27,0.34)";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(x - Math.cos(a) * len / 2, y - Math.sin(a) * len / 2);
+      ctx.lineTo(x + Math.cos(a) * len / 2, y + Math.sin(a) * len / 2);
+      ctx.stroke();
+    }
+  }
+
+  // 村・集落は板張りではなく、人が踏み固めた獣道でつなぐ。
+  if (village) {
+    ctx.strokeStyle = "rgba(132,105,67,0.16)";
+    ctx.lineWidth = 34;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(rect.x0 + 45, rect.y0 + h * 0.62);
+    ctx.bezierCurveTo(
+      rect.x0 + w * 0.32,
+      rect.y0 + h * 0.48,
+      rect.x0 + w * 0.62,
+      rect.y0 + h * 0.72,
+      rect.x1 - 40,
+      rect.y0 + h * 0.56,
+    );
+    ctx.stroke();
+    ctx.lineCap = "butt";
+  }
+
+  // 演出ONのときだけ、風で動く葉・粉雪を少量。ゲーム情報には関係しない。
+  if (effects) {
+    ctx.fillStyle = snow ? "rgba(245,250,250,0.44)" : "rgba(184,157,89,0.28)";
+    for (let i = 0; i < 7; i += 1) {
+      const span = Math.max(100, w + 90);
+      const x = rect.x0 - 30 + ((time * (11 + i * 1.7) + i * 137 + seed) % span);
+      const y = rect.y0 + 40 + ((i * 97 + seed * 3) % Math.max(80, h - 80));
+      ctx.beginPath();
+      if (snow) ctx.arc(x, y + Math.sin(time * 1.7 + i) * 7, 1.2 + (i % 2), 0, Math.PI * 2);
+      else ctx.ellipse(x, y + Math.sin(time * 1.4 + i) * 5, 2.8, 1.2, time + i, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+};
+
+
+/**
+ * 火のはじまり序盤の「生活圏」。
+ * 四角い部屋に設備を並べた見え方を避け、野営地→集落へ自然に育って見えるようにする。
+ * ゲーム判定を持たない背景小物だけなので、既存の作業・購入導線は変えない。
+ */
+const drawFireEarlyLife = (
+  ctx: CanvasRenderingContext2D,
+  area: {
+    id: string;
+    rect: { x0: number; y0: number; x1: number; y1: number };
+  },
+  time: number,
+  effects: boolean,
+) => {
+  if (area.id !== "area-0" && area.id !== "area-1") return;
+  const { rect } = area;
+  const w = rect.x1 - rect.x0;
+  const h = rect.y1 - rect.y0;
+  const x = (f: number) => rect.x0 + w * f;
+  const y = (f: number) => rect.y0 + h * f;
+
+  // 一本道ではなく、焚き火・住居・作業場所の間にできた複数の踏み跡。
+  const paths = area.id === "area-0"
+    ? [
+        [0.04, 0.72, 0.30, 0.49, 0.55, 0.63, 0.94, 0.42],
+        [0.18, 0.18, 0.35, 0.42, 0.42, 0.53, 0.56, 0.70],
+        [0.47, 0.12, 0.55, 0.32, 0.72, 0.40, 0.88, 0.66],
+      ]
+    : [
+        [0.02, 0.62, 0.22, 0.49, 0.49, 0.57, 0.98, 0.38],
+        [0.15, 0.14, 0.29, 0.34, 0.34, 0.57, 0.45, 0.82],
+        [0.48, 0.10, 0.57, 0.31, 0.72, 0.54, 0.88, 0.78],
+        [0.34, 0.73, 0.52, 0.58, 0.70, 0.42, 0.88, 0.22],
+      ];
+  ctx.lineCap = "round";
+  for (const [a,b,c,d,e,f,g,h2] of paths) {
+    ctx.strokeStyle = "rgba(116,88,54,0.18)";
+    ctx.lineWidth = area.id === "area-0" ? 28 : 34;
+    ctx.beginPath();
+    ctx.moveTo(x(a), y(b));
+    ctx.bezierCurveTo(x(c), y(d), x(e), y(f), x(g), y(h2));
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(184,145,88,0.08)";
+    ctx.lineWidth = 7;
+    ctx.stroke();
+  }
+  ctx.lineCap = "butt";
+
+  const hideShelter = (px: number, py: number, scale = 1, dark = false) => {
+    ctx.strokeStyle = "#60472f";
+    ctx.lineWidth = 3 * scale;
+    ctx.beginPath();
+    ctx.moveTo(px - 25 * scale, py + 12 * scale);
+    ctx.lineTo(px, py - 31 * scale);
+    ctx.lineTo(px + 27 * scale, py + 12 * scale);
+    ctx.moveTo(px, py - 31 * scale);
+    ctx.lineTo(px + 3 * scale, py + 16 * scale);
+    ctx.stroke();
+    ctx.fillStyle = dark ? "rgba(92,72,52,0.92)" : "rgba(143,112,74,0.92)";
+    ctx.beginPath();
+    ctx.moveTo(px - 23 * scale, py + 8 * scale);
+    ctx.lineTo(px + 1 * scale, py - 28 * scale);
+    ctx.lineTo(px + 8 * scale, py + 9 * scale);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(62,45,31,0.55)";
+    ctx.lineWidth = 1.2 * scale;
+    for (let i = 0; i < 4; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(px - 17 * scale + i * 6 * scale, py + 5 * scale);
+      ctx.lineTo(px - 1 * scale + i * 2 * scale, py - 23 * scale);
+      ctx.stroke();
+    }
+  };
+
+  const pitHut = (px: number, py: number, scale = 1) => {
+    // 低い土盛り＋枝と毛皮の屋根。家というより地面から生えた住居に見せる。
+    ctx.fillStyle = "rgba(79,61,40,0.38)";
+    ctx.beginPath();
+    ctx.ellipse(px, py + 11 * scale, 34 * scale, 13 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#765b3e";
+    ctx.beginPath();
+    ctx.ellipse(px, py - 2 * scale, 29 * scale, 20 * scale, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(66,49,32,0.75)";
+    ctx.lineWidth = 2 * scale;
+    for (let i = -2; i <= 2; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(px + i * 8 * scale, py + 8 * scale);
+      ctx.quadraticCurveTo(px + i * 4 * scale, py - 18 * scale, px, py - 22 * scale);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#2a2017";
+    ctx.beginPath();
+    ctx.ellipse(px, py + 5 * scale, 8 * scale, 9 * scale, 0, Math.PI, 0);
+    ctx.fill();
+  };
+
+  const dryingRack = (px: number, py: number, scale = 1) => {
+    ctx.strokeStyle = "#6a4d31";
+    ctx.lineWidth = 3 * scale;
+    ctx.beginPath();
+    ctx.moveTo(px - 21 * scale, py + 13 * scale);
+    ctx.lineTo(px - 16 * scale, py - 24 * scale);
+    ctx.moveTo(px + 21 * scale, py + 13 * scale);
+    ctx.lineTo(px + 16 * scale, py - 24 * scale);
+    ctx.moveTo(px - 19 * scale, py - 19 * scale);
+    ctx.lineTo(px + 19 * scale, py - 19 * scale);
+    ctx.stroke();
+    for (const ox of [-10, 1, 11]) {
+      ctx.strokeStyle = "#9a7950";
+      ctx.lineWidth = 1.2 * scale;
+      ctx.beginPath();
+      ctx.moveTo(px + ox * scale, py - 19 * scale);
+      ctx.lineTo(px + ox * scale, py - 8 * scale);
+      ctx.stroke();
+      ctx.fillStyle = ox === 1 ? "#874636" : "#9b5440";
+      ctx.beginPath();
+      ctx.ellipse(px + ox * scale, py - 3 * scale, 5 * scale, 7 * scale, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
+
+  const knapSite = (px: number, py: number, scale = 1) => {
+    ctx.fillStyle = "rgba(92,74,54,0.30)";
+    ctx.beginPath();
+    ctx.ellipse(px, py, 30 * scale, 14 * scale, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < 11; i += 1) {
+      const a = i * 2.31;
+      const r = 7 + (i % 4) * 5;
+      ctx.fillStyle = i % 3 === 0 ? "#9a9180" : "#676258";
+      ctx.beginPath();
+      ctx.moveTo(px + Math.cos(a) * r * scale, py + Math.sin(a) * r * 0.45 * scale);
+      ctx.lineTo(px + Math.cos(a + 0.8) * (r + 7) * scale, py + Math.sin(a + 0.8) * (r + 7) * 0.45 * scale);
+      ctx.lineTo(px + Math.cos(a + 1.7) * (r + 3) * scale, py + Math.sin(a + 1.7) * (r + 3) * 0.45 * scale);
+      ctx.closePath();
+      ctx.fill();
+    }
+  };
+
+  const basket = (px: number, py: number, scale = 1) => {
+    ctx.strokeStyle = "#9b794a";
+    ctx.lineWidth = 2 * scale;
+    ctx.beginPath();
+    ctx.ellipse(px, py, 9 * scale, 6 * scale, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(px, py - 2 * scale, 8 * scale, Math.PI, 0);
+    ctx.stroke();
+  };
+
+  const logPile = (px: number, py: number, scale = 1) => {
+    for (let i = 0; i < 4; i += 1) {
+      const oy = (i % 2) * 7 * scale;
+      const ox = (i - 1.5) * 8 * scale;
+      ctx.strokeStyle = i % 2 ? "#755132" : "#65452c";
+      ctx.lineWidth = 6 * scale;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(px + ox - 15 * scale, py + oy);
+      ctx.lineTo(px + ox + 15 * scale, py + oy - 4 * scale);
+      ctx.stroke();
+    }
+    ctx.lineCap = "butt";
+  };
+
+  if (area.id === "area-0") {
+    // はじまりの野: まだ「村」ではなく、焚き火のまわりに生活がにじみ出した段階。
+    hideShelter(x(0.12), y(0.25), 0.95);
+    hideShelter(x(0.86), y(0.62), 0.82, true);
+    dryingRack(x(0.29), y(0.30), 0.9);
+    knapSite(x(0.72), y(0.31), 0.9);
+    logPile(x(0.16), y(0.70), 0.85);
+    basket(x(0.38), y(0.71), 0.9);
+    basket(x(0.41), y(0.73), 0.75);
+    // 骨・切り株・枝を端に置き、空き地を「床」に見せない。
+    ctx.strokeStyle = "rgba(213,199,165,0.52)";
+    ctx.lineWidth = 2.4;
+    for (const [fx, fy, rot] of [[0.08,0.48,0.4],[0.91,0.26,-0.5],[0.64,0.82,0.8]] as const) {
+      const px = x(fx), py = y(fy);
+      ctx.save(); ctx.translate(px, py); ctx.rotate(rot);
+      ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(8, 0); ctx.stroke();
+      ctx.beginPath(); ctx.arc(-9, 0, 2.8, 0, Math.PI * 2); ctx.arc(9, 0, 2.8, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+  } else {
+    // 集落のはじまり: 住居が複数でき、生活の中心が「設備」ではなく人の暮らしに見える。
+    pitHut(x(0.10), y(0.24), 0.95);
+    pitHut(x(0.82), y(0.25), 0.88);
+    pitHut(x(0.18), y(0.70), 0.82);
+    hideShelter(x(0.73), y(0.69), 0.78, true);
+    dryingRack(x(0.42), y(0.22), 0.95);
+    knapSite(x(0.58), y(0.73), 0.9);
+    logPile(x(0.31), y(0.77), 0.95);
+    basket(x(0.51), y(0.19), 0.85);
+    basket(x(0.54), y(0.20), 0.72);
+    basket(x(0.88), y(0.53), 0.78);
+    // 完成しすぎない短い杭。壁ではなく生活圏の輪郭だけを感じさせる。
+    ctx.strokeStyle = "rgba(101,74,45,0.70)";
+    ctx.lineWidth = 3;
+    for (const [fx, fy, lean] of [[0.04,0.33,-3],[0.05,0.39,2],[0.94,0.45,-2],[0.95,0.52,3],[0.37,0.90,-2]] as const) {
+      const px = x(fx), py = y(fy);
+      ctx.beginPath();
+      ctx.moveTo(px, py + 8);
+      ctx.lineTo(px + lean, py - 18);
+      ctx.stroke();
+    }
+  }
+
+  // ON時だけ煙や小さな火の粉。OFFでも生活オブジェクト自体は残る。
+  if (effects) {
+    const fx = area.id === "area-0" ? x(0.49) : x(0.47);
+    const fy = area.id === "area-0" ? y(0.48) : y(0.48);
+    for (let i = 0; i < 3; i += 1) {
+      const t = (time * 0.18 + i / 3) % 1;
+      ctx.fillStyle = `rgba(210,195,170,${0.12 * (1 - t)})`;
+      ctx.beginPath();
+      ctx.arc(fx + Math.sin(time + i) * 4, fy - 28 - t * 42, 5 + t * 9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+};
+
+/** 火のはじまりの服は、職業色より毛皮・革・土の色を優先する。 */
+const FIRE_ROLE_COATS: Partial<Record<StaffKind, string>> = {
+  waiter: "#765d40",
+  robot: "#665845",
+  collector: "#685542",
+  cook: "#8a785d",
+  master: "#514638",
+  busser: "#6d604d",
+  stocker: "#71583d",
+  server: "#796043",
+  seller: "#6b5842",
+  gatekeeper: "#5d5140",
+  hunter: "#5b4633",
+  logger: "#5d5940",
+  splitter: "#755843",
+  butcher: "#67483d",
+  builder: "#7b6545",
+  keeper: "#59604b",
+  nightman: "#504c47",
+  explorer: "#5b6257",
+  runner: "#705842",
+  boat: "#625849",
+};
+
+const fireRoleCoat = (kind: StaffKind, id: number) =>
+  FIRE_ROLE_COATS[kind] ?? ["#6b5742", "#7b6246", "#5d4b3a", "#6c614d"][id % 4];
+
+/** 色ではなく、持ち物と毛皮の形で職業を見分ける。 */
+const drawFireRoleMark = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  kind: StaffKind,
+  id: number,
+) => {
+  // 毛皮の肩。全員に共通するので、現代的な制服感を消す。
+  ctx.strokeStyle = id % 2 ? "rgba(214,189,147,0.52)" : "rgba(87,67,48,0.62)";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(x, y - 11, 8.5, Math.PI * 1.08, Math.PI * 1.92);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(62,43,28,0.78)";
+  ctx.fillStyle = "rgba(183,158,113,0.86)";
+  ctx.lineWidth = 2;
+  if (kind === "hunter") {
+    ctx.beginPath();
+    ctx.moveTo(x + 6, y - 26);
+    ctx.lineTo(x + 10, y + 5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + 5, y - 25);
+    ctx.lineTo(x + 10, y - 31);
+    ctx.lineTo(x + 12, y - 23);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === "builder" || kind === "splitter") {
+    ctx.beginPath();
+    ctx.moveTo(x + 7, y - 19);
+    ctx.lineTo(x + 11, y + 4);
+    ctx.stroke();
+    ctx.fillRect(x + 4, y - 20, 11, 4);
+  } else if (kind === "logger") {
+    ctx.beginPath();
+    ctx.moveTo(x + 7, y - 20);
+    ctx.lineTo(x + 10, y + 4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x + 6, y - 20, 6, -0.8, 0.8);
+    ctx.stroke();
+  } else if (kind === "keeper" || kind === "waiter" || kind === "runner") {
+    ctx.strokeStyle = "rgba(101,77,49,0.85)";
+    ctx.beginPath();
+    ctx.ellipse(x + 9, y - 2, 6, 8, 0.18, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeRect(x + 5, y - 7, 8, 8);
+  } else if (kind === "nightman") {
+    ctx.fillStyle = "rgba(242,156,70,0.82)";
+    ctx.beginPath();
+    ctx.arc(x + 10, y - 24, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(93,62,34,0.88)";
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y - 20);
+    ctx.lineTo(x + 10, y + 4);
+    ctx.stroke();
+  } else if (kind === "explorer") {
+    ctx.fillStyle = "rgba(196,181,139,0.82)";
+    ctx.beginPath();
+    ctx.moveTo(x + 5, y - 7);
+    ctx.lineTo(x + 14, y - 11);
+    ctx.lineTo(x + 12, y - 1);
+    ctx.closePath();
+    ctx.fill();
+  }
+};
+
 /** 区画ごとの飾り（テーマの見分け） */
 const drawProps = (
   ctx: CanvasRenderingContext2D,
   area: {
+    id: string;
+    label?: string;
     rect: { x0: number; y0: number; x1: number; y1: number };
-    palette: { prop: string };
+    palette: { floor: string; deep: string; prop: string };
   },
   time: number,
 ) => {
   const { rect, palette } = area;
   if (stage().id === "onsen") {
+    // 温泉街は、道と店の中でまるごと描き分ける
     drawOnsenProps(ctx, rect, palette.prop, time);
     return;
   }
-  const park = stage().id === "park";
+  const aquarium = stage().visualTheme === "aquarium";
+  const park = stage().id === "park" && !aquarium;
   const cx = (rect.x0 + rect.x1) / 2;
   const spots = [rect.x0 + 34, rect.x1 - 34];
   const baseY = rect.y1 - 40;
+
+  if (aquarium) {
+    drawAquariumHall(ctx, area, time);
+    return;
+  }
 
   if (park) {
     // 区画の上にかかる万国旗と、四隅の電飾ポール
@@ -1008,6 +1515,606 @@ const drawProps = (
         ctx.fillStyle = ["#8a6440", "#a9743f", "#7a5433"][i];
         roundRect(ctx, x - 14 + (i % 2) * 10, baseY - 14 - i * 12, 22, 12, 2);
         ctx.fill();
+      }
+    }
+    return;
+  }
+  if (
+    palette.prop === "northmeadow" ||
+    palette.prop === "moonmarsh" ||
+    palette.prop === "rockcave" ||
+    palette.prop === "starglen" ||
+    palette.prop === "headwater"
+  ) {
+    const w = rect.x1 - rect.x0;
+    const h = rect.y1 - rect.y0;
+    const seed = Math.round(rect.x0 / 720) + 3;
+
+    // 共通: 北側は地面そのものに密度を出す。草・石・低木を散らす。
+    for (let i = 0; i < 30; i += 1) {
+      const px = rect.x0 + 34 + ((i * 149 + seed * 37) % Math.max(80, w - 68));
+      const py = rect.y0 + 40 + ((i * 83 + seed * 61) % Math.max(80, h - 80));
+      if (palette.prop === "rockcave") {
+        ctx.fillStyle = i % 3 === 0 ? "#5b5a55" : "#474944";
+        ctx.beginPath();
+        ctx.ellipse(px, py, 9 + (i % 4) * 3, 5 + (i % 3) * 2, i * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = palette.prop === "headwater" ? "#406b5d" : "#4c623d";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(px, py + 8);
+        ctx.lineTo(px - 4, py - 7 - (i % 3) * 3);
+        ctx.moveTo(px, py + 8);
+        ctx.lineTo(px + 5, py - 5 - (i % 4) * 2);
+        ctx.stroke();
+      }
+    }
+
+    if (palette.prop === "northmeadow") {
+      // 風の高台: 岩の縁、低い草、遠くへ向く風見布。
+      ctx.fillStyle = "rgba(116,133,80,0.22)";
+      for (let i = 0; i < 9; i += 1) {
+        ctx.beginPath();
+        ctx.ellipse(rect.x0 + 70 + i * (w - 140) / 8, rect.y0 + 190 + (i % 3) * 130, 44, 18, i * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (let i = 0; i < 5; i += 1) {
+        const x = rect.x0 + 90 + i * 130;
+        const y = rect.y0 + 120 + (i % 2) * 210;
+        ctx.fillStyle = "#665a43";
+        ctx.fillRect(x - 2, y - 28, 4, 36);
+        ctx.fillStyle = "#b28a52";
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y - 26);
+        ctx.quadraticCurveTo(x + 24 + Math.sin(time * 3 + i) * 8, y - 18, x + 7, y - 8);
+        ctx.lineTo(x + 2, y - 26);
+        ctx.fill();
+      }
+      // 鹿の足跡が北へ続く。
+      ctx.fillStyle = "rgba(65,49,31,0.42)";
+      for (let i = 0; i < 11; i += 1) {
+        const x = rect.x0 + 310 + Math.sin(i * 0.8) * 90;
+        const y = rect.y1 - 70 - i * 55;
+        ctx.beginPath();
+        ctx.ellipse(x - 4, y, 3, 7, -0.35, 0, Math.PI * 2);
+        ctx.ellipse(x + 4, y, 3, 7, 0.35, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (palette.prop === "moonmarsh") {
+      // 月の湿地: 水たまりが点在し、葦・蛙の波紋・水鳥が動く。
+      for (let i = 0; i < 7; i += 1) {
+        const x = rect.x0 + 90 + ((i * 137) % Math.max(150, w - 180));
+        const y = rect.y0 + 110 + ((i * 163) % Math.max(180, h - 220));
+        ctx.fillStyle = "rgba(34,80,77,0.72)";
+        ctx.beginPath();
+        ctx.ellipse(x, y, 50 + (i % 3) * 17, 24 + (i % 2) * 9, i * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(145,200,178,0.22)";
+        ctx.beginPath();
+        ctx.ellipse(x + Math.sin(time + i) * 7, y, 12 + (i % 3) * 5, 5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "#47664b";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 30; i += 1) {
+        const x = rect.x0 + 30 + ((i * 79) % Math.max(100, w - 60));
+        const y = rect.y0 + 80 + ((i * 107) % Math.max(100, h - 120));
+        ctx.beginPath();
+        ctx.moveTo(x, y + 15);
+        ctx.lineTo(x + Math.sin(i) * 4, y - 18);
+        ctx.stroke();
+      }
+      // 水鳥が低く横切る。
+      ctx.strokeStyle = "rgba(215,225,205,0.65)";
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i += 1) {
+        const x = rect.x0 + ((time * (28 + i * 5) + i * 210) % (w + 120)) - 60;
+        const y = rect.y0 + 90 + i * 55;
+        ctx.beginPath();
+        ctx.arc(x - 5, y, 7, Math.PI * 1.1, Math.PI * 1.85);
+        ctx.arc(x + 5, y, 7, Math.PI * 1.15, Math.PI * 1.9);
+        ctx.stroke();
+      }
+    } else if (palette.prop === "rockcave") {
+      // 岩棚の洞窟: 大きな岩壁と複数の穴、天井からつらら。
+      ctx.fillStyle = "#4b4d49";
+      for (let i = 0; i < 9; i += 1) {
+        const x = rect.x0 + 55 + i * (w - 110) / 8;
+        const y = rect.y0 + 150 + (i % 2) * 30;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 78, 105 + (i % 3) * 24, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (const [x, y, rx, ry] of [[0.25, 0.28, 62, 52], [0.57, 0.23, 78, 60], [0.82, 0.32, 54, 45]] as const) {
+        ctx.fillStyle = "#111514";
+        ctx.beginPath();
+        ctx.ellipse(rect.x0 + w * x, rect.y0 + h * y, rx, ry, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "rgba(220,235,240,0.72)";
+      for (let i = 0; i < 13; i += 1) {
+        const x = rect.x0 + 45 + ((i * 73) % Math.max(90, w - 90));
+        ctx.beginPath();
+        ctx.moveTo(x - 4, rect.y0 + 5);
+        ctx.lineTo(x + 5, rect.y0 + 5);
+        ctx.lineTo(x, rect.y0 + 32 + (i % 4) * 10);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (palette.prop === "starglen") {
+      // 星見の丘: なだらかな尾根、石の輪、夜には蛍が星のように見える。
+      ctx.fillStyle = "rgba(90,105,62,0.34)";
+      ctx.beginPath();
+      ctx.ellipse(rect.x0 + w * 0.5, rect.y0 + h * 0.48, w * 0.42, h * 0.24, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const cx = rect.x0 + w * 0.52;
+      const cy = rect.y0 + h * 0.32;
+      for (let i = 0; i < 12; i += 1) {
+        const a = (i / 12) * Math.PI * 2;
+        const x = cx + Math.cos(a) * 105;
+        const y = cy + Math.sin(a) * 45;
+        ctx.fillStyle = "#777468";
+        ctx.beginPath();
+        ctx.ellipse(x, y, 10, 17, a, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (let i = 0; i < 16; i += 1) {
+        const x = rect.x0 + 40 + ((i * 101) % Math.max(120, w - 80));
+        const y = rect.y0 + 70 + ((i * 61) % Math.max(120, h - 160));
+        const glow = 0.25 + Math.abs(Math.sin(time * 2.1 + i)) * 0.6;
+        ctx.fillStyle = `rgba(222,229,136,${glow})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 1.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (palette.prop === "headwater") {
+      // 上流の滝: 北端から水が落ち、岩のあいだを南へ流れる。
+      const riverX = rect.x0 + w * 0.68;
+      ctx.fillStyle = "rgba(58,123,139,0.72)";
+      ctx.beginPath();
+      ctx.moveTo(riverX - 74, rect.y0);
+      ctx.lineTo(riverX + 52, rect.y0);
+      ctx.bezierCurveTo(riverX + 110, rect.y0 + 180, riverX - 10, rect.y0 + 350, riverX + 35, rect.y1);
+      ctx.lineTo(riverX - 90, rect.y1);
+      ctx.bezierCurveTo(riverX - 120, rect.y0 + 380, riverX + 20, rect.y0 + 180, riverX - 74, rect.y0);
+      ctx.fill();
+      ctx.fillStyle = "rgba(220,245,250,0.62)";
+      for (let i = 0; i < 18; i += 1) {
+        const x = riverX - 55 + ((i * 31) % 100);
+        const y = rect.y0 + 40 + ((time * (38 + i) + i * 67) % Math.max(100, h - 80));
+        ctx.beginPath();
+        ctx.arc(x, y, 2 + (i % 3), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#55584f";
+      for (let i = 0; i < 12; i += 1) {
+        const x = rect.x0 + 70 + ((i * 167) % Math.max(100, w - 140));
+        const y = rect.y0 + 90 + ((i * 113) % Math.max(100, h - 180));
+        ctx.beginPath();
+        ctx.ellipse(x, y, 24 + (i % 4) * 8, 12 + (i % 3) * 4, i * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    return;
+  }
+  if (palette.prop === "nightforest") {
+    const w = rect.x1 - rect.x0;
+    const h = rect.y1 - rect.y0;
+
+    // 地面の濃淡。森の奥ほど下草が濃く、平らな一枚床に見えないようにする。
+    ctx.fillStyle = "rgba(6,16,11,0.34)";
+    for (let i = 0; i < 24; i += 1) {
+      const px = rect.x0 + 46 + ((i * 173) % Math.max(120, w - 92));
+      const py = rect.y0 + 46 + ((i * 97) % Math.max(120, h - 92));
+      ctx.beginPath();
+      ctx.ellipse(px, py, 38 + (i % 4) * 15, 16 + (i % 3) * 7, i * 0.31, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 獣道。入口から最奥の古木・巣穴へ曲がって続く。
+    ctx.strokeStyle = "rgba(154,132,88,0.24)";
+    ctx.lineWidth = 28;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(rect.x0 + 620, rect.y1 - 10);
+    ctx.bezierCurveTo(rect.x0 + 520, rect.y0 + 620, rect.x0 + 800, rect.y0 + 410, rect.x0 + 850, rect.y0 + 168);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(154,132,88,0.13)";
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.moveTo(rect.x0 + 650, rect.y0 + 555);
+    ctx.quadraticCurveTo(rect.x0 + 280, rect.y0 + 490, rect.x0 + 245, rect.y0 + 275);
+    ctx.moveTo(rect.x0 + 770, rect.y0 + 405);
+    ctx.quadraticCurveTo(rect.x0 + 1050, rect.y0 + 350, rect.x0 + 1110, rect.y0 + 180);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+
+    // 小さな池。鹿やオオカミが寄る場所として、森の左奥に水面を置く。
+    const pondX = rect.x0 + 255;
+    const pondY = rect.y0 + 265;
+    ctx.fillStyle = "rgba(24,62,61,0.86)";
+    ctx.beginPath();
+    ctx.ellipse(pondX, pondY, 104, 58, -0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(120,180,165,0.22)";
+    ctx.lineWidth = 1.3;
+    for (let i = 0; i < 4; i += 1) {
+      ctx.beginPath();
+      ctx.ellipse(pondX - 22 + i * 15, pondY + i * 4, 28 + i * 9, 8 + i * 2, -0.12, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // 葦と水草
+    ctx.strokeStyle = "#405b3c";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 12; i += 1) {
+      const rx = pondX - 92 + i * 17;
+      const ry = pondY + 20 + Math.sin(i * 1.7) * 18;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry + 13);
+      ctx.lineTo(rx + Math.sin(i) * 4, ry - 15 - (i % 3) * 5);
+      ctx.stroke();
+    }
+
+    // 最奥の洞穴。入り口だけ真っ黒にして、何かがいる感じを残す。
+    const caveX = rect.x1 - 125;
+    const caveY = rect.y0 + 142;
+    ctx.fillStyle = "#4a4740";
+    for (const [ox, oy, rx, ry] of [
+      [-44, 5, 42, 35], [42, 8, 44, 38], [-12, -26, 52, 35], [18, -28, 42, 31],
+    ] as const) {
+      ctx.beginPath();
+      ctx.ellipse(caveX + ox, caveY + oy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#080b09";
+    ctx.beginPath();
+    ctx.ellipse(caveX, caveY + 17, 52, 40, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    // 巣の前の骨
+    ctx.strokeStyle = "#bcb59f";
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 3; i += 1) {
+      const bx = caveX - 60 + i * 42;
+      const by = caveY + 62 + (i % 2) * 12;
+      ctx.beginPath();
+      ctx.moveTo(bx - 10, by - 5);
+      ctx.lineTo(bx + 11, by + 6);
+      ctx.moveTo(bx + 9, by - 6);
+      ctx.lineTo(bx - 10, by + 7);
+      ctx.stroke();
+      ctx.fillStyle = "#c9c1aa";
+      for (const ex of [-11, 11]) {
+        ctx.beginPath();
+        ctx.arc(bx + ex, by, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 森の象徴になる巨大古木。根元のうろがランドマーク。
+    const oldX = rect.x0 + 820;
+    const oldY = rect.y0 + 175;
+    ctx.strokeStyle = "#3f2d1f";
+    ctx.lineCap = "round";
+    ctx.lineWidth = 26;
+    ctx.beginPath();
+    ctx.moveTo(oldX, oldY + 78);
+    ctx.lineTo(oldX - 3, oldY - 24);
+    ctx.stroke();
+    ctx.lineWidth = 12;
+    for (const [dx, dy] of [[-62, -80], [-36, -104], [42, -96], [70, -72], [5, -120]] as const) {
+      ctx.beginPath();
+      ctx.moveTo(oldX, oldY - 18);
+      ctx.lineTo(oldX + dx, oldY + dy);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "#4c3827";
+    ctx.lineWidth = 7;
+    for (const dx of [-62, -34, 38, 70]) {
+      ctx.beginPath();
+      ctx.moveTo(oldX, oldY + 64);
+      ctx.quadraticCurveTo(oldX + dx * 0.45, oldY + 84, oldX + dx, oldY + 78);
+      ctx.stroke();
+    }
+    ctx.lineCap = "butt";
+    ctx.fillStyle = "#14140f";
+    ctx.beginPath();
+    ctx.ellipse(oldX + 4, oldY + 34, 12, 21, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#1d3d28";
+    for (let i = 0; i < 15; i += 1) {
+      const a = (i / 15) * Math.PI * 2;
+      const rx = 38 + (i % 4) * 8;
+      ctx.beginPath();
+      ctx.arc(oldX + Math.cos(a) * rx, oldY - 74 + Math.sin(a) * 42, 15 + (i % 3) * 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 通路の両側に木を高密度で置く。太さや高さをばらして人工的な等間隔感を消す。
+    for (let i = 0; i < 34; i += 1) {
+      const left = i % 2 === 0;
+      const lane = left ? 65 + (i % 6) * 74 : w - 70 - (i % 6) * 76;
+      const tx = rect.x0 + lane + Math.sin(i * 2.2) * 25;
+      const ty = rect.y0 + 45 + ((i * 109) % Math.max(120, h - 90));
+      const tall = 1 + (i % 4) * 0.08;
+      ctx.fillStyle = i % 5 === 0 ? "#473224" : "#3a2b1d";
+      ctx.fillRect(tx - 3.5, ty - 10, 7, 30 * tall);
+      ctx.fillStyle = i % 3 === 0 ? "#203c2a" : "#183225";
+      for (let k = 0; k < 3; k += 1) {
+        ctx.beginPath();
+        ctx.moveTo(tx, ty - (40 + k * 14) * tall);
+        ctx.lineTo(tx - 20 + k * 2, ty - (7 + k * 12) * tall);
+        ctx.lineTo(tx + 20 - k * 2, ty - (7 + k * 12) * tall);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // 倒木。空間に横方向の障害物を入れて、ただの床に見えないようにする。
+    for (const [lx, ly, angle, len] of [
+      [350, 610, -0.22, 86], [720, 548, 0.28, 72], [1030, 430, -0.3, 92], [460, 145, 0.16, 70],
+    ] as const) {
+      ctx.save();
+      ctx.translate(rect.x0 + lx, rect.y0 + ly);
+      ctx.rotate(angle);
+      ctx.fillStyle = "#4d3826";
+      roundRect(ctx, -len / 2, -7, len, 14, 7);
+      ctx.fill();
+      ctx.fillStyle = "#6b5136";
+      ctx.beginPath();
+      ctx.arc(-len / 2 + 2, 0, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#2e4a30";
+      ctx.lineWidth = 2;
+      for (let j = -2; j <= 2; j += 1) {
+        ctx.beginPath();
+        ctx.moveTo(j * 15, -5);
+        ctx.lineTo(j * 15 + 7, -15 - Math.abs(j) * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 大岩と小石。
+    for (let i = 0; i < 9; i += 1) {
+      const rx = rect.x0 + 105 + ((i * 283) % Math.max(140, w - 210));
+      const ry = rect.y0 + 110 + ((i * 187) % Math.max(140, h - 190));
+      ctx.fillStyle = i % 2 ? "#54554e" : "#484b46";
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, 18 + (i % 3) * 7, 11 + (i % 2) * 7, i * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(130,145,120,0.22)";
+      ctx.beginPath();
+      ctx.ellipse(rx - 5, ry - 4, 8, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 茂み。いくつかは赤い木の実つき。
+    for (let i = 0; i < 22; i += 1) {
+      const bx = rect.x0 + 60 + ((i * 241) % Math.max(100, w - 120));
+      const by = rect.y0 + 70 + ((i * 149) % Math.max(100, h - 130));
+      ctx.fillStyle = i % 4 === 0 ? "#294b2f" : "#244229";
+      for (const ox of [-10, 0, 10]) {
+        ctx.beginPath();
+        ctx.arc(bx + ox, by - Math.abs(ox) * 0.25, 9 + (i % 3), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (i % 5 === 0) {
+        ctx.fillStyle = "#a74236";
+        for (let k = 0; k < 4; k += 1) {
+          ctx.beginPath();
+          ctx.arc(bx - 9 + k * 6, by - 6 - (k % 2) * 5, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // キノコと薬草。拾えそうなものが点在している見た目を作る。
+    for (let i = 0; i < 12; i += 1) {
+      const mx = rect.x0 + 120 + ((i * 313) % Math.max(120, w - 240));
+      const my = rect.y0 + 120 + ((i * 211) % Math.max(120, h - 200));
+      ctx.strokeStyle = "#d4c6a5";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(mx, my + 5);
+      ctx.lineTo(mx, my - 5);
+      ctx.stroke();
+      ctx.fillStyle = i % 3 === 0 ? "#a65b4d" : "#c6b071";
+      ctx.beginPath();
+      ctx.ellipse(mx, my - 7, 6, 3.5, 0, Math.PI, Math.PI * 2);
+      ctx.fill();
+      if (i % 2 === 0) {
+        ctx.strokeStyle = "#557547";
+        ctx.beginPath();
+        ctx.moveTo(mx + 10, my + 5);
+        ctx.lineTo(mx + 11, my - 10);
+        ctx.moveTo(mx + 11, my - 3);
+        ctx.lineTo(mx + 17, my - 8);
+        ctx.stroke();
+      }
+    }
+
+    // 骨・角。危険地帯へ近づいていることを文字なしで伝える。
+    for (let i = 0; i < 5; i += 1) {
+      const bx = rect.x0 + 690 + ((i * 127) % 440);
+      const by = rect.y0 + 210 + ((i * 139) % 370);
+      ctx.strokeStyle = "#b8b19c";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(bx - 9, by - 3);
+      ctx.lineTo(bx + 10, by + 5);
+      ctx.stroke();
+      ctx.fillStyle = "#c6bea7";
+      ctx.beginPath();
+      ctx.arc(bx - 10, by - 3, 3, 0, Math.PI * 2);
+      ctx.arc(bx + 11, by + 5, 3, 0, Math.PI * 2);
+      ctx.fill();
+      if (i % 2 === 0) {
+        ctx.strokeStyle = "#b8b19c";
+        ctx.beginPath();
+        ctx.moveTo(bx + 18, by + 4);
+        ctx.quadraticCurveTo(bx + 28, by - 10, bx + 35, by - 7);
+        ctx.stroke();
+      }
+    }
+
+    // 足跡。入口から池、池から巣穴へ続く二種類のトレイル。
+    ctx.fillStyle = "rgba(20,18,14,0.38)";
+    for (let i = 0; i < 13; i += 1) {
+      const t = i / 12;
+      const fx = rect.x0 + 610 - t * 330;
+      const fy = rect.y1 - 90 - t * 420;
+      const side = i % 2 ? 7 : -7;
+      ctx.beginPath();
+      ctx.ellipse(fx + side, fy, 5, 8, -0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (let i = 0; i < 11; i += 1) {
+      const t = i / 10;
+      const fx = pondX + 80 + t * (caveX - pondX - 135);
+      const fy = pondY - 20 - t * 120;
+      ctx.beginPath();
+      ctx.ellipse(fx, fy, 4, 6, 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 石積みの道標。
+    for (const [cx, cy] of [[575, 690], [520, 390], [905, 330]] as const) {
+      for (let i = 0; i < 4; i += 1) {
+        ctx.fillStyle = i % 2 ? "#6a675d" : "#595950";
+        ctx.beginPath();
+        ctx.ellipse(rect.x0 + cx, rect.y0 + cy - i * 8, 10 - i * 1.5, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 誰かが昔使った焚き火跡。今は消えている。
+    const ashX = rect.x0 + 440;
+    const ashY = rect.y0 + 560;
+    ctx.fillStyle = "rgba(20,18,16,0.7)";
+    ctx.beginPath();
+    ctx.ellipse(ashX, ashY, 23, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#5b4531";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(ashX - 18, ashY - 7);
+    ctx.lineTo(ashX + 18, ashY + 7);
+    ctx.moveTo(ashX + 16, ashY - 8);
+    ctx.lineTo(ashX - 16, ashY + 8);
+    ctx.stroke();
+
+    // 鳥の群れ。空にも動きを置く。
+    ctx.strokeStyle = "rgba(7,10,8,0.72)";
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < 7; i += 1) {
+      const flight = (time * (18 + i * 1.3) + i * 141) % (w + 180);
+      const fx = rect.x0 - 90 + flight;
+      const fy = rect.y0 + 72 + ((i * 61) % 180) + Math.sin(time * 3 + i) * 8;
+      const flap = Math.sin(time * 8 + i) * 4;
+      ctx.beginPath();
+      ctx.moveTo(fx - 9, fy + flap);
+      ctx.quadraticCurveTo(fx - 4, fy - 5, fx, fy);
+      ctx.quadraticCurveTo(fx + 4, fy - 5, fx + 9, fy - flap);
+      ctx.stroke();
+    }
+
+    // 蛍。以前より数を増やし、池・古木・獣道にまとまりを作る。
+    for (let i = 0; i < 24; i += 1) {
+      const drift = (time * (8 + (i % 6)) + i * 91) % Math.max(160, w - 80);
+      const fx = rect.x0 + 40 + drift;
+      const fy = rect.y0 + 90 + ((i * 131) % Math.max(120, h - 160)) + Math.sin(time * 1.7 + i) * 7;
+      const glow = 0.16 + Math.abs(Math.sin(time * 2.4 + i)) * 0.62;
+      ctx.fillStyle = `rgba(210,225,120,${glow})`;
+      ctx.beginPath();
+      ctx.arc(fx, fy, 1.5 + (i % 3) * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return;
+  }
+  if (palette.prop === "horror") {
+    // ナイトメア・パーク: 石畳、紫の霧、満月、枯れ木、古い門
+    ctx.fillStyle = "rgba(10,7,14,0.42)";
+    roundRect(ctx, rect.x0 + 20, rect.y0 + 104, rect.x1 - rect.x0 - 40, 92, 18);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(190,165,210,0.12)";
+    ctx.lineWidth = 1;
+    for (let yy = rect.y0 + 118, row = 0; yy < rect.y0 + 190; yy += 16, row += 1) {
+      const shift = (row % 2) * 17;
+      for (let xx = rect.x0 + 28; xx < rect.x1 - 42; xx += 34) {
+        ctx.strokeRect(xx + shift, yy, 28, 10);
+      }
+    }
+
+    const moonX = rect.x0 + 66;
+    const moonY = rect.y0 + 56;
+    const halo = ctx.createRadialGradient(moonX, moonY, 4, moonX, moonY, 42);
+    halo.addColorStop(0, "rgba(232,222,255,0.28)");
+    halo.addColorStop(1, "rgba(120,80,170,0)");
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, 42, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(225,218,240,0.86)";
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(8,5,12,0.9)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 5; i += 1) {
+      const bx = rect.x0 + 110 + i * 38;
+      const by = rect.y0 + 44 + (i % 2) * 15;
+      const flap = Math.sin(time * 5 + i) * 3;
+      ctx.beginPath();
+      ctx.moveTo(bx - 10, by + flap);
+      ctx.quadraticCurveTo(bx - 4, by - 5, bx, by);
+      ctx.quadraticCurveTo(bx + 4, by - 5, bx + 10, by - flap);
+      ctx.stroke();
+    }
+
+    const gateX = rect.x1 - 22;
+    ctx.strokeStyle = "#46384f";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(gateX - 28, rect.y0 + 118);
+    ctx.lineTo(gateX - 28, rect.y0 + 54);
+    ctx.quadraticCurveTo(gateX, rect.y0 + 20, gateX + 28, rect.y0 + 54);
+    ctx.lineTo(gateX + 28, rect.y0 + 118);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(154,118,174,0.55)";
+    ctx.lineWidth = 2;
+    for (let gx = gateX - 20; gx <= gateX + 20; gx += 10) {
+      ctx.beginPath();
+      ctx.moveTo(gx, rect.y0 + 58);
+      ctx.lineTo(gx, rect.y0 + 116);
+      ctx.stroke();
+    }
+
+    for (let i = 0; i < 7; i += 1) {
+      const drift = (time * (8 + i) + i * 71) % (rect.x1 - rect.x0 + 120);
+      const fx = rect.x0 - 60 + drift;
+      const fy = rect.y0 + 210 + ((i * 83) % Math.max(80, rect.y1 - rect.y0 - 240));
+      ctx.fillStyle = `rgba(112,72,148,${0.055 + (i % 3) * 0.018})`;
+      ctx.beginPath();
+      ctx.ellipse(fx, fy, 58 + (i % 2) * 20, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const rows = Math.max(1, Math.floor((rect.y1 - rect.y0) / 260));
+    for (let i = 0; i < rows; i += 1) {
+      for (const tx of [rect.x0 + 42, rect.x1 - 48]) {
+        const ty = rect.y0 + 250 + i * 250;
+        ctx.strokeStyle = "#35283b";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty + 18);
+        ctx.lineTo(tx, ty - 36);
+        ctx.moveTo(tx, ty - 12);
+        ctx.lineTo(tx - 18, ty - 30);
+        ctx.moveTo(tx, ty - 20);
+        ctx.lineTo(tx + 16, ty - 42);
+        ctx.stroke();
       }
     }
     return;
@@ -2629,6 +3736,10 @@ const drawSettlement = (
   }
 
   /* --- 川の瀬（魚をとる） --- */
+  if (art.startsWith("aquarium-")) {
+    return drawAquariumExhibit(ctx, art, Math.round(x * 31 + y * 17));
+  }
+
   if (art === "fish") {
     const zone = huntZone(state, stove);
     ctx.fillStyle = "rgba(70,120,140,0.5)";
@@ -5545,7 +6656,198 @@ const drawEquip = (
   y: number,
   time: number,
 ) => {
-  const park = stage().id === "park";
+  const park = stage().id === "park" && stage().visualTheme !== "aquarium";
+
+  if (id === "hand-torch") {
+    ctx.strokeStyle = "#6b4a2b";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 10);
+    ctx.lineTo(x + 3, y - 24);
+    ctx.stroke();
+    const flame = 0.6 + Math.abs(Math.sin(time * 7)) * 0.4;
+    ctx.fillStyle = `rgba(255,145,55,${flame})`;
+    ctx.beginPath();
+    ctx.moveTo(x + 3, y - 24);
+    ctx.quadraticCurveTo(x + 12, y - 34, x + 5, y - 44);
+    ctx.quadraticCurveTo(x - 4, y - 34, x + 3, y - 24);
+    ctx.fill();
+    return;
+  }
+  if (id.startsWith("night-torch-")) {
+    ctx.fillStyle = "#5d4931";
+    roundRect(ctx, x - 4, y - 30, 8, 42, 3);
+    ctx.fill();
+    ctx.fillStyle = "#4a4038";
+    roundRect(ctx, x - 11, y - 30, 22, 8, 3);
+    ctx.fill();
+    const flame = 0.55 + Math.abs(Math.sin(time * 6 + x)) * 0.45;
+    ctx.fillStyle = `rgba(255,145,55,${flame})`;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 29);
+    ctx.quadraticCurveTo(x + 10, y - 43, x + 1, y - 54);
+    ctx.quadraticCurveTo(x - 9, y - 43, x, y - 29);
+    ctx.fill();
+    return;
+  }
+  if (id === "wolf-bell") {
+    ctx.fillStyle = "#59442c";
+    ctx.fillRect(x - 3, y - 38, 6, 50);
+    ctx.fillStyle = "#a88745";
+    ctx.beginPath();
+    ctx.moveTo(x - 12, y - 34);
+    ctx.quadraticCurveTo(x, y - 48, x + 12, y - 34);
+    ctx.lineTo(x + 9, y - 20);
+    ctx.lineTo(x - 9, y - 20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#6f542b";
+    ctx.beginPath();
+    ctx.arc(x, y - 18, 3, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
+  const wildNorth =
+    id.startsWith("north-") || id.startsWith("marsh-") || id.startsWith("cave-") ||
+    id.startsWith("ridge-") || id.startsWith("headwater-") || id === "night-path" ||
+    id === "night-wood-rack" || id === "night-bait-rack" || id === "wolf-feeding-rack" ||
+    id === "wolf-fence" || id === "dog-shelter";
+  if (wildNorth) {
+    if (id.includes("trail") || id.includes("walkway") || id === "night-path") {
+      ctx.fillStyle = "#7b684b";
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.save();
+        ctx.translate(x + i * 10, y - i * 3);
+        ctx.rotate(-0.14);
+        roundRect(ctx, -9, -3, 18, 6, 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      return;
+    }
+    if (id.includes("rack") || id.includes("cache") || id.includes("store")) {
+      ctx.fillStyle = "#604a31";
+      roundRect(ctx, x - 24, y - 24, 48, 32, 4);
+      ctx.fill();
+      ctx.strokeStyle = "#9c7c4e";
+      ctx.lineWidth = 2;
+      for (const oy of [-13, -2]) {
+        ctx.beginPath();
+        ctx.moveTo(x - 21, y + oy);
+        ctx.lineTo(x + 21, y + oy);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#b49a6a";
+      for (let i = 0; i < 4; i += 1) {
+        roundRect(ctx, x - 18 + (i % 2) * 20, y - 20 + Math.floor(i / 2) * 12, 14, 8, 2);
+        ctx.fill();
+      }
+      return;
+    }
+    if (id.includes("lookout") || id.includes("watch")) {
+      ctx.strokeStyle = "#684d31";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x - 14, y + 12);
+      ctx.lineTo(x - 8, y - 32);
+      ctx.moveTo(x + 14, y + 12);
+      ctx.lineTo(x + 8, y - 32);
+      ctx.stroke();
+      ctx.fillStyle = "#705438";
+      roundRect(ctx, x - 24, y - 38, 48, 12, 3);
+      ctx.fill();
+      ctx.fillStyle = "#493523";
+      ctx.beginPath();
+      ctx.moveTo(x - 28, y - 38);
+      ctx.lineTo(x, y - 54);
+      ctx.lineTo(x + 28, y - 38);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    }
+    if (id.includes("fire") || id.includes("beacon")) {
+      ctx.fillStyle = "#5c5144";
+      for (let i = 0; i < 8; i += 1) {
+        const a = (i / 8) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(a) * 12, y + Math.sin(a) * 5, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const flame = 0.6 + Math.abs(Math.sin(time * 6)) * 0.4;
+      ctx.fillStyle = `rgba(255,145,55,${flame})`;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 2);
+      ctx.quadraticCurveTo(x + 13, y - 18, x + 2, y - 34);
+      ctx.quadraticCurveTo(x - 12, y - 18, x, y - 2);
+      ctx.fill();
+      return;
+    }
+    if (id === "wolf-fence") {
+      ctx.strokeStyle = "#725536";
+      ctx.lineWidth = 4;
+      for (let i = -2; i <= 2; i += 1) {
+        const px = x + i * 14;
+        ctx.beginPath();
+        ctx.moveTo(px, y + 12);
+        ctx.lineTo(px + (i % 2) * 5, y - 30 - Math.abs(i) * 2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "#a08354";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 32, y - 10);
+      ctx.lineTo(x + 32, y - 4);
+      ctx.stroke();
+      return;
+    }
+    if (id === "dog-shelter" || id === "north-hide") {
+      ctx.fillStyle = "#6b5137";
+      ctx.beginPath();
+      ctx.moveTo(x - 28, y + 8);
+      ctx.lineTo(x, y - 34);
+      ctx.lineTo(x + 28, y + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#211914";
+      roundRect(ctx, x - 9, y - 8, 18, 16, 6);
+      ctx.fill();
+      return;
+    }
+    if (id.includes("marker")) {
+      ctx.fillStyle = "#77756d";
+      for (let i = 0; i < 4; i += 1) {
+        ctx.beginPath();
+        ctx.ellipse(x, y + 8 - i * 9, 18 - i * 3, 7, i * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return;
+    }
+    if (id.includes("weir")) {
+      ctx.strokeStyle = "#8a7148";
+      ctx.lineWidth = 3;
+      for (let i = -3; i <= 3; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x + i * 8, y + 12);
+        ctx.lineTo(x + i * 8 + 4, y - 20);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(205,235,240,0.6)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(x, y + 12, 38, 9, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    // その他は石積み・杭として見せる。
+    ctx.fillStyle = "#777164";
+    for (let i = 0; i < 5; i += 1) {
+      ctx.beginPath();
+      ctx.ellipse(x - 22 + i * 11, y + 5 - (i % 2) * 5, 9, 6, i * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return;
+  }
 
   /* --- 谷の罠。買うと、その場所に実物が現れる（枠だけで効かせない） --- */
   if (id === "rope-stake") {
@@ -7316,6 +8618,168 @@ const sledDog = (
   ctx.fill();
 };
 
+/** 夜の森の鹿。池と古木のあいだをゆっくり横切る。 */
+const nightDeer = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  face: number,
+  moving: boolean,
+  time: number,
+  buck = false,
+) => {
+  const gait = moving ? Math.sin(time * 8 + x * 0.01) * 2.8 : 0;
+  shadow(ctx, x, y + 7, 16);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(face, 1);
+  ctx.strokeStyle = "#72563b";
+  ctx.lineWidth = 2.4;
+  for (const [i, lx] of [-8, 5].entries()) {
+    ctx.beginPath();
+    ctx.moveTo(lx, -3);
+    ctx.lineTo(lx + (i === 0 ? gait : -gait), 9);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#876649";
+  ctx.beginPath();
+  ctx.ellipse(-2, -10, 15, 8, -0.06, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#876649";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(8, -13);
+  ctx.lineTo(14, -28);
+  ctx.stroke();
+  ctx.fillStyle = "#956f4e";
+  ctx.beginPath();
+  ctx.ellipse(16, -31, 6.5, 5.2, 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(14, -35);
+  ctx.lineTo(12, -43);
+  ctx.lineTo(17, -36);
+  ctx.moveTo(18, -35);
+  ctx.lineTo(22, -42);
+  ctx.lineTo(21, -34);
+  ctx.fill();
+  ctx.fillStyle = "#181512";
+  ctx.beginPath();
+  ctx.arc(18, -32, 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#d7c5a2";
+  ctx.beginPath();
+  ctx.arc(-15, -12, 3, 0, Math.PI * 2);
+  ctx.fill();
+  if (buck) {
+    ctx.strokeStyle = "#b8a98d";
+    ctx.lineWidth = 1.6;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(15 + side * 2, -36);
+      ctx.lineTo(13 + side * 7, -48);
+      ctx.moveTo(14 + side * 5, -44);
+      ctx.lineTo(10 + side * 10, -49);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+};
+
+/** 夜の森のウサギ。下草から飛び出して小刻みに走る。 */
+const nightRabbit = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  face: number,
+  time: number,
+) => {
+  const hop = Math.abs(Math.sin(time * 6 + x * 0.02)) * 4;
+  shadow(ctx, x, y + 4, 7);
+  ctx.save();
+  ctx.translate(x, y - hop);
+  ctx.scale(face, 1);
+  ctx.fillStyle = "#7b756a";
+  ctx.beginPath();
+  ctx.ellipse(-1, -5, 7, 4.8, -0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(6, -9, 4, 0, Math.PI * 2);
+  ctx.fill();
+  for (const ox of [4, 8]) {
+    ctx.beginPath();
+    ctx.ellipse(ox, -16, 2.1, 7, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#ddd8cb";
+  ctx.beginPath();
+  ctx.arc(-7, -5, 2.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#151515";
+  ctx.beginPath();
+  ctx.arc(8, -10, 0.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
+
+/** 夜の森のオオカミ。犬ぞりの犬より低く、細く、灰色で目だけが光る。 */
+const nightWolf = (
+  ctx: CanvasRenderingContext2D,
+  wolf: { pos: { x: number; y: number }; face: number; state: string },
+  time: number,
+) => {
+  const { pos, face } = wolf;
+  const run = wolf.state === "flee" || wolf.state === "approach";
+  const gait = run ? Math.sin(time * 12 + pos.x * 0.02) * 2.5 : Math.sin(time * 3) * 0.7;
+  shadow(ctx, pos.x, pos.y + 5, 11);
+  ctx.save();
+  ctx.translate(pos.x, pos.y);
+  ctx.scale(face, 1);
+  ctx.strokeStyle = "#3c4241";
+  ctx.lineWidth = 2.2;
+  for (const [i, lx] of [-6, 3].entries()) {
+    ctx.beginPath();
+    ctx.moveTo(lx, -2);
+    ctx.lineTo(lx + (i === 0 ? gait : -gait), 5);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#4c5552";
+  ctx.beginPath();
+  ctx.ellipse(-1, -7, 11, 6, -0.08, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#4c5552";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-10, -8);
+  ctx.quadraticCurveTo(-18, -14 + gait, -20, -7);
+  ctx.stroke();
+  ctx.fillStyle = "#58615d";
+  ctx.beginPath();
+  ctx.ellipse(10, -11, 6, 5, 0.06, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(7, -15);
+  ctx.lineTo(8, -22);
+  ctx.lineTo(12, -15);
+  ctx.moveTo(11, -15);
+  ctx.lineTo(14, -21);
+  ctx.lineTo(16, -14);
+  ctx.fill();
+  ctx.fillStyle = "#3e4644";
+  ctx.beginPath();
+  ctx.ellipse(15, -10, 5, 2.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#171b1a";
+  ctx.beginPath();
+  ctx.arc(19, -10, 1.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = wolf.state === "approach" ? "#ffd36b" : "#b9d46a";
+  ctx.beginPath();
+  ctx.arc(11, -12, 1.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
+
 /**
  * 犬ぞり（§8.2）。
  * 2頭の犬・引き綱・荷台でできている。ロボットの部品は使わない。
@@ -7540,8 +9004,26 @@ const currentScene = (state: ShopState): Scene => {
 export default function Shop({ onSample, paused }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [effectsOn, setEffectsOn] = useState(true);
+  const effectsRef = useRef(true);
   const input = useRef<Input>({ x: 0, y: 0 });
   const keys = useRef(new Set<string>());
+
+  useEffect(() => {
+    const on = localStorage.getItem("working-planet-effects") !== "off";
+    effectsRef.current = on;
+    const timer = window.setTimeout(() => setEffectsOn(on), 0);
+  return () => window.clearTimeout(timer);
+  }, []);
+
+  const toggleEffects = () => {
+    setEffectsOn((current) => {
+      const next = !current;
+      effectsRef.current = next;
+      localStorage.setItem("working-planet-effects", next ? "on" : "off");
+      return next;
+    });
+  };
   const stick = useRef<{
     id: number;
     origin: { x: number; y: number };
@@ -7628,7 +9110,11 @@ export default function Shop({ onSample, paused }: Props) {
         grad.addColorStop(1, palette.deep);
         ctx.fillStyle = grad;
         ctx.fillRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
-        drawProps(ctx, area, time);
+        drawProps(ctx, area, effectsRef.current ? time : 0);
+        if (isFire) {
+          drawFireGroundTexture(ctx, area, time, effectsRef.current);
+          drawFireEarlyLife(ctx, area, time, effectsRef.current);
+        }
       }
       /* --- 棟の壁と、戸口・渡り廊下（2号店） --- */
       if (wallsOn()) {
@@ -7733,23 +9219,53 @@ export default function Shop({ onSample, paused }: Props) {
         if (area.rect.y0 !== 0) continue;
         const { x0, x1 } = area.rect;
         const mid = (x0 + x1) / 2;
-        ctx.fillStyle = isPark ? "#414f6b" : "#2b241d";
-        ctx.fillRect(x0, 0, x1 - x0, KITCHEN.bottom);
-        ctx.fillStyle = isPark ? "rgba(255,255,255,0.055)" : "rgba(255,255,255,0.03)";
-        for (let y = KITCHEN.top; y < KITCHEN.bottom; y += 22) {
-          for (let x = x0; x < x1; x += 22) {
-            if (((x + y) / 22) % 2 === 0) ctx.fillRect(x, y, 22, 22);
+        const earlyFire = isFire && (area.id === "area-0" || area.id === "area-1");
+        if (earlyFire) {
+          // 序盤だけは「作業場」という長方形そのものを描かない。
+          // 踏み固められた土の斑点を重ね、下の自然地面へ溶け込ませる。
+          for (let i = 0; i < 13; i += 1) {
+            const px = x0 + 24 + ((i * 89 + area.id.charCodeAt(area.id.length - 1) * 17) % Math.max(60, x1 - x0 - 48));
+            const py = 46 + ((i * 53) % Math.max(60, KITCHEN.bottom - 66));
+            ctx.fillStyle = i % 3 === 0 ? "rgba(106,80,49,0.12)" : "rgba(70,58,39,0.09)";
+            ctx.beginPath();
+            ctx.ellipse(px, py, 28 + (i % 4) * 10, 11 + (i % 3) * 5, i * 0.31, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else {
+          ctx.fillStyle = isPark ? "#414f6b" : isFire ? "rgba(83,62,39,0.20)" : "#2b241d";
+          ctx.fillRect(x0, 0, x1 - x0, KITCHEN.bottom);
+          ctx.fillStyle = isPark ? "rgba(255,255,255,0.055)" : isFire ? "rgba(255,255,255,0)" : "rgba(255,255,255,0.03)";
+          for (let y = KITCHEN.top; y < KITCHEN.bottom; y += 22) {
+            for (let x = x0; x < x1; x += 22) {
+              if (!isFire && ((x + y) / 22) % 2 === 0) ctx.fillRect(x, y, 22, 22);
+            }
           }
         }
         // 山は帯より手前（奥の景色）として描く
         if (area.palette.prop === "volcano") drawVolcano(ctx, area.rect, time);
 
-        ctx.strokeStyle = "rgba(246,231,207,0.16)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x0, KITCHEN.bottom);
-        ctx.lineTo(x1, KITCHEN.bottom);
-        ctx.stroke();
+        if (!earlyFire) {
+          ctx.strokeStyle = "rgba(246,231,207,0.16)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x0, KITCHEN.bottom);
+          ctx.lineTo(x1, KITCHEN.bottom);
+          ctx.stroke();
+        } else {
+          // 真っ直ぐな床境界の代わりに、ところどころ草が残る不規則な縁だけを置く。
+          ctx.strokeStyle = "rgba(75,91,52,0.34)";
+          ctx.lineWidth = 1.3;
+          for (let i = 0; i < 18; i += 1) {
+            const gx = x0 + 12 + ((i * 67) % Math.max(40, x1 - x0 - 24));
+            const gy = KITCHEN.bottom - 5 + ((i * 11) % 13);
+            ctx.beginPath();
+            ctx.moveTo(gx, gy + 6);
+            ctx.lineTo(gx - 3, gy - 5 - (i % 3) * 2);
+            ctx.moveTo(gx, gy + 6);
+            ctx.lineTo(gx + 4, gy - 3 - (i % 2) * 3);
+            ctx.stroke();
+          }
+        }
 
         if (isPark) {
           // 入園ゲート: 二本の塔と電飾つきのアーチ
@@ -7807,9 +9323,29 @@ export default function Shop({ onSample, paused }: Props) {
             }
           }
         } else if (wild) {
-          ctx.fillStyle = area.price === 0 ? "#7a3b1f" : "#4a3524";
-          roundRect(ctx, x0 + 10, 4, x1 - x0 - 20, 30, 6);
-          ctx.fill();
+          if (earlyFire) {
+            // 序盤は「店の看板」ではなく、杭に結んだ毛皮へ地名を書いた程度にする。
+            ctx.strokeStyle = "#65482e";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x0 + 22, 38);
+            ctx.lineTo(x0 + 24, 4);
+            ctx.moveTo(x1 - 22, 38);
+            ctx.lineTo(x1 - 24, 4);
+            ctx.stroke();
+            ctx.fillStyle = area.price === 0 ? "rgba(108,75,46,0.86)" : "rgba(94,76,54,0.80)";
+            ctx.beginPath();
+            ctx.moveTo(x0 + 28, 8);
+            ctx.quadraticCurveTo(mid, 4, x1 - 30, 10);
+            ctx.lineTo(x1 - 35, 31);
+            ctx.quadraticCurveTo(mid, 27, x0 + 33, 32);
+            ctx.closePath();
+            ctx.fill();
+          } else {
+            ctx.fillStyle = area.price === 0 ? "#7a3b1f" : "#4a3524";
+            roundRect(ctx, x0 + 10, 4, x1 - x0 - 20, 30, 6);
+            ctx.fill();
+          }
           ctx.fillStyle = "#f6d9a8";
           ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
           ctx.fillText(
@@ -8438,16 +9974,18 @@ export default function Shop({ onSample, paused }: Props) {
       /* --- 区画の仕切り --- */
       for (const area of openAreas(state)) {
         if (area.price === 0 || area.rect.y0 === 0) continue;
-        ctx.strokeStyle = "rgba(246,231,207,0.14)";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([10, 8]);
-        ctx.strokeRect(
-          area.rect.x0 + 1,
-          area.rect.y0 + 1,
-          area.rect.x1 - area.rect.x0 - 2,
-          area.rect.y1 - area.rect.y0 - 2,
-        );
-        ctx.setLineDash([]);
+        if (!isFire) {
+          ctx.strokeStyle = "rgba(246,231,207,0.14)";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([10, 8]);
+          ctx.strokeRect(
+            area.rect.x0 + 1,
+            area.rect.y0 + 1,
+            area.rect.x1 - area.rect.x0 - 2,
+            area.rect.y1 - area.rect.y0 - 2,
+          );
+          ctx.setLineDash([]);
+        }
         ctx.font = SMALL;
         ctx.fillStyle = "rgba(246,231,207,0.4)";
         ctx.fillText(
@@ -8636,7 +10174,9 @@ export default function Shop({ onSample, paused }: Props) {
 
       // 集客が上がるほど、外の通りがにぎわう
       const draw = customerDraw(state);
-      const crowd = Math.min(14, Math.round((draw - 1) * 4));
+      // 壁のある店では、横切るだけの飾りの通行人が「入口を使わない客」に見える。
+      // 実際の customer だけを外に描き、戸口へ向かう動きがそのまま見えるようにする。
+      const crowd = wallsOn() ? 0 : Math.min(14, Math.round((draw - 1) * 4));
       for (let i = 0; i < crowd; i += 1) {
         const span = box.x1 - box.x0 + 120;
         const dir = i % 2 === 0 ? 1 : -1;
@@ -8826,6 +10366,55 @@ export default function Shop({ onSample, paused }: Props) {
         boat: "#4f7f6a",
       };
 
+      // 鹿とウサギは倒す対象ではない。森そのものが生きているように常に動かす。
+      if (isFire && state.unlocked.includes("area-6")) {
+        for (let i = 0; i < 3; i += 1) {
+          const span = 860;
+          const raw = (time * (10 + i * 1.7) + i * 281) % (span * 2);
+          const forward = raw < span;
+          const px = 1745 + (forward ? raw : span * 2 - raw);
+          const py = -650 + i * 175 + Math.sin(time * 0.8 + i * 2.3) * 22;
+          actors.push({
+            y: py,
+            render: () => nightDeer(ctx, px, py, forward ? 1 : -1, true, time + i * 0.7, i === 0),
+          });
+        }
+        for (let i = 0; i < 6; i += 1) {
+          const span = 720;
+          const raw = (time * (18 + (i % 3) * 3) + i * 173) % (span * 2);
+          const forward = raw < span;
+          const px = 1810 + (forward ? raw : span * 2 - raw);
+          const py = -145 - (i % 4) * 145 + Math.sin(time * 2 + i) * 13;
+          actors.push({
+            y: py,
+            render: () => nightRabbit(ctx, px, py, forward ? 1 : -1, time + i * 0.4),
+          });
+        }
+      }
+
+      // 夜の森のオオカミ。HP敵ではなく、光から逃げる生きもの。
+      for (const wolf of state.fire.nightWolves) {
+        actors.push({
+          y: wolf.pos.y,
+          render: () => nightWolf(ctx, wolf, time),
+        });
+      }
+      if (state.fire.dogTamed) {
+        const dog = state.fire.dogPos;
+        const moving = Math.hypot(state.player.pos.x - dog.x, state.player.pos.y - dog.y) > 42;
+        const face = state.player.pos.x >= dog.x ? 1 : -1;
+        actors.push({
+          y: dog.y,
+          render: () => {
+            shadow(ctx, dog.x, dog.y + 4, 9);
+            sledDog(ctx, dog.x, dog.y, face, moving, time);
+            ctx.fillStyle = "#d9513c";
+            roundRect(ctx, dog.x - 5, dog.y - 8, 10, 2.5, 1.2);
+            ctx.fill();
+          },
+        });
+      }
+
       // 谷のマンモス（人と同じ列にならべて、前後が分かるようにする）
       const beast = state.fire.beast;
       if (beast) {
@@ -8844,8 +10433,8 @@ export default function Shop({ onSample, paused }: Props) {
               ctx,
               person0.pos.x,
               person0.pos.y,
-              person0.helper ? "#8a6a4a" : "#6f5f8a",
-              "#f0cfae",
+              person0.helper ? "#70583f" : "#594b3b",
+              "#caa47d",
               person0.bob,
             );
             // 冬は毛皮を着る
@@ -9021,10 +10610,11 @@ export default function Shop({ onSample, paused }: Props) {
                 ctx,
                 worker.pos.x,
                 worker.pos.y,
-                coats[worker.kind],
-                "#f0cfae",
+                isFire ? fireRoleCoat(worker.kind, worker.id) : coats[worker.kind],
+                isFire ? "#caa47d" : "#f0cfae",
                 performance.now() / gait + worker.id,
               );
+              if (isFire) drawFireRoleMark(ctx, worker.pos.x, worker.pos.y, worker.kind, worker.id);
               const wx = worker.pos.x;
               const wy = worker.pos.y;
               const face = worker.face ?? 1;
@@ -9411,14 +11001,14 @@ export default function Shop({ onSample, paused }: Props) {
       actors.push({
         y: player.pos.y,
         render: () => {
-          if (stars > 0) drawShine(ctx, player.pos.x, player.pos.y, stars, time);
+          if (effectsRef.current && stars > 0) drawShine(ctx, player.pos.x, player.pos.y, stars, time);
           // 上位スキンの動く飾り。マントは体より先に、オーラはさらに奥に描く
-          if (skin.aura && skin.aura !== "none") {
+          if (effectsRef.current && skin.aura && skin.aura !== "none") {
             drawAura(ctx, skin.aura, player.pos.x, player.pos.y, time);
           }
           if (skin.cape) drawCape(ctx, skin.cape, player.pos.x, player.pos.y, time);
           ctx.save();
-          if (stars > 0) {
+          if (effectsRef.current && stars > 0) {
             // ★の数だけ、ふちが強く光る
             ctx.shadowColor =
               stars >= 3
@@ -9500,6 +11090,18 @@ export default function Shop({ onSample, paused }: Props) {
             ctx.fillStyle = glow;
             ctx.beginPath();
             ctx.arc(stove.pos.x, stove.pos.y - 10, 130, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          for (const light of nightLights(state)) {
+            const glow = ctx.createRadialGradient(
+              light.pos.x, light.pos.y - 12, 3, light.pos.x, light.pos.y - 12, light.r,
+            );
+            glow.addColorStop(0, `rgba(255,178,82,${0.46 * dark})`);
+            glow.addColorStop(0.45, `rgba(255,150,68,${0.18 * dark})`);
+            glow.addColorStop(1, "rgba(255,140,60,0)");
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(light.pos.x, light.pos.y - 12, light.r, 0, Math.PI * 2);
             ctx.fill();
           }
           ctx.restore();
@@ -9610,6 +11212,25 @@ export default function Shop({ onSample, paused }: Props) {
           }
           ctx.restore();
         }
+      }
+
+      /* --- 火のはじまり: 夜の森と、狼を手なずける様子 --- */
+      if (isFire && state.unlocked.includes("area-6") && !state.fire.dogTamed) {
+        const bait = state.hold["night-bait"] ?? 0;
+        const fuel = state.hold["night-wood"] ?? 0;
+        const text = `夜の森  懐き度 ${state.fire.wolfTrust}/3  餌 ${bait}  薪 ${fuel}`;
+        ctx.font = SMALL;
+        const w = ctx.measureText(text).width + 18;
+        const px = camX + 8;
+        const py = camY + 8;
+        ctx.fillStyle = "rgba(8,18,12,0.72)";
+        roundRect(ctx, px, py, w, 22, 7);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(190,210,120,0.35)";
+        ctx.stroke();
+        ctx.fillStyle = "#dce5b3";
+        ctx.fillText(text, px + w / 2, py + 12);
+        ctx.font = FONT;
       }
 
       /* --- 大河の文明: 季節の色あいと、増水 --- */
@@ -10005,16 +11626,23 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
-      /* --- 案内 --- */
-      const objective = currentObjective(state);
-      if (objective.pos) {
+      /*
+       * 目印への案内。
+       *
+       * プレイヤーから目印へ動く点線を引き、目印を脈動するリングで囲む。
+       * 目印が画面の外にあるときは、画面のへりに向きと札を出す（§7.2）。
+       * 広い区画では、次に行く先がどちらか分からなくならないように。
+       *
+       * 色で用がちがう。橙は「いまやる仕事」、緑は「投資できる枠」。
+       */
+      const guideTo = (to: Vec, rgb: string, tag: string, fade = 1) => {
         const from = player.pos;
-        const to = objective.pos;
-        if (Math.hypot(to.x - from.x, to.y - from.y) > 46) {
+        const away = Math.hypot(to.x - from.x, to.y - from.y);
+        if (away > 46) {
           ctx.save();
           ctx.setLineDash([5, 7]);
           ctx.lineDashOffset = -((time * 40) % 12);
-          ctx.strokeStyle = "rgba(255,209,102,0.55)";
+          ctx.strokeStyle = `rgba(${rgb},${0.55 * fade})`;
           ctx.lineWidth = 2.5;
           ctx.beginPath();
           ctx.moveTo(from.x, from.y - 6);
@@ -10023,17 +11651,13 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.restore();
 
           const ring = 0.5 + Math.sin(time * 5) * 0.5;
-          ctx.strokeStyle = `rgba(255,209,102,${0.35 + ring * 0.5})`;
+          ctx.strokeStyle = `rgba(${rgb},${(0.35 + ring * 0.5) * fade})`;
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.arc(to.x, to.y, 18 + ring * 5, 0, Math.PI * 2);
           ctx.stroke();
         }
 
-        /*
-         * 目的地が画面の外にあるときは、画面のへりに向きを出す（§7.2）。
-         * 広い区画では、次に行く先がどちらか分からなくならないように
-         */
         const viewH = canvas.height / scale;
         const pad = 26;
         const outside =
@@ -10041,47 +11665,76 @@ export default function Shop({ onSample, paused }: Props) {
           to.x > camX + view - pad ||
           to.y < camY + pad ||
           to.y > camY + viewH - pad;
-        if (outside) {
-          const cx = camX + view / 2;
-          const cy = camY + viewH / 2;
-          const angle = Math.atan2(to.y - cy, to.x - cx);
-          // 画面の内側のふちに、矢印を貼りつける
-          const hx = view / 2 - pad;
-          const hy = viewH / 2 - pad;
-          const scaleT = Math.min(
-            Math.abs(hx / Math.cos(angle)),
-            Math.abs(hy / Math.sin(angle)),
-          );
-          const ax = cx + Math.cos(angle) * scaleT;
-          const ay = cy + Math.sin(angle) * scaleT;
-          const beat = 0.6 + Math.abs(Math.sin(time * 4)) * 0.4;
-          ctx.save();
-          ctx.translate(ax, ay);
-          ctx.rotate(angle);
-          ctx.fillStyle = `rgba(255,209,102,${beat})`;
-          ctx.beginPath();
-          ctx.moveTo(13, 0);
-          ctx.lineTo(-8, -9);
-          ctx.lineTo(-4, 0);
-          ctx.lineTo(-8, 9);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = "rgba(10,8,6,0.7)";
-          ctx.lineWidth = 1.4;
-          ctx.stroke();
-          ctx.restore();
-          // どれくらい遠いか
-          const away = Math.round(Math.hypot(to.x - from.x, to.y - from.y));
-          ctx.font = SMALL;
-          ctx.fillStyle = "rgba(10,8,6,0.75)";
-          const tag = `${away}`;
-          const tw = ctx.measureText(tag).width + 8;
-          roundRect(ctx, ax - tw / 2, ay + 12, tw, 11, 5);
-          ctx.fill();
-          ctx.fillStyle = "#ffd166";
-          ctx.fillText(tag, ax, ay + 18);
-          ctx.font = FONT;
-        }
+        if (!outside) return;
+        const cx = camX + view / 2;
+        const cy = camY + viewH / 2;
+        const angle = Math.atan2(to.y - cy, to.x - cx);
+        // 画面の内側のふちに、矢印を貼りつける
+        const hx = view / 2 - pad;
+        const hy = viewH / 2 - pad;
+        const scaleT = Math.min(
+          Math.abs(hx / Math.cos(angle)),
+          Math.abs(hy / Math.sin(angle)),
+        );
+        const ax = cx + Math.cos(angle) * scaleT;
+        const ay = cy + Math.sin(angle) * scaleT;
+        const beat = 0.6 + Math.abs(Math.sin(time * 4)) * 0.4;
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(angle);
+        ctx.fillStyle = `rgba(${rgb},${beat * fade})`;
+        ctx.beginPath();
+        ctx.moveTo(13, 0);
+        ctx.lineTo(-8, -9);
+        ctx.lineTo(-4, 0);
+        ctx.lineTo(-8, 9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "rgba(10,8,6,0.7)";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.restore();
+        // 札は矢印の下に。画面のかどでも読めるように、へりの内側へ寄せる
+        ctx.font = SMALL;
+        ctx.fillStyle = "rgba(10,8,6,0.75)";
+        const tw = ctx.measureText(tag).width + 8;
+        const tx = Math.min(
+          camX + view - tw / 2 - 4,
+          Math.max(camX + tw / 2 + 4, ax),
+        );
+        const ty = Math.min(camY + viewH - 16, ay + 12);
+        roundRect(ctx, tx - tw / 2, ty, tw, 11, 5);
+        ctx.fill();
+        ctx.fillStyle = `rgba(${rgb},${fade})`;
+        ctx.fillText(tag, tx, ty + 6);
+        ctx.font = FONT;
+      };
+
+      /*
+       * --- 投資できる、いちばん近い枠（緑の点線） ---
+       *
+       * 区画が広がると枠が画面の外へ出て、どこに投資できるのか分からなくなる。
+       * 払い切れる枠があればそこへ、なければいちばん近い枠へ薄く引く。
+       * 仕事の案内（橙）より先に描いて、重なっても仕事のほうが上に来るようにする
+       */
+      const buy = nearestPadTarget(state);
+      if (buy) {
+        guideTo(
+          buy.pos,
+          "126,231,168",
+          `${buy.pad.label} ${formatMoney(buy.remain, currency())}`,
+          buy.ready ? 1 : 0.5,
+        );
+      }
+
+      /* --- 案内 --- */
+      const objective = currentObjective(state);
+      if (objective.pos) {
+        // 札には、どれくらい遠いかを出す
+        const away = Math.round(
+          Math.hypot(objective.pos.x - player.pos.x, objective.pos.y - player.pos.y),
+        );
+        guideTo(objective.pos, "255,209,102", `${away}`);
       }
 
       ctx.save();
@@ -10431,6 +12084,15 @@ export default function Shop({ onSample, paused }: Props) {
   return (
     <div className="stage" ref={wrapRef}>
       <canvas ref={canvasRef} className="shop" />
+      <button
+        type="button"
+        className={`fx-toggle ${effectsOn ? "is-on" : "is-off"}`}
+        aria-pressed={effectsOn}
+        onClick={toggleEffects}
+        title="光・粒子などの演出を切り替える"
+      >
+        演出 {effectsOn ? "ON" : "OFF"}
+      </button>
     </div>
   );
 }
