@@ -20,6 +20,27 @@ jobs:
           cache: npm
       - name: Apply Fire outdoor visual overhaul
         run: python3 scripts/patch_fire_outdoor_visuals.py
+      - name: Fix effects state initialization for React lint
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('components/Shop.tsx')
+          s = p.read_text()
+          old = '''  useEffect(() => {
+            const on = localStorage.getItem("working-planet-effects") !== "off";
+            effectsRef.current = on;
+            setEffectsOn(on);
+          }, []);'''
+          new = '''  useEffect(() => {
+            const on = localStorage.getItem("working-planet-effects") !== "off";
+            effectsRef.current = on;
+            const timer = window.setTimeout(() => setEffectsOn(on), 0);
+            return () => window.clearTimeout(timer);
+          }, []);'''
+          if old not in s:
+              raise SystemExit('effects init anchor not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
       - name: Install dependencies
         run: npm ci
       - name: Lint changed code
