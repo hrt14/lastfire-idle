@@ -80,6 +80,18 @@ import {
   type UpgradeId,
 } from "@/lib/shop";
 import {
+  darkness as onsenDark,
+  festivalOn,
+  onsenLive,
+  phaseLabel as onsenPhaseLabel,
+  phaseLeft as onsenPhaseLeft,
+  reputation,
+  springCap,
+  springLabel,
+  springUse,
+  weatherLabel,
+} from "@/lib/onsen";
+import {
   buildRatio,
   darkness,
   DAY_TIME,
@@ -144,6 +156,20 @@ export type Sample = {
   muted: boolean;
   bgmMuted: boolean;
   offline: OfflineReport | null;
+  /**
+   * 湯けむり温泉街の、町の様子（それ以外のステージでは null）。
+   * 時刻・天気・湯量・評判をHUDに出す（仕様書 §18.1）
+   */
+  town: {
+    phase: string;
+    weather: string;
+    left: number;
+    springUse: number;
+    springCap: number;
+    fame: number;
+    festival: boolean;
+    cleared: boolean;
+  } | null;
   /** 大河の文明の、人手の割りふり（それ以外のステージでは null） */
   crew: {
     open: boolean;
@@ -1132,6 +1158,11 @@ const drawProps = (
   time: number,
 ) => {
   const { rect, palette } = area;
+  if (stage().id === "onsen") {
+    // 温泉街は、道と店の中でまるごと描き分ける
+    drawOnsenProps(ctx, rect, palette.prop, time);
+    return;
+  }
   const aquarium = stage().visualTheme === "aquarium";
   const park = stage().id === "park" && !aquarium;
   const cx = (rect.x0 + rect.x1) / 2;
@@ -5761,6 +5792,862 @@ const drawRide = (
   }
 };
 
+
+/**
+ * 温泉街の背景。町のまわりに、山あいの景色を敷く。
+ * 区画のない暗がりが画面をしめないように、
+ * 町の奥（上）には遠くの尾根と杉林、手前（下）には谷あいの闇を置く
+ */
+const drawOnsenBackdrop = (
+  ctx: CanvasRenderingContext2D,
+  view: { x0: number; y0: number; x1: number; y1: number },
+  town: { x0: number; y0: number; x1: number; y1: number },
+  time: number,
+) => {
+  const sky = ctx.createLinearGradient(0, view.y0, 0, town.y0);
+  sky.addColorStop(0, "#121a25");
+  sky.addColorStop(1, "#26303b");
+  ctx.fillStyle = sky;
+  ctx.fillRect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
+
+  // 遠くの尾根（2枚重ね）。町の奥に、いつも同じ高さで見えている
+  for (const [lift, tint, height, step] of [
+    [330, "#27313f", 190, 60],
+    [200, "#2f3b45", 130, 44],
+  ] as const) {
+    const base = town.y0 - lift + height;
+    ctx.fillStyle = tint;
+    ctx.beginPath();
+    ctx.moveTo(view.x0 - 40, base);
+    for (let x = view.x0 - 40; x <= view.x1 + 40; x += step) {
+      const t = x * 0.0014 + lift;
+      ctx.lineTo(x, base - height * (0.45 + Math.abs(Math.sin(t)) * 0.55));
+    }
+    ctx.lineTo(view.x1 + 40, base);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // 尾根のあいだから立ちのぼる湯けむり（この町の源泉は山にある）
+  for (let i = 0; i < 4; i += 1) {
+    const x = town.x0 + ((town.x1 - town.x0) * (i + 0.5)) / 4;
+    steam(ctx, x, town.y0 - 150, 130, time * 0.5 + i, 1.2);
+  }
+  // 町のきわの杉林
+  ctx.fillStyle = "#18211f";
+  for (let x = view.x0 - 30; x <= view.x1 + 30; x += 24) {
+    const h = 34 + Math.abs(Math.sin(x * 0.07)) * 22;
+    ctx.beginPath();
+    ctx.moveTo(x, town.y0 + 4);
+    ctx.lineTo(x + 12, town.y0 + 4 - h);
+    ctx.lineTo(x + 24, town.y0 + 4);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // 谷あい（町より下）。夜の闇にしずむ
+  ctx.fillStyle = "#0d1114";
+  ctx.fillRect(view.x0, town.y1, view.x1 - view.x0, view.y1 - town.y1);
+};
+
+/* ==================== 湯けむり温泉街の絵 ==================== */
+
+/** 湯気。湯のあるところから、ゆらゆら立ちのぼる */
+const steam = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  time: number,
+  strength = 1,
+) => {
+  for (let i = 0; i < 3; i += 1) {
+    const t = (time * 0.5 + i * 0.37) % 1;
+    const rise = t * 30 * strength;
+    ctx.globalAlpha = (1 - t) * 0.34 * strength;
+    ctx.fillStyle = "#f2fbff";
+    ctx.beginPath();
+    ctx.ellipse(
+      x + Math.sin(time * 1.3 + i * 2) * w * 0.22,
+      y - rise,
+      w * (0.24 + t * 0.3),
+      6 + t * 7,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+};
+
+/** 瓦屋根。棟の手前にかかる、落ちついた色の切妻 */
+const kawara = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  tint = "#4a4048",
+) => {
+  const half = w / 2;
+  ctx.fillStyle = tint;
+  ctx.beginPath();
+  ctx.moveTo(x - half, y);
+  ctx.lineTo(x - half + 7, y - 13);
+  ctx.lineTo(x + half - 7, y - 13);
+  ctx.lineTo(x + half, y);
+  ctx.closePath();
+  ctx.fill();
+  // 瓦の筋
+  ctx.strokeStyle = "rgba(255,255,255,0.13)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 5; i += 1) {
+    const px = x - half + (w * i) / 5;
+    ctx.beginPath();
+    ctx.moveTo(px, y);
+    ctx.lineTo(px + (px < x ? 5 : -5), y - 13);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.fillRect(x - half, y - 15, w, 3);
+};
+
+/** のれん。店の間口に下げる */
+const noren = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  color: string,
+  mark?: string,
+) => {
+  ctx.fillStyle = color;
+  roundRect(ctx, x - w / 2, y, w, 13, 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  for (const cut of [-w / 6, w / 6]) ctx.fillRect(x + cut - 1, y + 4, 2, 9);
+  if (mark) {
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = SMALL;
+    ctx.fillText(mark, x, y + 6);
+    ctx.font = FONT;
+  }
+};
+
+/** 提灯 */
+const chochin = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  s: number,
+  time: number,
+  glow = 1,
+) => {
+  const sway = Math.sin(time * 1.1 + x * 0.05) * 2;
+  ctx.strokeStyle = "rgba(60,44,32,0.8)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 8 * s);
+  ctx.lineTo(x + sway, y);
+  ctx.stroke();
+  ctx.fillStyle = `rgba(255,150,90,${0.18 * glow})`;
+  ctx.beginPath();
+  ctx.arc(x + sway, y + 6 * s, 13 * s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#e8574a";
+  ctx.beginPath();
+  ctx.ellipse(x + sway, y + 6 * s, 5 * s, 7 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,224,180,0.9)";
+  ctx.fillRect(x + sway - 4 * s, y + 4 * s, 8 * s, 2 * s);
+};
+
+/** 湯船。岩・檜・打たせで表情を変える */
+const tub = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  kind: "iwa" | "hinoki" | "utase",
+  time: number,
+) => {
+  // ふち
+  ctx.fillStyle = kind === "hinoki" ? "#b98d55" : kind === "utase" ? "#7d6a52" : "#6d6a63";
+  roundRect(ctx, x - w / 2, y - h / 2, w, h, kind === "iwa" ? 10 : 4);
+  ctx.fill();
+  if (kind === "iwa") {
+    // 岩を組んだふち
+    ctx.fillStyle = "#575249";
+    for (let i = 0; i < 7; i += 1) {
+      const a = (i / 7) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.ellipse(
+        x + Math.cos(a) * (w / 2 - 2),
+        y + Math.sin(a) * (h / 2 - 2),
+        5,
+        4,
+        a,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+  }
+  // 湯
+  const yu = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
+  yu.addColorStop(0, "#63b6b0");
+  yu.addColorStop(1, "#2f7d7e");
+  ctx.fillStyle = yu;
+  roundRect(ctx, x - w / 2 + 5, y - h / 2 + 4, w - 10, h - 8, kind === "iwa" ? 8 : 3);
+  ctx.fill();
+  // 湯のゆらぎ
+  ctx.strokeStyle = "rgba(255,255,255,0.3)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 2; i += 1) {
+    const wy = y - 3 + i * 6 + Math.sin(time * 2 + i) * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2 + 9, wy);
+    ctx.lineTo(x + w / 2 - 9, wy);
+    ctx.stroke();
+  }
+  if (kind === "utase") {
+    // 打たせ湯: 上から落ちてくる筋
+    ctx.fillStyle = "rgba(210,245,245,0.75)";
+    for (const dx of [-8, 8]) ctx.fillRect(x + dx - 1, y - h / 2 - 16, 2.5, 18);
+  }
+  steam(ctx, x, y - h / 2, w, time, kind === "utase" ? 1.3 : 1);
+};
+
+/** 湯にひたっている人（肩から上だけ見える） */
+const bather = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  s = 1,
+) => {
+  ctx.fillStyle = "#f0cfae";
+  ctx.beginPath();
+  ctx.arc(x, y, 3.6 * s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f7f2e6";
+  roundRect(ctx, x - 3 * s, y - 6.5 * s, 6 * s, 3 * s, 1.5 * s);
+  ctx.fill();
+};
+
+/**
+ * 湯の席。足湯・浴槽・見物席を1つずつ描き分ける。
+ * 描く範囲は x±34 / y-52〜y+16 におさめる（名札にかぶらないように）
+ */
+const drawOnsenSeat = (
+  ctx: CanvasRenderingContext2D,
+  art: string,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.26)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 13, 31, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  switch (art) {
+    case "ashiyu":
+    case "ashiyuroof": {
+      if (art === "ashiyuroof") {
+        // 差しかけの屋根と柱
+        ctx.fillStyle = "#6b5a44";
+        ctx.fillRect(x - 28, y - 40, 4, 30);
+        ctx.fillRect(x + 24, y - 40, 4, 30);
+        kawara(ctx, x, y - 40, 68, "#4d4148");
+      }
+      // 石を組んだ細長い湯だまり
+      ctx.fillStyle = "#6f6a60";
+      roundRect(ctx, x - 30, y - 8, 60, 20, 5);
+      ctx.fill();
+      const yu = ctx.createLinearGradient(0, y - 8, 0, y + 12);
+      yu.addColorStop(0, "#6cc0b8");
+      yu.addColorStop(1, "#2f7d7e");
+      ctx.fillStyle = yu;
+      roundRect(ctx, x - 26, y - 5, 52, 14, 4);
+      ctx.fill();
+      // 腰かけの板
+      ctx.fillStyle = "#a5794a";
+      roundRect(ctx, x - 30, y - 14, 60, 6, 2);
+      ctx.fill();
+      steam(ctx, x, y - 6, 44, time, 0.8);
+      return;
+    }
+    case "bench": {
+      ctx.fillStyle = "#6b5a44";
+      ctx.fillRect(x - 22, y + 2, 4, 10);
+      ctx.fillRect(x + 18, y + 2, 4, 10);
+      ctx.fillStyle = "#b8834e";
+      roundRect(ctx, x - 27, y - 5, 54, 8, 3);
+      ctx.fill();
+      roundRect(ctx, x - 27, y - 19, 54, 7, 3);
+      ctx.fill();
+      // 赤い毛氈
+      ctx.fillStyle = "#c0453c";
+      roundRect(ctx, x - 24, y - 7, 48, 4, 2);
+      ctx.fill();
+      return;
+    }
+    case "teyu": {
+      // 手湯・顔湯: 竹の樋から水盤へ落ちる
+      ctx.fillStyle = "#7d8a4e";
+      ctx.fillRect(x - 26, y - 26, 30, 5);
+      ctx.fillStyle = "rgba(200,240,240,0.7)";
+      ctx.fillRect(x + 2, y - 21, 2.5, 14);
+      ctx.fillStyle = "#5f5a52";
+      roundRect(ctx, x - 16, y - 8, 34, 16, 6);
+      ctx.fill();
+      ctx.fillStyle = "#4f9d9a";
+      roundRect(ctx, x - 13, y - 5, 28, 10, 4);
+      ctx.fill();
+      steam(ctx, x, y - 6, 26, time, 0.7);
+      return;
+    }
+    case "taki": {
+      // 湯滝を眺める席
+      ctx.fillStyle = "#4b4640";
+      roundRect(ctx, x - 30, y - 46, 60, 20, 4);
+      ctx.fill();
+      ctx.fillStyle = "rgba(190,235,235,0.8)";
+      for (let i = 0; i < 5; i += 1) {
+        ctx.fillRect(x - 22 + i * 11, y - 28, 4, 22 + Math.sin(time * 3 + i) * 3);
+      }
+      ctx.fillStyle = "#2f7d7e";
+      roundRect(ctx, x - 28, y - 2, 56, 12, 5);
+      ctx.fill();
+      steam(ctx, x, y - 4, 46, time, 1.1);
+      ctx.fillStyle = "#b8834e";
+      roundRect(ctx, x - 20, y + 6, 40, 6, 2);
+      ctx.fill();
+      return;
+    }
+    case "deck": {
+      // 撮影デッキ: 木のデッキと手すり
+      ctx.fillStyle = "#8a6a44";
+      roundRect(ctx, x - 30, y - 10, 60, 22, 3);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.25)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 6; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x - 30 + i * 10, y - 10);
+        ctx.lineTo(x - 30 + i * 10, y + 12);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#6b5a44";
+      ctx.fillRect(x - 30, y - 26, 60, 4);
+      for (const px of [-28, -8, 12, 26]) ctx.fillRect(x + px, y - 26, 3, 16);
+      return;
+    }
+    case "hinoki":
+      tub(ctx, x, y - 2, 58, 30, "hinoki", time);
+      bather(ctx, x - 12, y - 6);
+      return;
+    case "iwaburo":
+      tub(ctx, x, y - 2, 62, 32, "iwa", time);
+      bather(ctx, x + 10, y - 6);
+      return;
+    case "utase":
+      tub(ctx, x, y - 2, 56, 28, "utase", time);
+      bather(ctx, x, y - 4);
+      return;
+    case "neyu": {
+      // 寝湯: 浅い湯に寝ころぶ
+      ctx.fillStyle = "#5f5a52";
+      roundRect(ctx, x - 32, y - 12, 64, 26, 8);
+      ctx.fill();
+      ctx.fillStyle = "#3f8f8c";
+      roundRect(ctx, x - 28, y - 8, 56, 18, 6);
+      ctx.fill();
+      ctx.fillStyle = "#f0cfae";
+      ctx.beginPath();
+      ctx.arc(x - 14, y - 1, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f7f2e6";
+      roundRect(ctx, x - 10, y - 4, 26, 7, 3);
+      ctx.fill();
+      steam(ctx, x, y - 8, 48, time, 0.9);
+      return;
+    }
+    case "mise": {
+      // 湯もみの見物席: 桟敷と、板をかまえる姿
+      ctx.fillStyle = "#8a6a44";
+      roundRect(ctx, x - 30, y - 4, 60, 16, 3);
+      ctx.fill();
+      ctx.fillStyle = "#c0453c";
+      roundRect(ctx, x - 27, y - 2, 54, 5, 2);
+      ctx.fill();
+      // 湯もみ板
+      const swing = Math.sin(time * 2.6) * 0.35;
+      ctx.save();
+      ctx.translate(x, y - 22);
+      ctx.rotate(swing);
+      ctx.fillStyle = "#b98d55";
+      roundRect(ctx, -4, -18, 8, 30, 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = "#2f7d7e";
+      roundRect(ctx, x - 22, y - 14, 44, 10, 3);
+      ctx.fill();
+      steam(ctx, x, y - 14, 34, time, 0.8);
+      return;
+    }
+    case "room":
+    case "roomyu": {
+      // 客室: 障子と、敷いた布団
+      ctx.fillStyle = "#5f4e3a";
+      roundRect(ctx, x - 32, y - 46, 64, 34, 3);
+      ctx.fill();
+      ctx.fillStyle = "#efe6cf";
+      roundRect(ctx, x - 29, y - 43, 58, 28, 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(120,96,64,0.6)";
+      ctx.lineWidth = 1.2;
+      for (let i = 1; i < 4; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x - 29 + (i * 58) / 4, y - 43);
+        ctx.lineTo(x - 29 + (i * 58) / 4, y - 15);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(x - 29, y - 29);
+      ctx.lineTo(x + 29, y - 29);
+      ctx.stroke();
+      // 畳と布団
+      ctx.fillStyle = "#9aa06a";
+      roundRect(ctx, x - 30, y - 12, 60, 22, 2);
+      ctx.fill();
+      ctx.fillStyle = "#f5f1e6";
+      roundRect(ctx, x - 22, y - 6, 44, 14, 3);
+      ctx.fill();
+      ctx.fillStyle = "#c0453c";
+      roundRect(ctx, x - 22, y - 6, 44, 4, 2);
+      ctx.fill();
+      if (art === "roomyu") {
+        // 部屋つきの小さな露天
+        ctx.fillStyle = "#6d6a63";
+        roundRect(ctx, x + 12, y - 44, 20, 16, 5);
+        ctx.fill();
+        ctx.fillStyle = "#4f9d9a";
+        roundRect(ctx, x + 14, y - 42, 16, 12, 4);
+        ctx.fill();
+        steam(ctx, x + 22, y - 42, 18, time, 0.7);
+      }
+      return;
+    }
+    default: {
+      ctx.fillStyle = "#6f6a60";
+      roundRect(ctx, x - 28, y - 8, 56, 18, 5);
+      ctx.fill();
+      ctx.fillStyle = "#3f8f8c";
+      roundRect(ctx, x - 24, y - 5, 48, 12, 4);
+      ctx.fill();
+      steam(ctx, x, y - 6, 40, time, 0.8);
+      return;
+    }
+  }
+};
+
+/** 食事処の席。店ごとに間口と品を変える */
+const drawOnsenTable = (
+  ctx: CanvasRenderingContext2D,
+  art: string,
+  x: number,
+  y: number,
+  time: number,
+  dirty: boolean,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.26)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 13, 30, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 店構え（瓦屋根とのれん）
+  const tint =
+    art === "irori" ? "#4a3a34" : art === "kushi" ? "#54402f" : art === "chaya" ? "#4a4438" : "#463c34";
+  kawara(ctx, x, y - 36, 70, tint);
+  noren(
+    ctx,
+    x,
+    y - 36,
+    46,
+    art === "soba" ? "#2f4a6b" : art === "amazake" ? "#c0453c" : art === "chaya" ? "#4a6b46" : "#6b4a2f",
+  );
+
+  // 卓
+  ctx.fillStyle = "#8a6a44";
+  roundRect(ctx, x - 26, y - 12, 52, 20, 3);
+  ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.fillRect(x - 26, y + 4, 52, 4);
+
+  if (art === "irori") {
+    // 囲炉裏: まんなかで炭が赤い
+    ctx.fillStyle = "#3a2f28";
+    roundRect(ctx, x - 12, y - 9, 24, 14, 3);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,140,60,${0.6 + Math.sin(time * 4) * 0.2})`;
+    roundRect(ctx, x - 9, y - 6, 18, 8, 2);
+    ctx.fill();
+    steam(ctx, x, y - 10, 22, time, 0.5);
+  } else if (art === "kushi") {
+    // 立ち食い台と串
+    ctx.fillStyle = "#3a3028";
+    roundRect(ctx, x - 22, y - 10, 44, 8, 2);
+    ctx.fill();
+    for (let i = 0; i < 4; i += 1) {
+      ctx.fillStyle = "#c8a05a";
+      ctx.fillRect(x - 18 + i * 11, y - 18, 2, 12);
+      ctx.fillStyle = "#a5603a";
+      roundRect(ctx, x - 20 + i * 11, y - 18, 6, 6, 2);
+      ctx.fill();
+    }
+    steam(ctx, x, y - 14, 30, time, 0.6);
+  } else if (art === "tamago") {
+    // 温泉たまごのかご
+    ctx.fillStyle = "#8a7a52";
+    roundRect(ctx, x - 14, y - 10, 28, 12, 4);
+    ctx.fill();
+    for (let i = 0; i < 5; i += 1) {
+      ctx.fillStyle = "#f5efdc";
+      ctx.beginPath();
+      ctx.ellipse(x - 9 + i * 5, y - 8 + (i % 2) * 3, 3, 3.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    steam(ctx, x, y - 10, 24, time, 0.7);
+  } else if (art === "soba") {
+    ctx.fillStyle = "#2f2a24";
+    roundRect(ctx, x - 11, y - 9, 22, 11, 3);
+    ctx.fill();
+    ctx.fillStyle = "#d8c79a";
+    roundRect(ctx, x - 8, y - 7, 16, 5, 2);
+    ctx.fill();
+    steam(ctx, x, y - 10, 20, time, 0.6);
+  } else if (art === "amazake") {
+    for (const dx of [-9, 9]) {
+      ctx.fillStyle = "#f2ead6";
+      roundRect(ctx, x + dx - 5, y - 10, 10, 10, 2);
+      ctx.fill();
+    }
+    steam(ctx, x, y - 10, 22, time, 0.6);
+  } else {
+    // 茶屋: 湯のみとところてん
+    ctx.fillStyle = "#3f6b52";
+    roundRect(ctx, x - 12, y - 9, 10, 9, 2);
+    ctx.fill();
+    ctx.fillStyle = "#eaf2ec";
+    roundRect(ctx, x + 2, y - 9, 12, 9, 2);
+    ctx.fill();
+  }
+
+  if (dirty) {
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.font = SMALL;
+    ctx.fillText("かたづけ", x, y - 20);
+    ctx.font = FONT;
+  }
+};
+
+/** 甘味とみやげの棚。品ごとに見た目を変える */
+const drawOnsenShelf = (
+  ctx: CanvasRenderingContext2D,
+  art: string,
+  x: number,
+  y: number,
+  time: number,
+  stock: number,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.26)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 13, 30, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  kawara(ctx, x, y - 38, 70, art === "parfait" ? "#463a4a" : "#463c34");
+  noren(
+    ctx,
+    x,
+    y - 38,
+    44,
+    art === "manju" ? "#c0453c" : art === "omamori" ? "#8a5aa0" : art === "purin" ? "#e0a04a" : "#4a6b8a",
+  );
+
+  // 台
+  ctx.fillStyle = "#8a6a44";
+  roundRect(ctx, x - 28, y - 14, 56, 22, 3);
+  ctx.fill();
+
+  if (stock === 0) {
+    ctx.fillStyle = `rgba(255,209,102,${0.4 + Math.abs(Math.sin(time * 3)) * 0.4})`;
+    ctx.font = SMALL;
+    ctx.fillText("品切れ", x, y - 20);
+    ctx.font = FONT;
+    return;
+  }
+
+  const n = Math.min(6, stock);
+  if (art === "manju") {
+    // 蒸籠に並ぶまんじゅう
+    ctx.fillStyle = "#b98d55";
+    roundRect(ctx, x - 22, y - 12, 44, 14, 3);
+    ctx.fill();
+    for (let i = 0; i < n; i += 1) {
+      ctx.fillStyle = "#e8dcc0";
+      ctx.beginPath();
+      ctx.arc(x - 16 + (i % 3) * 12, y - 8 + Math.floor(i / 3) * 7, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    steam(ctx, x, y - 12, 34, time, 0.9);
+  } else if (art === "purin" || art === "parfait") {
+    // ガラスのショーケース
+    ctx.fillStyle = "rgba(190,230,245,0.35)";
+    roundRect(ctx, x - 24, y - 14, 48, 16, 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, x - 24, y - 14, 48, 16, 2);
+    ctx.stroke();
+    for (let i = 0; i < n; i += 1) {
+      const px = x - 17 + (i % 4) * 11;
+      const py = y - 6 + Math.floor(i / 4) * 6;
+      ctx.fillStyle = art === "parfait" ? "#f0a6c0" : "#f5e6b8";
+      roundRect(ctx, px - 3.5, py - 7, 7, 8, 1.5);
+      ctx.fill();
+      ctx.fillStyle = "#c86a3a";
+      ctx.fillRect(px - 3.5, py - 7, 7, 2);
+    }
+  } else if (art === "yunohana") {
+    for (let i = 0; i < n; i += 1) {
+      ctx.fillStyle = "#efe6d2";
+      roundRect(ctx, x - 20 + (i % 4) * 11, y - 11 + Math.floor(i / 4) * 8, 8, 7, 2);
+      ctx.fill();
+      ctx.fillStyle = "#8a7a58";
+      ctx.fillRect(x - 20 + (i % 4) * 11, y - 11 + Math.floor(i / 4) * 8, 8, 2);
+    }
+  } else if (art === "kibori") {
+    for (let i = 0; i < n; i += 1) {
+      ctx.fillStyle = "#8a5a34";
+      roundRect(ctx, x - 19 + (i % 4) * 11, y - 12 + Math.floor(i / 4) * 8, 7, 9, 2);
+      ctx.fill();
+    }
+  } else if (art === "omamori") {
+    for (let i = 0; i < n; i += 1) {
+      ctx.fillStyle = ["#c0453c", "#4a6b8a", "#8a5aa0"][i % 3];
+      roundRect(ctx, x - 19 + (i % 4) * 11, y - 12 + Math.floor(i / 4) * 8, 6, 9, 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,224,150,0.9)";
+      ctx.fillRect(x - 19 + (i % 4) * 11, y - 10 + Math.floor(i / 4) * 8, 6, 1.5);
+    }
+  } else if (art === "yakigashi") {
+    for (let i = 0; i < n; i += 1) {
+      ctx.fillStyle = "#c8934e";
+      ctx.beginPath();
+      ctx.arc(x - 17 + (i % 4) * 11, y - 8 + Math.floor(i / 4) * 7, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // 案内所の刷りもの
+    for (let i = 0; i < n; i += 1) {
+      ctx.fillStyle = "#f2ead6";
+      roundRect(ctx, x - 20 + (i % 4) * 11, y - 12 + Math.floor(i / 4) * 8, 9, 7, 1);
+      ctx.fill();
+      ctx.fillStyle = "#4a6b8a";
+      ctx.fillRect(x - 20 + (i % 4) * 11, y - 12 + Math.floor(i / 4) * 8, 9, 2);
+    }
+  }
+};
+
+/** 石畳。道の区画いちめんに敷く */
+const ishidatami = (
+  ctx: CanvasRenderingContext2D,
+  rect: { x0: number; y0: number; x1: number; y1: number },
+  tint = "rgba(255,255,255,0.05)",
+) => {
+  ctx.fillStyle = tint;
+  const step = 34;
+  for (let y = rect.y0; y < rect.y1; y += step) {
+    const shift = (Math.floor(y / step) % 2) * (step / 2);
+    for (let x = rect.x0 + shift; x < rect.x1; x += step) {
+      ctx.fillRect(x + 2, y + 2, step - 5, step - 5);
+    }
+  }
+};
+
+/** 区画ごとの飾り（温泉街） */
+const drawOnsenProps = (
+  ctx: CanvasRenderingContext2D,
+  rect: { x0: number; y0: number; x1: number; y1: number },
+  prop: string,
+  time: number,
+) => {
+  const cx = (rect.x0 + rect.x1) / 2;
+  const cy = (rect.y0 + rect.y1) / 2;
+
+  if (prop === "stone" || prop === "slope" || prop === "alley" || prop === "lantern" || prop === "night") {
+    ishidatami(ctx, rect, prop === "night" ? "rgba(255,190,120,0.05)" : "rgba(255,255,255,0.05)");
+  }
+  if (prop === "slope") {
+    // 坂: 段差の線を横に何本か引く
+    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+    ctx.lineWidth = 3;
+    for (let y = rect.y0 + 40; y < rect.y1; y += 80) {
+      ctx.beginPath();
+      ctx.moveTo(rect.x0 + 8, y);
+      ctx.lineTo(rect.x1 - 8, y);
+      ctx.stroke();
+    }
+  }
+  if (prop === "steps") {
+    // 石段
+    for (let y = rect.y0 + 16; y < rect.y1; y += 26) {
+      ctx.fillStyle = "rgba(255,255,255,0.07)";
+      ctx.fillRect(rect.x0 + 10, y, rect.x1 - rect.x0 - 20, 18);
+      ctx.fillStyle = "rgba(0,0,0,0.22)";
+      ctx.fillRect(rect.x0 + 10, y + 18, rect.x1 - rect.x0 - 20, 4);
+    }
+    // 灯籠
+    for (const px of [rect.x0 + 14, rect.x1 - 14]) {
+      for (let y = rect.y0 + 60; y < rect.y1; y += 150) {
+        ctx.fillStyle = "#6f6a60";
+        ctx.fillRect(px - 4, y, 8, 16);
+        roundRect(ctx, px - 8, y - 10, 16, 11, 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,190,110,${0.5 + Math.sin(time * 2 + y) * 0.15})`;
+        roundRect(ctx, px - 5, y - 8, 10, 7, 2);
+        ctx.fill();
+      }
+    }
+  }
+  if (prop === "lantern" || prop === "night") {
+    // 通りにかかる提灯の列
+    const n = Math.max(3, Math.round((rect.x1 - rect.x0) / 90));
+    for (let i = 0; i <= n; i += 1) {
+      const px = rect.x0 + ((rect.x1 - rect.x0) * i) / n;
+      chochin(ctx, px, rect.y0 + 16, 1, time, prop === "night" ? 1.6 : 0.9);
+    }
+  }
+  if (prop === "yubatake") {
+    // 源泉広場: 湯坪と、そこから引いた木の湯樋
+    ctx.fillStyle = "#3f4f4c";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 10, 168, 92, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    const yu = ctx.createLinearGradient(0, cy - 70, 0, cy + 90);
+    yu.addColorStop(0, "#63b6b0");
+    yu.addColorStop(1, "#2b6f74");
+    ctx.fillStyle = yu;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 10, 156, 82, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    // 湯樋（5本）。湯の花をすくう木の樋
+    for (let i = 0; i < 5; i += 1) {
+      const px = cx - 110 + i * 55;
+      ctx.fillStyle = "#8a6a44";
+      roundRect(ctx, px - 11, cy - 66, 22, 150, 4);
+      ctx.fill();
+      ctx.fillStyle = "#4f9d9a";
+      roundRect(ctx, px - 7, cy - 62, 14, 142, 3);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      const flow = (time * 40 + i * 30) % 142;
+      roundRect(ctx, px - 7, cy - 62 + flow, 14, 16, 3);
+      ctx.fill();
+    }
+    // 湯滝
+    ctx.fillStyle = "rgba(200,240,240,0.55)";
+    ctx.fillRect(cx + 120, cy + 30, 34, 46);
+    steam(ctx, cx + 137, cy + 30, 40, time, 1.4);
+    for (const sx of [cx - 90, cx, cx + 80]) steam(ctx, sx, cy - 30, 90, time, 1.5);
+    // まわりの石畳と柵
+    ctx.strokeStyle = "rgba(255,255,255,0.16)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 10, 176, 100, 0.08, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (prop === "river") {
+    // 湯の川。区画を斜めに流れる
+    ctx.fillStyle = "#3f7d7a";
+    ctx.beginPath();
+    ctx.moveTo(rect.x0, rect.y0 + 60);
+    ctx.lineTo(rect.x1, rect.y0 + 20);
+    ctx.lineTo(rect.x1, rect.y0 + 78);
+    ctx.lineTo(rect.x0, rect.y0 + 118);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 5; i += 1) {
+      const px = rect.x0 + 40 + i * 120;
+      const py = rect.y0 + 70 - i * 8 + Math.sin(time * 2 + i) * 3;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + 40, py - 4);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 4; i += 1) steam(ctx, rect.x0 + 80 + i * 150, rect.y0 + 66 - i * 10, 70, time, 1.1);
+    // 岩
+    ctx.fillStyle = "#5a554c";
+    for (let i = 0; i < 6; i += 1) {
+      ctx.beginPath();
+      ctx.ellipse(rect.x0 + 50 + i * 110, rect.y0 + 150 + (i % 3) * 30, 16, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (prop === "tatami" || prop === "inn") {
+    // 店の中: 畳の目
+    ctx.fillStyle = "rgba(0,0,0,0.10)";
+    for (let y = rect.y0 + 8; y < rect.y1 - 8; y += 34) {
+      for (let x = rect.x0 + 8; x < rect.x1 - 8; x += 52) {
+        ctx.fillRect(x, y, 48, 30);
+      }
+    }
+  }
+  if (prop === "bath") {
+    // 浴場の床。湯気がこもる
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    for (let y = rect.y0 + 10; y < rect.y1; y += 24) ctx.fillRect(rect.x0 + 8, y, rect.x1 - rect.x0 - 16, 12);
+    for (let i = 0; i < 3; i += 1) {
+      steam(ctx, rect.x0 + 60 + i * ((rect.x1 - rect.x0 - 120) / 2), cy, 90, time, 1.2);
+    }
+  }
+  if (prop === "shrine") {
+    // 社: 鳥居のような門と、注連縄
+    ctx.fillStyle = "#a8433a";
+    ctx.fillRect(cx - 52, rect.y0 + 24, 9, 74);
+    ctx.fillRect(cx + 43, rect.y0 + 24, 9, 74);
+    ctx.fillRect(cx - 66, rect.y0 + 20, 132, 9);
+    ctx.fillRect(cx - 58, rect.y0 + 38, 116, 6);
+    ctx.fillStyle = "#e8dcc0";
+    ctx.fillRect(cx - 30, rect.y0 + 30, 60, 5);
+  }
+  if (prop === "garden") {
+    // 庭園: 松と飛び石と池
+    ctx.fillStyle = "#2f6b74";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 40, 76, 34, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    for (let i = 0; i < 5; i += 1) {
+      ctx.beginPath();
+      ctx.ellipse(cx - 60 + i * 30, cy - 20, 13, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const px of [rect.x0 + 40, rect.x1 - 40]) {
+      ctx.fillStyle = "#5a4630";
+      ctx.fillRect(px - 3, cy - 30, 6, 30);
+      ctx.fillStyle = "#3f6b46";
+      for (let i = 0; i < 3; i += 1) {
+        ctx.beginPath();
+        ctx.ellipse(px, cy - 34 - i * 12, 24 - i * 6, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+};
+
 /** 設備の見た目 */
 const drawEquip = (
   ctx: CanvasRenderingContext2D,
@@ -8146,6 +9033,8 @@ export default function Shop({ onSample, paused }: Props) {
   } | null>(null);
   const inspect = useRef<Inspect | null>(null);
   const camera = useRef({ x: 0, y: 0 });
+  /** 区画が開いた時刻。しばらく工事中の絵を出すために使う（描画側だけ） */
+  const builtAt = useRef(new Map<string, number>());
   const pausedRef = useRef(paused);
   const sampleRef = useRef(onSample);
 
@@ -8181,6 +9070,7 @@ export default function Shop({ onSample, paused }: Props) {
       const isPark = stage().id === "park";
       const isFire = stage().id === "fire";
       const isTaiga = stage().id === "taiga";
+      const isOnsen = stage().id === "onsen";
       /*
        * 原始の見た目（火のはじまり・大河の文明）。
        * 床・区画の看板・作業場・ベンチ・働く人を、こちらの絵で描く。
@@ -8191,7 +9081,27 @@ export default function Shop({ onSample, paused }: Props) {
       const view = viewWidth();
 
       /* --- 床 --- */
-      ctx.fillStyle = wild ? "#20160f" : isPark ? "#101826" : "#191512";
+      if (isOnsen) {
+        // 山あいの景色は、区画のあるなしにかかわらず画面いっぱいに敷く
+        drawOnsenBackdrop(
+          ctx,
+          {
+            x0: camX,
+            y0: camY,
+            x1: camX + canvas.width / scale,
+            y1: camY + canvas.height / scale,
+          },
+          box,
+          time,
+        );
+      }
+      ctx.fillStyle = wild
+        ? "#20160f"
+        : isPark
+          ? "#101826"
+          : isOnsen
+            ? "rgba(20,24,28,0)"
+            : "#191512";
       ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
       for (const area of openAreas(state)) {
         const { rect, palette } = area;
@@ -8210,8 +9120,25 @@ export default function Shop({ onSample, paused }: Props) {
       if (wallsOn()) {
         const holes = openingsOf(state);
         // 渡り廊下は床の一部として先に敷く
+        if (isOnsen) {
+          for (const hole of holes) {
+            // 建物の戸口だけ（通りどうしの辻には下げない）
+            if (!hole.nodes.some((node) => !node.startsWith("road:") && node !== "out")) continue;
+            const { x0, y0, x1, y1 } = hole.rect;
+            const flat = x1 - x0 > y1 - y0;
+            noren(
+              ctx,
+              (x0 + x1) / 2,
+              flat ? y0 - 2 : (y0 + y1) / 2 - 8,
+              flat ? x1 - x0 : 20,
+              "#2f4a5c",
+            );
+          }
+        }
         for (const hole of holes) {
           if (hole.nodes.includes("out") && hole.nodes.length <= 2) continue;
+          // 通り（辻・戸口）は道そのものなので、渡り廊下の床は敷かない
+          if (hole.nodes.some((node) => node.startsWith("road:"))) continue;
           const { x0, y0, x1, y1 } = hole.rect;
           ctx.fillStyle = "rgba(214,190,150,0.20)";
           ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
@@ -8222,7 +9149,13 @@ export default function Shop({ onSample, paused }: Props) {
         for (const room of roomRects(state)) {
           const { x0, y0, x1, y1 } = room.rect;
           const gaps = holes.filter((hole) => hole.nodes.includes(room.id));
-          ctx.strokeStyle = "#6d5a44";
+          if (isOnsen) {
+            // 温泉街の棟は、奥側に瓦屋根がかかって見える
+            ctx.fillStyle = "rgba(0,0,0,0.22)";
+            ctx.fillRect(x0, y0, x1 - x0, 18);
+            kawara(ctx, (x0 + x1) / 2, y0 + 18, x1 - x0, "#443a40");
+          }
+          ctx.strokeStyle = isOnsen ? "#7b6547" : "#6d5a44";
           ctx.lineWidth = 7;
           // 壁は4辺を線分でなぞり、穴のところだけ描かない
           const edges: [number, number, number, number][] = [
@@ -8790,7 +9723,13 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.stroke();
 
           if (mode === "table") {
-            drawTable(ctx, seat.art ?? "pasta", x, y, time, isDirty(state, seat.id));
+            if (isOnsen) {
+              drawOnsenTable(ctx, seat.art ?? "soba", x, y, time, isDirty(state, seat.id));
+            } else {
+              drawTable(ctx, seat.art ?? "pasta", x, y, time, isDirty(state, seat.id));
+            }
+          } else if (isOnsen) {
+            drawOnsenShelf(ctx, seat.art ?? "manju", x, y, time, shelfStock(state, seat.id));
           } else {
             drawShelf(ctx, seat.art ?? "plush", x, y, time, shelfStock(state, seat.id));
           }
@@ -8808,8 +9747,8 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fillStyle = mode === "table" ? "#ffd9c2" : "#d6ecff";
           ctx.fillText(seat.label, x, y + 25);
           ctx.font = FONT;
-        } else if (isPark) {
-          // アトラクションと、その周り（乗り場・柵・看板）
+        } else if (isPark || isOnsen) {
+          // アトラクション・湯どころと、その周り（乗り場・柵・看板）
           const area = openAreas(state).find(
             (item) => item.id === `area-${seat.area}`,
           );
@@ -8846,7 +9785,11 @@ export default function Shop({ onSample, paused }: Props) {
             }
           }
 
-          drawRide(ctx, seat.art ?? "bench", x, y, time);
+          if (isOnsen) {
+            drawOnsenSeat(ctx, seat.art ?? "ashiyu", x, y, time);
+          } else {
+            drawRide(ctx, seat.art ?? "bench", x, y, time);
+          }
 
           // 乗り物の名前を出す小さな看板
           ctx.fillStyle = "rgba(0,0,0,0.45)";
@@ -10183,6 +11126,95 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
+      /* --- 温泉街: 夕暮れと夜、小雪、湯あかり大祭 --- */
+      if (isOnsen && onsenLive(state)) {
+        const onsen = state.onsen;
+        const dark = Math.max(0, onsenDark(onsen));
+        const matsuri = festivalOn(state);
+        if (dark > 0.02) {
+          // 夜は藍にしずむ。灯りのまわりだけ暖かい
+          ctx.fillStyle = `rgba(16,22,46,${dark})`;
+          ctx.fillRect(camX, camY, view, viewH0);
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          // 提灯・灯籠・店の灯り。大祭の夜は、町ぜんぶがともる
+          const lamps: { x: number; y: number; r: number; warm: number }[] = [];
+          for (const area of openAreas(state)) {
+            const { rect, palette } = area;
+            if (area.building) {
+              // 店のなかの灯り
+              lamps.push({
+                x: (rect.x0 + rect.x1) / 2,
+                y: (rect.y0 + rect.y1) / 2,
+                r: Math.max(rect.x1 - rect.x0, rect.y1 - rect.y0) * 0.75,
+                warm: 0.3,
+              });
+            } else {
+              // 通りの提灯。夜見世と大祭はとくに明るい
+              const bright =
+                palette.prop === "night" || matsuri ? 0.42 : palette.prop === "lantern" ? 0.34 : 0.2;
+              const n = Math.max(2, Math.round((rect.x1 - rect.x0) / 150));
+              for (let i = 0; i <= n; i += 1) {
+                lamps.push({
+                  x: rect.x0 + ((rect.x1 - rect.x0) * i) / n,
+                  y: rect.y0 + 18,
+                  r: 130,
+                  warm: bright,
+                });
+              }
+            }
+          }
+          for (const lamp of lamps) {
+            const glow = ctx.createRadialGradient(lamp.x, lamp.y, 4, lamp.x, lamp.y, lamp.r);
+            const power = lamp.warm * dark * (matsuri ? 1.5 : 1);
+            glow.addColorStop(0, `rgba(255,190,120,${power})`);
+            glow.addColorStop(1, "rgba(255,190,120,0)");
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(lamp.x, lamp.y, lamp.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+        // 小雪。屋根と道に積もり、湯気が濃くなる
+        if (onsen.weather === "snow") {
+          ctx.fillStyle = "rgba(206,222,238,0.10)";
+          ctx.fillRect(camX, camY, view, viewH0);
+          ctx.fillStyle = "rgba(255,255,255,0.7)";
+          for (let i = 0; i < 60; i += 1) {
+            const sx = camX + ((i * 197 + time * 26) % view);
+            const sy = camY + ((i * 131 + time * 46) % viewH0);
+            ctx.beginPath();
+            ctx.arc(sx, sy, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          // 棟の北側に積もった雪
+          for (const room of roomRects(state)) {
+            ctx.fillStyle = "rgba(236,244,252,0.5)";
+            ctx.fillRect(room.rect.x0, room.rect.y0 + 2, room.rect.x1 - room.rect.x0, 7);
+          }
+        } else if (onsen.weather === "cloud") {
+          ctx.fillStyle = "rgba(120,130,140,0.10)";
+          ctx.fillRect(camX, camY, view, viewH0);
+        }
+        // 大祭の夜は、灯籠が流れる
+        if (matsuri) {
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          for (let i = 0; i < 26; i += 1) {
+            const lx = camX + ((i * 173 + time * 18) % view);
+            const ly = camY + ((i * 109 + time * 9) % viewH0);
+            const flick = 0.5 + Math.sin(time * 3 + i) * 0.2;
+            ctx.fillStyle = `rgba(255,170,90,${0.5 * flick})`;
+            ctx.beginPath();
+            ctx.arc(lx, ly, 5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+
+      /* --- 火のはじまり: 夜の森と、狼を手なずける様子 --- */
       if (isFire && state.unlocked.includes("area-6") && !state.fire.dogTamed) {
         const bait = state.hold["night-bait"] ?? 0;
         const fuel = state.hold["night-wood"] ?? 0;
@@ -10355,6 +11387,159 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.stroke();
         ctx.fillStyle = "#ffd166";
         ctx.fillText(words, camX + view / 2, wy + 15);
+        ctx.font = FONT;
+      }
+
+      /* --- 温泉街: 建てたばかりの区画の工事と、町のミニ地図 --- */
+      if (isOnsen) {
+        // 工事中（買ってから2.5秒。地ならし → 石を敷く → 街灯がつく）
+        const marks = builtAt.current;
+        // 開いたばかりの町を読みこんだときは、ぜんぶ工事中にしない。
+        // 最初の1回は「もう建っている」ことにして、そのあと買ったものだけ工事する
+        const primed = marks.has("__primed");
+        if (!primed) marks.set("__primed", time);
+        for (const area of openAreas(state)) {
+          if (!marks.has(area.id)) marks.set(area.id, primed ? time : time - 999);
+          const age = time - (marks.get(area.id) ?? time);
+          if (age > 2.5 || age < 0) continue;
+          const { rect } = area;
+          const t = age / 2.5;
+          const w = rect.x1 - rect.x0;
+          const h = rect.y1 - rect.y0;
+          // 敷き終わったところから、下地が消えていく
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(rect.x0, rect.y0 + h * t, w, h * (1 - t));
+          ctx.clip();
+          ctx.fillStyle = "rgba(60,50,38,0.85)";
+          ctx.fillRect(rect.x0, rect.y0, w, h);
+          ctx.fillStyle = "rgba(255,209,102,0.16)";
+          for (let x = rect.x0 - h; x < rect.x1; x += 34) {
+            ctx.beginPath();
+            ctx.moveTo(x, rect.y1);
+            ctx.lineTo(x + 17, rect.y1);
+            ctx.lineTo(x + 17 + h, rect.y0);
+            ctx.lineTo(x + h, rect.y0);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+          // 工事の帯
+          const bw = Math.min(w - 20, 160);
+          const bx = (rect.x0 + rect.x1) / 2 - bw / 2;
+          const by = (rect.y0 + rect.y1) / 2;
+          ctx.fillStyle = "rgba(16,20,28,0.7)";
+          roundRect(ctx, bx, by - 16, bw, 22, 7);
+          ctx.fill();
+          ctx.fillStyle = "#ffd166";
+          roundRect(ctx, bx + 4, by + 1, (bw - 8) * t, 4, 2);
+          ctx.fill();
+          ctx.font = SMALL;
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#ffe9b8";
+          ctx.fillText(
+            t < 0.35 ? "地ならし" : t < 0.7 ? "石を敷いている" : "街灯をつけている",
+            bx + bw / 2,
+            by - 7,
+          );
+          ctx.font = FONT;
+        }
+
+        // ミニ地図（食べ歩き通りをひらいてから。仕様書 §18.2）
+        if (state.unlocked.includes("area-10")) {
+          const mw = 132;
+          const mh = 86;
+          const mx = camX + 10;
+          const my = camY + viewH0 - mh - 10;
+          const span = Math.max(box.x1 - box.x0, 1);
+          const spanY = Math.max(box.y1 - box.y0, 1);
+          const k = Math.min(mw / span, mh / spanY);
+          const ox = mx + (mw - span * k) / 2;
+          const oy = my + (mh - spanY * k) / 2;
+          const at = (x: number, y: number) => ({
+            x: ox + (x - box.x0) * k,
+            y: oy + (y - box.y0) * k,
+          });
+          ctx.fillStyle = "rgba(12,16,22,0.74)";
+          roundRect(ctx, mx, my, mw, mh, 8);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.16)";
+          ctx.lineWidth = 1;
+          roundRect(ctx, mx, my, mw, mh, 8);
+          ctx.stroke();
+          for (const area of openAreas(state)) {
+            const a = at(area.rect.x0, area.rect.y0);
+            const b = at(area.rect.x1, area.rect.y1);
+            ctx.fillStyle = area.building
+              ? "rgba(214,180,130,0.75)"
+              : "rgba(120,196,190,0.55)";
+            ctx.fillRect(a.x, a.y, Math.max(1.5, b.x - a.x), Math.max(1.5, b.y - a.y));
+          }
+          // 次に建てられるところ
+          for (const pad of availablePads(state)) {
+            if (!pad.id.startsWith("area-")) continue;
+            const at2 = at(padPosOf(state, pad).x, padPosOf(state, pad).y);
+            ctx.fillStyle = `rgba(126,231,168,${0.5 + Math.abs(Math.sin(time * 3)) * 0.5})`;
+            ctx.beginPath();
+            ctx.arc(at2.x, at2.y, 2.6, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          // お客さんと自分
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          for (const customer of state.customers) {
+            const c = at(customer.pos.x, customer.pos.y);
+            ctx.fillRect(c.x - 0.6, c.y - 0.6, 1.4, 1.4);
+          }
+          const me = at(state.player.pos.x, state.player.pos.y);
+          ctx.fillStyle = "#ffd166";
+          ctx.beginPath();
+          ctx.arc(me.x, me.y, 2.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      /* --- 町の様子（日にち・時間帯・天気・湯量・評判） --- */
+      if (isOnsen && onsenLive(state)) {
+        const onsen = state.onsen;
+        const use = springUse(state, openSeats(state));
+        const cap = springCap(state);
+        const fame = reputation(onsen);
+        const left = Math.max(0, Math.ceil(onsenPhaseLeft(onsen)));
+        const rows: { text: string; ok: boolean }[] = [
+          {
+            text: `湯量 ${use} / ${cap}・${springLabel(Math.min(1, cap / Math.max(1, use)))}`,
+            ok: use <= cap,
+          },
+          { text: `評判 ${Math.round(fame * 100)}%`, ok: fame >= 0.8 },
+        ];
+        const title = festivalOn(state)
+          ? `湯あかり大祭 ― あと${left}秒`
+          : `${onsen.day}日目 ${onsenPhaseLabel(onsen.phase)}・${weatherLabel(onsen.weather)} ― あと${left}秒`;
+        ctx.font = SMALL;
+        const width =
+          Math.max(
+            ctx.measureText(title).width,
+            ...rows.map((row) => ctx.measureText(row.text).width),
+          ) + 20;
+        const bx = camX + view - width - 10;
+        const by = camY + 10;
+        const height = 20 + rows.length * 13;
+        ctx.fillStyle = "rgba(16,20,28,0.72)";
+        roundRect(ctx, bx, by, width, height, 8);
+        ctx.fill();
+        ctx.strokeStyle = festivalOn(state)
+          ? "rgba(255,190,110,0.7)"
+          : "rgba(255,255,255,0.16)";
+        ctx.lineWidth = 1;
+        roundRect(ctx, bx, by, width, height, 8);
+        ctx.stroke();
+        ctx.textAlign = "center";
+        ctx.fillStyle = festivalOn(state) ? "#ffd166" : "#e8dcc8";
+        ctx.fillText(title, bx + width / 2, by + 11);
+        for (const [i, row] of rows.entries()) {
+          ctx.fillStyle = row.ok ? "#9fd7a8" : "#f0a06a";
+          ctx.fillText(row.text, bx + width / 2, by + 24 + i * 13);
+        }
         ctx.font = FONT;
       }
 
@@ -10842,6 +12027,18 @@ export default function Shop({ onSample, paused }: Props) {
           muted: isMuted(),
           bgmMuted: isBgmMuted(),
           offline: pendingOffline,
+          town: onsenLive(state)
+            ? {
+                phase: onsenPhaseLabel(state.onsen.phase),
+                weather: weatherLabel(state.onsen.weather),
+                left: Math.max(0, Math.round(onsenPhaseLeft(state.onsen))),
+                springUse: springUse(state, openSeats(state)),
+                springCap: springCap(state),
+                fame: reputation(state.onsen),
+                festival: festivalOn(state),
+                cleared: state.onsen.cleared,
+              }
+            : null,
           crew: jobsOpen(state)
             ? {
                 open: true,
