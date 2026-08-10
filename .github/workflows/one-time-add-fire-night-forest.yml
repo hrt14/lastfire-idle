@@ -1,0 +1,37 @@
+name: One-time add Fire night forest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/one-time-add-fire-night-forest.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Add Fire night forest side area
+        run: python3 scripts/patch_fire_night_forest.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint changed code
+        run: npx eslint data/stages.ts lib/shop.ts lib/fire.ts components/Shop.tsx
+      - name: Build
+        run: npm run build
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/one-time-add-fire-night-forest.yml
+          rm -f scripts/patch_fire_night_forest.py
+          git add data/stages.ts lib/shop.ts lib/fire.ts components/Shop.tsx docs/fire-zones.md .github/workflows/one-time-add-fire-night-forest.yml scripts/patch_fire_night_forest.py
+          git commit -m "Add Fire night forest side area"
+          git push origin main
