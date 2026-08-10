@@ -245,8 +245,38 @@ const bowlArt = (ctx: CanvasRenderingContext2D, x: number, y: number, s = 1) => 
   ctx.fill();
 };
 
+/**
+ * たたんだ手ぬぐい。温泉街で運ぶもの。
+ *
+ * 小さく描いても分かるように、白い布と藍の縞の対比だけで見せる。
+ * 丼の絵のままだと、頭の上でも配膳口でも「目玉焼き」に見えてしまっていた
+ */
+const tenugui = (ctx: CanvasRenderingContext2D, x: number, y: number, s = 1) => {
+  // たたんだ布の厚み（下の一枚がすこし見える）
+  ctx.fillStyle = "#cfc9bb";
+  roundRect(ctx, x - 8.5 * s, y - 2.6 * s, 17 * s, 6 * s, 1.6 * s);
+  ctx.fill();
+  // 上の一枚
+  ctx.fillStyle = "#f6f3ea";
+  roundRect(ctx, x - 9 * s, y - 5.4 * s, 18 * s, 7.4 * s, 1.8 * s);
+  ctx.fill();
+  // 藍の縞
+  ctx.fillStyle = "#35577d";
+  ctx.fillRect(x - 9 * s, y - 3.4 * s, 18 * s, 1.9 * s);
+  ctx.fillStyle = "rgba(53,87,125,0.55)";
+  ctx.fillRect(x - 9 * s, y - 0.6 * s, 18 * s, 0.9 * s);
+  // たたみ目
+  ctx.strokeStyle = "rgba(120,110,95,0.55)";
+  ctx.lineWidth = 0.9 * s;
+  ctx.beginPath();
+  ctx.moveTo(x - 2.4 * s, y - 5.4 * s);
+  ctx.lineTo(x - 2.4 * s, y + 2 * s);
+  ctx.stroke();
+};
+
 const bowl = (ctx: CanvasRenderingContext2D, x: number, y: number, s = 1) => {
   if (stage().id === "park") ticket(ctx, x, y, s);
+  else if (stage().id === "onsen") tenugui(ctx, x, y, s);
   else bowlArt(ctx, x, y, s);
 };
 
@@ -9673,6 +9703,29 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.beginPath();
           ctx.arc(x + 20, y - 24, 3, 0, Math.PI * 2);
           ctx.fill();
+        } else if (isOnsen) {
+          /*
+           * 手ぬぐいの箱（湯かご置き場・湯札の受付も同じ形）。
+           *
+           * 浅い木の箱にして、できあがった手ぬぐいが上へ積み上がって見えるようにする。
+           * 深い箱だと、積み上がったぶんに隠れて箱が見えなくなる
+           */
+          ctx.fillStyle = "#7d6142";
+          roundRect(ctx, x - 27, y - 2, 54, 8, 3);
+          ctx.fill();
+          ctx.fillStyle = "#5f4830";
+          roundRect(ctx, x - 27, y + 3, 54, 15, 3);
+          ctx.fill();
+          ctx.fillStyle = "rgba(0,0,0,0.25)";
+          ctx.fillRect(x - 27, y + 9, 54, 1.6);
+          ctx.strokeStyle = "rgba(255,240,210,0.18)";
+          ctx.lineWidth = 1;
+          roundRect(ctx, x - 27, y - 2, 54, 20, 3);
+          ctx.stroke();
+          // 箱に一枚たたんで入れておく（できあがりが0のときも手ぬぐい置き場と分かる）
+          tenugui(ctx, x, y + 4, 1);
+          // 湯気
+          steam(ctx, x, y - 4, 34, time, 0.7);
         } else {
           ctx.fillStyle = "#2f353c";
           roundRect(ctx, x - 26, y - 18, 52, 32, 8);
