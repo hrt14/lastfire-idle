@@ -269,7 +269,12 @@ export type AreaPalette = {
     | "market"
     | "volcano"
     | "horror"
-    | "nightforest";
+    | "nightforest"
+    | "northmeadow"
+    | "moonmarsh"
+    | "rockcave"
+    | "starglen"
+    | "headwater";
 };
 
 export type AreaSpec = {

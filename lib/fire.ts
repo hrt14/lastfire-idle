@@ -713,7 +713,9 @@ export const beastOf = (state: ShopState) => state.fire.beast;
  */
 const pressBeast = (state: ShopState, beast: Beast, hunters: number, dt: number) => {
   const dogHelp =
-    state.fire.dogTamed && dist(state.fire.dogPos, beast.pos) < 110 ? 0.35 : 0;
+    state.fire.dogTamed && dist(state.fire.dogPos, beast.pos) < 110
+      ? state.unlocked.includes("equip-dog-shelter") ? 0.6 : 0.35
+      : 0;
   const near = hunters + (dist(state.player.pos, beast.pos) < 90 ? 1 : 0) + dogHelp;
   if (near <= 0) {
     // だれも追っていないと、息を整えて回復する
@@ -908,6 +910,8 @@ const NIGHT_POSTS: Vec[] = [
   { x: 1960, y: -250 },
   { x: 2280, y: -430 },
   { x: 2630, y: -620 },
+  { x: 2380, y: -690 },
+  { x: 2740, y: -720 },
 ];
 
 export const nightForestOpen = (state: ShopState) =>
@@ -963,7 +967,10 @@ const updateDog = (state: ShopState, dt: number) => {
   const dx = state.player.pos.x - fire.dogPos.x;
   const dy = state.player.pos.y - fire.dogPos.y;
   const d = Math.hypot(dx, dy);
-  if (d > 42) step(fire.dogPos, state.player.pos, d > 180 ? 105 : 72, dt);
+  if (d > 42) {
+    const trained = state.unlocked.includes("equip-dog-shelter");
+    step(fire.dogPos, state.player.pos, d > 180 ? (trained ? 132 : 105) : (trained ? 92 : 72), dt);
+  }
 };
 
 const updateNightForest = (state: ShopState, dt: number) => {
@@ -995,8 +1002,9 @@ const updateNightForest = (state: ShopState, dt: number) => {
   }
 
   const bell = state.unlocked.includes("equip-wolf-bell") ? 2 : 0;
+  const fence = state.unlocked.includes("equip-wolf-fence") ? 1 : 0;
   const dogGuard = fire.dogTamed ? 1 : 0;
-  const maxWolves = Math.max(2, 5 - bell - dogGuard);
+  const maxWolves = Math.max(1, 5 - bell - fence - dogGuard);
   fire.wolfSpawn -= dt;
   if (fire.wolfSpawn <= 0 && fire.nightWolves.length < maxWolves) {
     fire.nightWolves.push(newNightWolf(state));
@@ -1043,8 +1051,9 @@ const updateNightForest = (state: ShopState, dt: number) => {
 
   const nightAge = fire.clock - DAY_TIME - DUSK_TIME;
   const bait = state.hold["night-bait"] ?? 0;
-  if (!fire.dogTamed && nightAge >= 7 && fire.wolfFedDay !== fire.day && bait >= 2) {
-    state.hold["night-bait"] = bait - 2;
+  const baitNeed = state.unlocked.includes("equip-wolf-feeding-rack") ? 1 : 2;
+  if (!fire.dogTamed && nightAge >= 7 && fire.wolfFedDay !== fire.day && bait >= baitNeed) {
+    state.hold["night-bait"] = bait - baitNeed;
     fire.wolfFedDay = fire.day;
     fire.wolfTrust = Math.min(3, fire.wolfTrust + 1);
     say(state, { x: BAIT_POS.x, y: BAIT_POS.y - 34 }, `懐き度 ${fire.wolfTrust}/3`);
@@ -1090,7 +1099,8 @@ const updateVoyage = (state: ShopState, dt: number) => {
   ).length;
   if (crew === 0 && fire.voyages > 0) return;
   const maps = state.unlocked.includes("equip-map-1") ? 1.6 : 1;
-  fire.voyageLeft -= dt * (1 + crew * 0.5) * maps;
+  const headwater = state.unlocked.includes("equip-headwater-marker") ? 1.25 : 1;
+  fire.voyageLeft -= dt * (1 + crew * 0.5) * maps * headwater;
   if (fire.voyageLeft > 0) return;
   fire.voyageLeft = VOYAGE_TIME;
   const found = FINDS[fire.finds.length];

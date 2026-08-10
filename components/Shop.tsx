@@ -1011,6 +1011,185 @@ const drawProps = (
     }
     return;
   }
+  if (
+    palette.prop === "northmeadow" ||
+    palette.prop === "moonmarsh" ||
+    palette.prop === "rockcave" ||
+    palette.prop === "starglen" ||
+    palette.prop === "headwater"
+  ) {
+    const w = rect.x1 - rect.x0;
+    const h = rect.y1 - rect.y0;
+    const seed = Math.round(rect.x0 / 720) + 3;
+
+    // 共通: 北側は地面そのものに密度を出す。草・石・低木を散らす。
+    for (let i = 0; i < 30; i += 1) {
+      const px = rect.x0 + 34 + ((i * 149 + seed * 37) % Math.max(80, w - 68));
+      const py = rect.y0 + 40 + ((i * 83 + seed * 61) % Math.max(80, h - 80));
+      if (palette.prop === "rockcave") {
+        ctx.fillStyle = i % 3 === 0 ? "#5b5a55" : "#474944";
+        ctx.beginPath();
+        ctx.ellipse(px, py, 9 + (i % 4) * 3, 5 + (i % 3) * 2, i * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = palette.prop === "headwater" ? "#406b5d" : "#4c623d";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(px, py + 8);
+        ctx.lineTo(px - 4, py - 7 - (i % 3) * 3);
+        ctx.moveTo(px, py + 8);
+        ctx.lineTo(px + 5, py - 5 - (i % 4) * 2);
+        ctx.stroke();
+      }
+    }
+
+    if (palette.prop === "northmeadow") {
+      // 風の高台: 岩の縁、低い草、遠くへ向く風見布。
+      ctx.fillStyle = "rgba(116,133,80,0.22)";
+      for (let i = 0; i < 9; i += 1) {
+        ctx.beginPath();
+        ctx.ellipse(rect.x0 + 70 + i * (w - 140) / 8, rect.y0 + 190 + (i % 3) * 130, 44, 18, i * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (let i = 0; i < 5; i += 1) {
+        const x = rect.x0 + 90 + i * 130;
+        const y = rect.y0 + 120 + (i % 2) * 210;
+        ctx.fillStyle = "#665a43";
+        ctx.fillRect(x - 2, y - 28, 4, 36);
+        ctx.fillStyle = "#b28a52";
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y - 26);
+        ctx.quadraticCurveTo(x + 24 + Math.sin(time * 3 + i) * 8, y - 18, x + 7, y - 8);
+        ctx.lineTo(x + 2, y - 26);
+        ctx.fill();
+      }
+      // 鹿の足跡が北へ続く。
+      ctx.fillStyle = "rgba(65,49,31,0.42)";
+      for (let i = 0; i < 11; i += 1) {
+        const x = rect.x0 + 310 + Math.sin(i * 0.8) * 90;
+        const y = rect.y1 - 70 - i * 55;
+        ctx.beginPath();
+        ctx.ellipse(x - 4, y, 3, 7, -0.35, 0, Math.PI * 2);
+        ctx.ellipse(x + 4, y, 3, 7, 0.35, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (palette.prop === "moonmarsh") {
+      // 月の湿地: 水たまりが点在し、葦・蛙の波紋・水鳥が動く。
+      for (let i = 0; i < 7; i += 1) {
+        const x = rect.x0 + 90 + ((i * 137) % Math.max(150, w - 180));
+        const y = rect.y0 + 110 + ((i * 163) % Math.max(180, h - 220));
+        ctx.fillStyle = "rgba(34,80,77,0.72)";
+        ctx.beginPath();
+        ctx.ellipse(x, y, 50 + (i % 3) * 17, 24 + (i % 2) * 9, i * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(145,200,178,0.22)";
+        ctx.beginPath();
+        ctx.ellipse(x + Math.sin(time + i) * 7, y, 12 + (i % 3) * 5, 5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "#47664b";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 30; i += 1) {
+        const x = rect.x0 + 30 + ((i * 79) % Math.max(100, w - 60));
+        const y = rect.y0 + 80 + ((i * 107) % Math.max(100, h - 120));
+        ctx.beginPath();
+        ctx.moveTo(x, y + 15);
+        ctx.lineTo(x + Math.sin(i) * 4, y - 18);
+        ctx.stroke();
+      }
+      // 水鳥が低く横切る。
+      ctx.strokeStyle = "rgba(215,225,205,0.65)";
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i += 1) {
+        const x = rect.x0 + ((time * (28 + i * 5) + i * 210) % (w + 120)) - 60;
+        const y = rect.y0 + 90 + i * 55;
+        ctx.beginPath();
+        ctx.arc(x - 5, y, 7, Math.PI * 1.1, Math.PI * 1.85);
+        ctx.arc(x + 5, y, 7, Math.PI * 1.15, Math.PI * 1.9);
+        ctx.stroke();
+      }
+    } else if (palette.prop === "rockcave") {
+      // 岩棚の洞窟: 大きな岩壁と複数の穴、天井からつらら。
+      ctx.fillStyle = "#4b4d49";
+      for (let i = 0; i < 9; i += 1) {
+        const x = rect.x0 + 55 + i * (w - 110) / 8;
+        const y = rect.y0 + 150 + (i % 2) * 30;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 78, 105 + (i % 3) * 24, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (const [x, y, rx, ry] of [[0.25, 0.28, 62, 52], [0.57, 0.23, 78, 60], [0.82, 0.32, 54, 45]] as const) {
+        ctx.fillStyle = "#111514";
+        ctx.beginPath();
+        ctx.ellipse(rect.x0 + w * x, rect.y0 + h * y, rx, ry, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "rgba(220,235,240,0.72)";
+      for (let i = 0; i < 13; i += 1) {
+        const x = rect.x0 + 45 + ((i * 73) % Math.max(90, w - 90));
+        ctx.beginPath();
+        ctx.moveTo(x - 4, rect.y0 + 5);
+        ctx.lineTo(x + 5, rect.y0 + 5);
+        ctx.lineTo(x, rect.y0 + 32 + (i % 4) * 10);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (palette.prop === "starglen") {
+      // 星見の丘: なだらかな尾根、石の輪、夜には蛍が星のように見える。
+      ctx.fillStyle = "rgba(90,105,62,0.34)";
+      ctx.beginPath();
+      ctx.ellipse(rect.x0 + w * 0.5, rect.y0 + h * 0.48, w * 0.42, h * 0.24, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const cx = rect.x0 + w * 0.52;
+      const cy = rect.y0 + h * 0.32;
+      for (let i = 0; i < 12; i += 1) {
+        const a = (i / 12) * Math.PI * 2;
+        const x = cx + Math.cos(a) * 105;
+        const y = cy + Math.sin(a) * 45;
+        ctx.fillStyle = "#777468";
+        ctx.beginPath();
+        ctx.ellipse(x, y, 10, 17, a, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (let i = 0; i < 16; i += 1) {
+        const x = rect.x0 + 40 + ((i * 101) % Math.max(120, w - 80));
+        const y = rect.y0 + 70 + ((i * 61) % Math.max(120, h - 160));
+        const glow = 0.25 + Math.abs(Math.sin(time * 2.1 + i)) * 0.6;
+        ctx.fillStyle = `rgba(222,229,136,${glow})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 1.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (palette.prop === "headwater") {
+      // 上流の滝: 北端から水が落ち、岩のあいだを南へ流れる。
+      const riverX = rect.x0 + w * 0.68;
+      ctx.fillStyle = "rgba(58,123,139,0.72)";
+      ctx.beginPath();
+      ctx.moveTo(riverX - 74, rect.y0);
+      ctx.lineTo(riverX + 52, rect.y0);
+      ctx.bezierCurveTo(riverX + 110, rect.y0 + 180, riverX - 10, rect.y0 + 350, riverX + 35, rect.y1);
+      ctx.lineTo(riverX - 90, rect.y1);
+      ctx.bezierCurveTo(riverX - 120, rect.y0 + 380, riverX + 20, rect.y0 + 180, riverX - 74, rect.y0);
+      ctx.fill();
+      ctx.fillStyle = "rgba(220,245,250,0.62)";
+      for (let i = 0; i < 18; i += 1) {
+        const x = riverX - 55 + ((i * 31) % 100);
+        const y = rect.y0 + 40 + ((time * (38 + i) + i * 67) % Math.max(100, h - 80));
+        ctx.beginPath();
+        ctx.arc(x, y, 2 + (i % 3), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#55584f";
+      for (let i = 0; i < 12; i += 1) {
+        const x = rect.x0 + 70 + ((i * 167) % Math.max(100, w - 140));
+        const y = rect.y0 + 90 + ((i * 113) % Math.max(100, h - 180));
+        ctx.beginPath();
+        ctx.ellipse(x, y, 24 + (i % 4) * 8, 12 + (i % 3) * 4, i * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    return;
+  }
   if (palette.prop === "nightforest") {
     const w = rect.x1 - rect.x0;
     const h = rect.y1 - rect.y0;
@@ -5158,6 +5337,147 @@ const drawEquip = (
     ctx.beginPath();
     ctx.arc(x, y - 18, 3, 0, Math.PI * 2);
     ctx.fill();
+    return;
+  }
+
+  const wildNorth =
+    id.startsWith("north-") || id.startsWith("marsh-") || id.startsWith("cave-") ||
+    id.startsWith("ridge-") || id.startsWith("headwater-") || id === "night-path" ||
+    id === "night-wood-rack" || id === "night-bait-rack" || id === "wolf-feeding-rack" ||
+    id === "wolf-fence" || id === "dog-shelter";
+  if (wildNorth) {
+    if (id.includes("trail") || id.includes("walkway") || id === "night-path") {
+      ctx.fillStyle = "#7b684b";
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.save();
+        ctx.translate(x + i * 10, y - i * 3);
+        ctx.rotate(-0.14);
+        roundRect(ctx, -9, -3, 18, 6, 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      return;
+    }
+    if (id.includes("rack") || id.includes("cache") || id.includes("store")) {
+      ctx.fillStyle = "#604a31";
+      roundRect(ctx, x - 24, y - 24, 48, 32, 4);
+      ctx.fill();
+      ctx.strokeStyle = "#9c7c4e";
+      ctx.lineWidth = 2;
+      for (const oy of [-13, -2]) {
+        ctx.beginPath();
+        ctx.moveTo(x - 21, y + oy);
+        ctx.lineTo(x + 21, y + oy);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#b49a6a";
+      for (let i = 0; i < 4; i += 1) {
+        roundRect(ctx, x - 18 + (i % 2) * 20, y - 20 + Math.floor(i / 2) * 12, 14, 8, 2);
+        ctx.fill();
+      }
+      return;
+    }
+    if (id.includes("lookout") || id.includes("watch")) {
+      ctx.strokeStyle = "#684d31";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x - 14, y + 12);
+      ctx.lineTo(x - 8, y - 32);
+      ctx.moveTo(x + 14, y + 12);
+      ctx.lineTo(x + 8, y - 32);
+      ctx.stroke();
+      ctx.fillStyle = "#705438";
+      roundRect(ctx, x - 24, y - 38, 48, 12, 3);
+      ctx.fill();
+      ctx.fillStyle = "#493523";
+      ctx.beginPath();
+      ctx.moveTo(x - 28, y - 38);
+      ctx.lineTo(x, y - 54);
+      ctx.lineTo(x + 28, y - 38);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    }
+    if (id.includes("fire") || id.includes("beacon")) {
+      ctx.fillStyle = "#5c5144";
+      for (let i = 0; i < 8; i += 1) {
+        const a = (i / 8) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(a) * 12, y + Math.sin(a) * 5, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const flame = 0.6 + Math.abs(Math.sin(time * 6)) * 0.4;
+      ctx.fillStyle = `rgba(255,145,55,${flame})`;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 2);
+      ctx.quadraticCurveTo(x + 13, y - 18, x + 2, y - 34);
+      ctx.quadraticCurveTo(x - 12, y - 18, x, y - 2);
+      ctx.fill();
+      return;
+    }
+    if (id === "wolf-fence") {
+      ctx.strokeStyle = "#725536";
+      ctx.lineWidth = 4;
+      for (let i = -2; i <= 2; i += 1) {
+        const px = x + i * 14;
+        ctx.beginPath();
+        ctx.moveTo(px, y + 12);
+        ctx.lineTo(px + (i % 2) * 5, y - 30 - Math.abs(i) * 2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "#a08354";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 32, y - 10);
+      ctx.lineTo(x + 32, y - 4);
+      ctx.stroke();
+      return;
+    }
+    if (id === "dog-shelter" || id === "north-hide") {
+      ctx.fillStyle = "#6b5137";
+      ctx.beginPath();
+      ctx.moveTo(x - 28, y + 8);
+      ctx.lineTo(x, y - 34);
+      ctx.lineTo(x + 28, y + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#211914";
+      roundRect(ctx, x - 9, y - 8, 18, 16, 6);
+      ctx.fill();
+      return;
+    }
+    if (id.includes("marker")) {
+      ctx.fillStyle = "#77756d";
+      for (let i = 0; i < 4; i += 1) {
+        ctx.beginPath();
+        ctx.ellipse(x, y + 8 - i * 9, 18 - i * 3, 7, i * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return;
+    }
+    if (id.includes("weir")) {
+      ctx.strokeStyle = "#8a7148";
+      ctx.lineWidth = 3;
+      for (let i = -3; i <= 3; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x + i * 8, y + 12);
+        ctx.lineTo(x + i * 8 + 4, y - 20);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(205,235,240,0.6)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(x, y + 12, 38, 9, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    // その他は石積み・杭として見せる。
+    ctx.fillStyle = "#777164";
+    for (let i = 0; i < 5; i += 1) {
+      ctx.beginPath();
+      ctx.ellipse(x - 22 + i * 11, y + 5 - (i % 2) * 5, 9, 6, i * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
     return;
   }
 

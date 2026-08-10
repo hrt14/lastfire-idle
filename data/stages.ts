@@ -1124,6 +1124,62 @@ const fireAreas: AreaSpec[] = [
     unlockAfter: "mark-kills-1",
     reveal: 52,
   },
+  /*
+   * 北側の寄り道帯。夜の森だけが北へ飛び出して見えないように、
+   * 本編の各区画と並走する「野生を広く使う投資ルート」をつなげる。
+   * どれも本編クリアの必須条件にはしない。
+   */
+  {
+    id: "area-7",
+    label: "風の高台へ登る",
+    price: 9000,
+    rect: { x0: 0, y0: -820, x1: 720, y1: 0 },
+    padPos: { x: 360, y: 34 },
+    palette: { floor: "#39452b", deep: "#20291a", prop: "northmeadow" },
+    unlockAfter: "area-1",
+    reveal: 21.8,
+  },
+  {
+    id: "area-8",
+    label: "月の湿地へ入る",
+    price: 28000,
+    rect: { x0: 720, y0: -820, x1: 1620, y1: 0 },
+    padPos: { x: 1170, y: 34 },
+    palette: { floor: "#263c37", deep: "#142521", prop: "moonmarsh" },
+    unlockAfter: "mark-night-1",
+    reveal: 35.8,
+  },
+  {
+    id: "area-9",
+    label: "岩棚の洞窟をひらく",
+    price: 260000,
+    rect: { x0: 2860, y0: -820, x1: 3760, y1: 0 },
+    padPos: { x: 3310, y: 34 },
+    palette: { floor: "#3d4140", deep: "#202526", prop: "rockcave" },
+    unlockAfter: "area-3",
+    reveal: 61.5,
+  },
+  {
+    id: "area-10",
+    label: "星見の丘へ登る",
+    price: 900000,
+    rect: { x0: 3760, y0: -820, x1: 4660, y1: 0 },
+    padPos: { x: 4210, y: 34 },
+    palette: { floor: "#353d2b", deep: "#202617", prop: "starglen" },
+    unlockAfter: "area-4",
+    reveal: 81.5,
+  },
+  {
+    id: "area-11",
+    label: "上流の滝へ進む",
+    price: 3800000,
+    rect: { x0: 4660, y0: -820, x1: 5560, y1: 0 },
+    padPos: { x: 5110, y: 34 },
+    palette: { floor: "#29444a", deep: "#152a2f", prop: "headwater" },
+    unlockAfter: "area-5",
+    reveal: 101.5,
+  },
+
 ];
 
 /**
@@ -1556,6 +1612,53 @@ const fireEquipment: EquipSpec[] = [
   { id: "night-torch-2", name: "奥のたいまつ台", detail: "安全地帯を森の中央まで伸ばす。夜ごとに薪を1こ使う", pos: { x: 2280, y: -430 }, price: 110000, area: 6, unlockAfter: "equip-night-torch-1", reveal: 53.5 },
   { id: "night-torch-3", name: "最奥のたいまつ台", detail: "餌場まで光をつなぐ。夜ごとに薪を1こ使う", pos: { x: 2630, y: -620 }, price: 180000, area: 6, unlockAfter: "equip-night-torch-2", reveal: 53.9 },
   { id: "wolf-bell", name: "見張りの鐘", detail: "遠くの群れを先に察知して、一度に近づくオオカミを減らす", pos: { x: 2670, y: -180 }, price: 160000, area: 6, unlockAfter: "equip-night-torch-2", reveal: 54.2 },
+
+  /* --- 夜の森を「買って育てる」ための追加投資 --- */
+  { id: "night-torch-4", name: "古木のたいまつ台", detail: "巨大古木の周りまで安全地帯を伸ばす。夜ごとに薪を1こ使う", pos: { x: 2380, y: -690 }, price: 240000, area: 6, unlockAfter: "equip-night-torch-3", reveal: 54.4 },
+  { id: "night-torch-5", name: "巣穴前のたいまつ台", detail: "洞穴の手前まで火をつなぐ。夜ごとに薪を1こ使う", pos: { x: 2740, y: -720 }, price: 340000, area: 6, unlockAfter: "equip-night-torch-4", reveal: 54.8 },
+  { id: "night-path", name: "森の丸太道", detail: "入口から餌場までの移動が速くなる", pos: { x: 2190, y: -350 }, price: 140000, area: 6, road: { from: { x: 2180, y: -30 }, to: { x: 2470, y: -520 } }, unlockAfter: "equip-hand-torch", reveal: 53.3 },
+  { id: "night-wood-rack", name: "薪の高床棚", detail: "夜番の薪置き場に積める数 +12", pos: { x: 1840, y: -235 }, price: 120000, area: 6, capacity: { stove: "night-wood", plus: 12 }, unlockAfter: "night-wood", reveal: 53.4 },
+  { id: "night-bait-rack", name: "餌場の石囲い", detail: "オオカミの餌場に積める肉 +8", pos: { x: 2520, y: -520 }, price: 150000, area: 6, capacity: { stove: "night-bait", plus: 8 }, unlockAfter: "night-bait", reveal: 53.6 },
+  { id: "wolf-feeding-rack", name: "餌の置き分け", detail: "一晩に必要なマンモス肉が 2こ→1こになる", pos: { x: 2550, y: -455 }, price: 220000, area: 6, unlockAfter: "equip-night-bait-rack", reveal: 54.0 },
+  { id: "wolf-fence", name: "枝の防護柵", detail: "暗がりから同時に近づくオオカミをさらに1頭減らす", pos: { x: 2660, y: -330 }, price: 280000, area: 6, unlockAfter: "equip-wolf-bell", reveal: 54.6 },
+  { id: "dog-shelter", name: "犬の寝床", detail: "最初の犬が速く走り、マンモスの追い込みも強くなる", pos: { x: 2490, y: -390 }, price: 420000, area: 6, unlockAfter: "mark-dog", reveal: 55.0 },
+
+  /* --- area-7 風の高台: 初期区画の生産力を横から底上げ --- */
+  { id: "north-trail", name: "高台の獣道", detail: "高台を縦に抜ける近道。通ると足が速くなる", pos: { x: 360, y: -310 }, price: 12000, area: 7, road: { from: { x: 360, y: -30 }, to: { x: 360, y: -700 } }, reveal: 22.1 },
+  { id: "north-hunt-cache", name: "狩りの物置", detail: "はじまりの狩り場に置ける肉 +6", pos: { x: 150, y: -250 }, price: 16000, area: 7, capacity: { stove: "hunt-1", plus: 6 }, reveal: 22.4 },
+  { id: "north-log-rack", name: "丸太の高床棚", detail: "はじまりの森に置ける丸太 +6", pos: { x: 570, y: -250 }, price: 19000, area: 7, capacity: { stove: "forest-1", plus: 6 }, unlockAfter: "equip-north-hunt-cache", reveal: 22.7 },
+  { id: "north-hide", name: "狩人の雨よけ", detail: "高台で休める。仲間が少し集まりやすくなる", pos: { x: 210, y: -520 }, price: 26000, area: 7, draw: 1.05, reveal: 23.0 },
+  { id: "north-fire", name: "高台ののろし火", detail: "遠くからも見える火。仲間がさらに集まりやすくなる", pos: { x: 520, y: -610 }, price: 42000, area: 7, draw: 1.06, unlockAfter: "equip-north-hide", reveal: 23.4 },
+
+  /* --- area-8 月の湿地: 集落の備蓄と移動を強くする --- */
+  { id: "marsh-walkway", name: "湿地の丸太道", detail: "ぬかるみを越える道。北側の移動が速くなる", pos: { x: 1120, y: -360 }, price: 36000, area: 8, road: { from: { x: 1140, y: -30 }, to: { x: 1120, y: -700 } }, reveal: 36.1 },
+  { id: "marsh-food-rack", name: "湿地の保存棚", detail: "集落の食料庫に積める保存肉 +6", pos: { x: 900, y: -280 }, price: 46000, area: 8, capacity: { stove: "store-1", plus: 6 }, reveal: 36.4 },
+  { id: "marsh-smoke-rack", name: "風通しの燻製棚", detail: "燻製小屋に置ける保存肉 +6", pos: { x: 1320, y: -270 }, price: 52000, area: 8, capacity: { stove: "smoke-1", plus: 6 }, unlockAfter: "equip-marsh-food-rack", reveal: 36.7 },
+  { id: "marsh-log-rack", name: "水辺の丸太棚", detail: "東の森に置ける丸太 +6", pos: { x: 1450, y: -520 }, price: 62000, area: 8, capacity: { stove: "forest-2", plus: 6 }, reveal: 37.0 },
+  { id: "marsh-watch", name: "水鳥の見張り台", detail: "湿地を見渡せる。仲間が少し集まりやすくなる", pos: { x: 850, y: -620 }, price: 78000, area: 8, draw: 1.06, unlockAfter: "equip-marsh-walkway", reveal: 37.4 },
+
+  /* --- area-9 岩棚の洞窟: 冬の備蓄を厚くする --- */
+  { id: "cave-trail", name: "洞窟への石道", detail: "雪の中でも洞窟へ抜けやすい近道", pos: { x: 3300, y: -330 }, price: 300000, area: 9, road: { from: { x: 3310, y: -30 }, to: { x: 3310, y: -700 } }, reveal: 62.0 },
+  { id: "cave-wood-cache", name: "乾いた薪穴", detail: "大型薪倉庫に積める薪 +10", pos: { x: 3050, y: -300 }, price: 340000, area: 9, capacity: { stove: "store-wood", plus: 10 }, reveal: 62.4 },
+  { id: "cave-food-cache", name: "岩陰の食料庫", detail: "保存肉倉庫に積める保存肉 +8", pos: { x: 3510, y: -300 }, price: 390000, area: 9, capacity: { stove: "store-food2", plus: 8 }, reveal: 62.8 },
+  { id: "cave-coat-rack", name: "毛皮の乾燥棚", detail: "衣装棚に置ける防寒着 +6", pos: { x: 3080, y: -570 }, price: 460000, area: 9, capacity: { stove: "store-coat", plus: 6 }, unlockAfter: "equip-cave-wood-cache", reveal: 63.2 },
+  { id: "cave-beacon", name: "洞窟口の火", detail: "吹雪でも洞窟の入口が分かる。仲間が少し集まりやすい", pos: { x: 3500, y: -610 }, price: 560000, area: 9, draw: 1.06, reveal: 63.6 },
+
+  /* --- area-10 星見の丘: 村の工房を拡張する --- */
+  { id: "ridge-trail", name: "丘の石段", detail: "村と丘を直につなぐ。移動が速くなる", pos: { x: 4200, y: -330 }, price: 1100000, area: 10, road: { from: { x: 4210, y: -30 }, to: { x: 4210, y: -700 } }, reveal: 82.0 },
+  { id: "ridge-clay-rack", name: "粘土の乾燥棚", detail: "粘土穴に置ける粘土 +6", pos: { x: 3900, y: -280 }, price: 1250000, area: 10, capacity: { stove: "claypit-1", plus: 6 }, reveal: 82.4 },
+  { id: "ridge-pot-rack", name: "土器の棚場", detail: "土器工房に置ける土器 +6", pos: { x: 4070, y: -510 }, price: 1450000, area: 10, capacity: { stove: "pottery-1", plus: 6 }, reveal: 82.8 },
+  { id: "ridge-tool-rack", name: "道具の置き場", detail: "道具工房に置ける道具 +6", pos: { x: 4380, y: -500 }, price: 1700000, area: 10, capacity: { stove: "tool-1", plus: 6 }, reveal: 83.2 },
+  { id: "ridge-lookout", name: "丘の見張り台", detail: "村の外まで見渡せる。仲間が少し集まりやすくなる", pos: { x: 4490, y: -650 }, price: 2200000, area: 10, draw: 1.07, reveal: 83.6 },
+
+  /* --- area-11 上流の滝: 川の供給と探索を強くする --- */
+  { id: "headwater-trail", name: "上流の岩道", detail: "川辺から滝までの移動が速くなる", pos: { x: 5100, y: -330 }, price: 4300000, area: 11, road: { from: { x: 5110, y: -30 }, to: { x: 5110, y: -700 } }, reveal: 102.0 },
+  { id: "headwater-weir", name: "上流の魚どめ", detail: "川の瀬に置ける魚 +10", pos: { x: 5350, y: -250 }, price: 4900000, area: 11, capacity: { stove: "fish-1", plus: 10 }, reveal: 102.4 },
+  { id: "headwater-store", name: "岩陰の川倉", detail: "川辺の倉庫に積める保存肉 +10", pos: { x: 4830, y: -260 }, price: 5600000, area: 11, capacity: { stove: "store-river", plus: 10 }, reveal: 102.8 },
+  { id: "headwater-plank-rack", name: "乾燥木材棚", detail: "木材加工場に置ける板 +6", pos: { x: 4860, y: -530 }, price: 6500000, area: 11, capacity: { stove: "plank-1", plus: 6 }, reveal: 103.2 },
+  { id: "headwater-rope-rack", name: "縄の乾燥棚", detail: "縄工房に置ける縄 +6", pos: { x: 5160, y: -520 }, price: 7600000, area: 11, capacity: { stove: "rope-1", plus: 6 }, reveal: 103.6 },
+  { id: "headwater-marker", name: "上流の目印石", detail: "川の曲がりを覚え、探索隊がさらに1.25倍速く帰る", pos: { x: 5420, y: -650 }, price: 9200000, area: 11, unlockAfter: "equip-headwater-trail", reveal: 104.0 },
+
 ];
 
 /**
@@ -2290,7 +2393,13 @@ export const stageDefs: Record<StageId, StageDef> = {
       "area-2": 7,
       "area-3": 7,
       "area-4": 7,
-      "area-5": 7,
+      "area-5": 8,
+      "area-6": 9,
+      "area-7": 8,
+      "area-8": 8,
+      "area-9": 8,
+      "area-10": 8,
+      "area-11": 9,
     },
     // 1食目は「狩る → 置く → 渡す」だけ。まきは最初からくべてある
     startFuel: { "fire-1": 3 },
