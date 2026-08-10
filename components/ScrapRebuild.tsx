@@ -1,23 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Shop, { type Sample } from "@/components/Shop";
-import { stageDefs } from "@/data/stages";
+import { stageDefs, type StageDef, type StageId } from "@/data/stages";
 import { switchStage } from "@/lib/shopStore";
 import styles from "./ScrapRebuild.module.css";
-
-const originalTaiga = {
-  ...stageDefs.taiga,
-  areas: stageDefs.taiga.areas,
-  stoves: stageDefs.taiga.stoves,
-  seats: stageDefs.taiga.seats,
-  hires: stageDefs.taiga.hires,
-  equipment: stageDefs.taiga.equipment,
-  upgrades: stageDefs.taiga.upgrades,
-  labels: stageDefs.taiga.labels,
-};
-
-let themed = false;
 
 const areaNames = [
   "漂着スクラップヤード",
@@ -72,115 +59,116 @@ const renameEquipment = (id: string, fallback: string) => {
   return fallback;
 };
 
-const applyScrapTheme = () => {
-  if (themed) return;
-  themed = true;
-  const def = stageDefs.taiga;
-  def.name = "SCRAP PLANET";
-  def.subtitle = "廃棄惑星を回収・加工・自動化で再生する";
-  def.icon = "♻️";
-  def.itemIcon = "🔩";
-  def.currency = "Cr";
-  def.areas = def.areas.map((area, index) => ({
-    ...area,
-    label: areaNames[index] ?? `再生区画 ${index + 1}`,
-    palette: {
-      floor: index % 2 === 0 ? "#17242a" : "#132027",
-      deep: "#091217",
-      prop: "none",
-    },
-  }));
-  def.stoves = def.stoves.map((stove) => ({
-    ...stove,
-    label: renameStove(stove.id, stove.label ?? "処理設備"),
-  }));
-  def.seats = def.seats.map((seat) => ({
-    ...seat,
-    label: seat.area >= 4 ? "資源出荷ポイント" : "資源受入ポイント",
-  }));
-  def.hires = def.hires.map((hire) => ({
-    ...hire,
-    label:
-      hire.kind === "robot"
-        ? "搬送ロボ"
-        : hire.kind === "boat"
-          ? "大型搬送ローバー"
-          : hire.kind === "builder"
-            ? "建設ドロイド"
-            : hire.kind === "waiter"
-              ? "物流ドロイド"
-              : hire.kind === "cook"
-                ? "設備オペレーター"
-                : hire.label,
-  }));
-  def.equipment = def.equipment.map((equipment) => ({
-    ...equipment,
-    name: renameEquipment(equipment.id, equipment.name),
-  }));
-  def.labels = {
-    ...def.labels,
-    item: "資源",
-    producer: "処理設備",
-    tray: "資源受入口",
-    guest: "出荷ドローン",
-    using: "積み込み中",
-    outside: "荒廃地",
-    outsideDetail: "ビーコンや大型設備は屋外に設置する",
-    auto: "自動搬送",
-    staff: {
-      ...def.labels.staff,
-      waiter: "物流ドロイド",
-      robot: "搬送ロボ",
-      collector: "回収ドロイド",
-      cook: "設備オペレーター",
-      master: "基地AI",
-      builder: "建設ドロイド",
-      keeper: "倉庫管理AI",
-      explorer: "探索ドローン",
-      boat: "大型搬送ローバー",
-      runner: "搬送ドロイド",
-    },
-    objective: {
-      pickup: "設備の出し口で資源を受け取ろう",
-      serve: "次の設備か出荷ポイントまで運ぼう",
-      coin: "落ちたクレジットを回収しよう",
-      waitItem: "処理が終わるまで待とう",
-      waitGuest: "出荷ドローンを待っています",
+const buildScrapStage = (): StageDef => {
+  const source = stageDefs.taiga;
+  return {
+    ...source,
+    // 描画は大河用の分岐をそのまま使う。
+    // 保存キーだけは runtime で scrap にするため、大河の進行とは分離される。
+    id: "taiga",
+    name: "SCRAP PLANET",
+    subtitle: "廃棄惑星を回収・加工・自動化で再生する",
+    icon: "♻️",
+    itemIcon: "🔩",
+    currency: "Cr",
+    areas: source.areas.map((area, index) => ({
+      ...area,
+      label: areaNames[index] ?? `再生区画 ${index + 1}`,
+      palette: {
+        floor: index % 2 === 0 ? "#17242a" : "#132027",
+        deep: "#091217",
+        prop: "none",
+      },
+    })),
+    stoves: source.stoves.map((stove) => ({
+      ...stove,
+      label: renameStove(stove.id, stove.label ?? "処理設備"),
+    })),
+    seats: source.seats.map((seat) => ({
+      ...seat,
+      label: seat.area >= 4 ? "資源出荷ポイント" : "資源受入ポイント",
+    })),
+    hires: source.hires.map((hire) => ({
+      ...hire,
+      label:
+        hire.kind === "robot"
+          ? "搬送ロボ"
+          : hire.kind === "boat"
+            ? "大型搬送ローバー"
+            : hire.kind === "builder"
+              ? "建設ドロイド"
+              : hire.kind === "waiter"
+                ? "物流ドロイド"
+                : hire.kind === "cook"
+                  ? "設備オペレーター"
+                  : hire.label,
+    })),
+    equipment: source.equipment.map((equipment) => ({
+      ...equipment,
+      name: renameEquipment(equipment.id, equipment.name),
+    })),
+    upgrades: source.upgrades.map((upgrade) => ({ ...upgrade })),
+    labels: {
+      ...source.labels,
+      item: "資源",
+      producer: "処理設備",
+      tray: "資源受入口",
+      guest: "出荷ドローン",
+      using: "積み込み中",
+      outside: "荒廃地",
+      outsideDetail: "ビーコンや大型設備は屋外に設置する",
+      auto: "自動搬送",
+      staff: {
+        ...source.labels.staff,
+        waiter: "物流ドロイド",
+        robot: "搬送ロボ",
+        collector: "回収ドロイド",
+        cook: "設備オペレーター",
+        master: "基地AI",
+        builder: "建設ドロイド",
+        keeper: "倉庫管理AI",
+        explorer: "探索ドローン",
+        boat: "大型搬送ローバー",
+        runner: "搬送ドロイド",
+      },
+      objective: {
+        pickup: "設備の出し口で資源を受け取ろう",
+        serve: "次の設備か出荷ポイントまで運ぼう",
+        coin: "落ちたクレジットを回収しよう",
+        waitItem: "処理が終わるまで待とう",
+        waitGuest: "出荷ドローンを待っています",
+      },
     },
   };
 };
 
-const restoreTaigaTheme = () => {
-  Object.assign(stageDefs.taiga, originalTaiga);
-  themed = false;
-};
-
 export default function ScrapRebuild() {
   const [ready, setReady] = useState(false);
+  const [sample, setSample] = useState<Sample | null>(null);
+  const scrapStage = useMemo(buildScrapStage, []);
 
   useEffect(() => {
-    // Strict Mode では effect が setup → cleanup → setup と動く。
-    // テーマ適用を effect の中に置くことで、2回目の setup でも必ず再適用する。
-    applyScrapTheme();
-    switchStage("taiga");
+    const defs = stageDefs as unknown as Record<string, StageDef>;
+    // taiga を書き換えない。scrap という別キーに、同じエンジン定義のコピーを登録する。
+    defs.scrap = scrapStage;
+    switchStage("scrap" as StageId);
     setReady(true);
-
-    return () => {
-      restoreTaigaTheme();
-    };
-  }, []);
+  }, [scrapStage]);
 
   if (!ready) return <div className={styles.loading}>SCRAP PLANET 起動中…</div>;
 
-  const onSample = (_sample: Sample) => {};
-
   return (
     <main className={styles.shell}>
-      <div className={styles.banner} aria-hidden="true">
-        <span className={styles.kicker}>TAIGA ENGINE REBUILD</span>
+      <div className={styles.banner}>
+        <span className={styles.kicker}>TAIGA ENGINE / SCRAP SAVE</span>
         <span className={styles.title}>SCRAP PLANET</span>
+        {sample ? (
+          <span className={styles.kicker}>
+            {Math.floor(sample.money).toLocaleString()} Cr ・ 搬送 {sample.carry}/{sample.maxCarry}
+          </span>
+        ) : null}
       </div>
-      <Shop onSample={onSample} paused={false} />
+      <Shop onSample={setSample} paused={false} />
     </main>
   );
 }
