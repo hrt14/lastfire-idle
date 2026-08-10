@@ -536,6 +536,34 @@ const sideDecor = (
     }
     return;
   }
+  if (prop === "horror") {
+    // 墓石と枯れ木。小物だけでも通常エリアとの境目が分かるようにする
+    for (const [i, gx] of [left - 8, left + 12, left + 28].entries()) {
+      const h = 18 + (i % 2) * 7;
+      ctx.fillStyle = i % 2 ? "#6f6878" : "#57515f";
+      roundRect(ctx, gx - 7, y - h, 14, h + 5, 5);
+      ctx.fill();
+      ctx.fillStyle = "rgba(20,15,28,0.45)";
+      ctx.fillRect(gx - 4, y - h + 7, 8, 2);
+    }
+    ctx.strokeStyle = "#3c2d43";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(right, y + 14);
+    ctx.lineTo(right, y - 34);
+    ctx.lineTo(right - 16, y - 48);
+    ctx.moveTo(right, y - 18);
+    ctx.lineTo(right + 18, y - 38);
+    ctx.moveTo(right - 4, y - 6);
+    ctx.lineTo(right - 20, y - 22);
+    ctx.stroke();
+    const glow = 0.35 + Math.abs(Math.sin(time * 2.4)) * 0.35;
+    ctx.fillStyle = `rgba(166,90,255,${glow})`;
+    ctx.beginPath();
+    ctx.arc(left + 12, y - 26, 4, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
 };
 
 /**
@@ -978,6 +1006,93 @@ const drawProps = (
         ctx.fillStyle = ["#8a6440", "#a9743f", "#7a5433"][i];
         roundRect(ctx, x - 14 + (i % 2) * 10, baseY - 14 - i * 12, 22, 12, 2);
         ctx.fill();
+      }
+    }
+    return;
+  }
+  if (palette.prop === "horror") {
+    // ナイトメア・パーク: 石畳、紫の霧、満月、枯れ木、古い門
+    ctx.fillStyle = "rgba(10,7,14,0.42)";
+    roundRect(ctx, rect.x0 + 20, rect.y0 + 104, rect.x1 - rect.x0 - 40, 92, 18);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(190,165,210,0.12)";
+    ctx.lineWidth = 1;
+    for (let yy = rect.y0 + 118, row = 0; yy < rect.y0 + 190; yy += 16, row += 1) {
+      const shift = (row % 2) * 17;
+      for (let xx = rect.x0 + 28; xx < rect.x1 - 42; xx += 34) {
+        ctx.strokeRect(xx + shift, yy, 28, 10);
+      }
+    }
+
+    const moonX = rect.x0 + 66;
+    const moonY = rect.y0 + 56;
+    const halo = ctx.createRadialGradient(moonX, moonY, 4, moonX, moonY, 42);
+    halo.addColorStop(0, "rgba(232,222,255,0.28)");
+    halo.addColorStop(1, "rgba(120,80,170,0)");
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, 42, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(225,218,240,0.86)";
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(8,5,12,0.9)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 5; i += 1) {
+      const bx = rect.x0 + 110 + i * 38;
+      const by = rect.y0 + 44 + (i % 2) * 15;
+      const flap = Math.sin(time * 5 + i) * 3;
+      ctx.beginPath();
+      ctx.moveTo(bx - 10, by + flap);
+      ctx.quadraticCurveTo(bx - 4, by - 5, bx, by);
+      ctx.quadraticCurveTo(bx + 4, by - 5, bx + 10, by - flap);
+      ctx.stroke();
+    }
+
+    const gateX = rect.x1 - 22;
+    ctx.strokeStyle = "#46384f";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(gateX - 28, rect.y0 + 118);
+    ctx.lineTo(gateX - 28, rect.y0 + 54);
+    ctx.quadraticCurveTo(gateX, rect.y0 + 20, gateX + 28, rect.y0 + 54);
+    ctx.lineTo(gateX + 28, rect.y0 + 118);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(154,118,174,0.55)";
+    ctx.lineWidth = 2;
+    for (let gx = gateX - 20; gx <= gateX + 20; gx += 10) {
+      ctx.beginPath();
+      ctx.moveTo(gx, rect.y0 + 58);
+      ctx.lineTo(gx, rect.y0 + 116);
+      ctx.stroke();
+    }
+
+    for (let i = 0; i < 7; i += 1) {
+      const drift = (time * (8 + i) + i * 71) % (rect.x1 - rect.x0 + 120);
+      const fx = rect.x0 - 60 + drift;
+      const fy = rect.y0 + 210 + ((i * 83) % Math.max(80, rect.y1 - rect.y0 - 240));
+      ctx.fillStyle = `rgba(112,72,148,${0.055 + (i % 3) * 0.018})`;
+      ctx.beginPath();
+      ctx.ellipse(fx, fy, 58 + (i % 2) * 20, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const rows = Math.max(1, Math.floor((rect.y1 - rect.y0) / 260));
+    for (let i = 0; i < rows; i += 1) {
+      for (const tx of [rect.x0 + 42, rect.x1 - 48]) {
+        const ty = rect.y0 + 250 + i * 250;
+        ctx.strokeStyle = "#35283b";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty + 18);
+        ctx.lineTo(tx, ty - 36);
+        ctx.moveTo(tx, ty - 12);
+        ctx.lineTo(tx - 18, ty - 30);
+        ctx.moveTo(tx, ty - 20);
+        ctx.lineTo(tx + 16, ty - 42);
+        ctx.stroke();
       }
     }
     return;

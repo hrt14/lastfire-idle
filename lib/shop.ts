@@ -267,7 +267,8 @@ export type AreaPalette = {
     | "fossil"
     | "diner"
     | "market"
-    | "volcano";
+    | "volcano"
+    | "horror";
 };
 
 export type AreaSpec = {
