@@ -1222,6 +1222,24 @@ const onsenAreas: AreaSpec[] = [
  * 手ぬぐいと湯かごを運んで渡すと、湯に入って、料金を置いて帰る。
  * つくりは乗り物の席と同じ（渡す・使う・帰る）
  */
+/**
+ * 湯の席が使う湯の量の目安（仕様書 §10.2）。
+ * 大きな露天や大浴場は、ここでは足りないので席ごとに heat を書く
+ */
+const HEAT: Record<string, number> = {
+  ashiyu: 1,
+  ashiyuroof: 2,
+  teyu: 1,
+  taki: 1,
+  neyu: 3,
+  mise: 1,
+  hinoki: 5,
+  iwaburo: 6,
+  utase: 5,
+  bench: 0,
+  deck: 0,
+};
+
 const yuRow = (
   area: number,
   baseY: number,
@@ -1233,6 +1251,7 @@ const yuRow = (
     detail: string;
     value: number;
     cost?: number;
+    heat?: number;
     unlockAfter?: string;
   }[],
 ): SeatSpec[] =>
@@ -1248,6 +1267,7 @@ const yuRow = (
     detail: bath.detail,
     cost: bath.cost,
     value: bath.value,
+    heat: bath.heat ?? HEAT[bath.art] ?? 1,
     unlockAfter: bath.unlockAfter ?? chain("seat", area, i),
   }));
 
@@ -1262,6 +1282,7 @@ const zenRow = (
     art: string;
     detail: string;
     value: number;
+    heat?: number;
     unlockAfter?: string;
   }[],
 ): SeatSpec[] =>
@@ -1278,6 +1299,7 @@ const zenRow = (
     mode: "table" as const,
     needs: "food" as const,
     value: table.value,
+    heat: table.heat ?? (table.art === "roomyu" ? 4 : table.art === "room" ? 2 : 0),
     unlockAfter: table.unlockAfter ?? chain("table", area, i),
   }));
 
@@ -1416,10 +1438,10 @@ const onsenSeats: SeatSpec[] = [
     { x: 440, price: 770000000, label: "河原の寝湯", art: "neyu", detail: "石に寝ころんで温まる", value: 6 },
   ]),
   ...yuRow(20, 160, [
-    { x: 260, price: 1100000000, label: "岩の大露天", art: "iwaburo", detail: "森に囲まれた大きな露天", value: 40 },
-    { x: 370, price: 1400000000, label: "檜の大露天", art: "hinoki", detail: "檜づくりの広い露天", value: 44, cost: 2 },
-    { x: 480, price: 2000000000, label: "見晴らしの湯", art: "utase", detail: "谷を見おろす湯船", value: 48, cost: 2 },
-    { x: 580, price: 2800000000, label: "湯滝の露天", art: "taki", detail: "湯滝の真下に入る", value: 52, cost: 3 },
+    { x: 260, price: 1100000000, label: "岩の大露天", art: "iwaburo", detail: "森に囲まれた大きな露天", value: 40, heat: 12 },
+    { x: 370, price: 1400000000, label: "檜の大露天", art: "hinoki", detail: "檜づくりの広い露天", value: 44, cost: 2, heat: 12 },
+    { x: 480, price: 2000000000, label: "見晴らしの湯", art: "utase", detail: "谷を見おろす湯船", value: 48, cost: 2, heat: 14 },
+    { x: 580, price: 2800000000, label: "湯滝の露天", art: "taki", detail: "湯滝の真下に入る", value: 52, cost: 3, heat: 16 },
   ]),
   ...yuRow(22, 380, [
     { x: 990, price: 2200000000, label: "石段の高台足湯", art: "ashiyuroof", detail: "町ぜんぶを見おろす足湯", value: 6 },
@@ -1429,9 +1451,9 @@ const onsenSeats: SeatSpec[] = [
     { x: 2350, price: 5800000000, label: "夜の寝湯", art: "neyu", detail: "提灯を見上げて寝ころぶ", value: 10 },
   ]),
   ...yuRow(29, 620, [
-    { x: 2470, price: 12000000000, label: "大浴場", art: "hinoki", detail: "旅館いちばんの広い湯", value: 300, cost: 2 },
-    { x: 2570, price: 14000000000, label: "庭の露天", art: "iwaburo", detail: "庭を眺めながら入る", value: 340, cost: 3 },
-    { x: 2660, price: 15000000000, label: "貸切の湯", art: "utase", detail: "一組だけで使う湯", value: 380, cost: 3 },
+    { x: 2470, price: 12000000000, label: "大浴場", art: "hinoki", detail: "旅館いちばんの広い湯", value: 300, cost: 2, heat: 18 },
+    { x: 2570, price: 14000000000, label: "庭の露天", art: "iwaburo", detail: "庭を眺めながら入る", value: 340, cost: 3, heat: 20 },
+    { x: 2660, price: 15000000000, label: "貸切の湯", art: "utase", detail: "一組だけで使う湯", value: 380, cost: 3, heat: 22 },
   ]),
 
   /* ---------- 食事処（膳を運ぶ・器を下げる） ---------- */
@@ -1661,11 +1683,14 @@ const onsenHires: HireSpec[] = [
 
 const onsenEquipment: EquipSpec[] = [
   /* 湯まわりの強化（源泉から町じゅうの湯へ効く） */
-  { id: "noodle", name: "湯樋の掃除", detail: "すべての作業場が +30%", pos: { x: 1000, y: 600 }, price: 500000, area: 6, unlockAfter: "area-6" },
-  { id: "fridge", name: "木製分水槽", detail: "作業場に貯めておける数 +4", pos: { x: 1080, y: 600 }, price: 1100000, area: 6, unlockAfter: "equip-noodle" },
+  { id: "noodle", name: "湯樋の掃除", detail: "すべての作業場が +30%・湯量 +10", pos: { x: 1000, y: 600 }, price: 500000, area: 6, unlockAfter: "area-6" },
+  { id: "fridge", name: "木製分水槽", detail: "作業場に貯めておける数 +4・湯量 +10", pos: { x: 1080, y: 600 }, price: 1100000, area: 6, unlockAfter: "equip-noodle" },
   { id: "ticket", name: "湯銭箱", detail: "お金が自動で入る・集金係は手ぬぐいへ", pos: { x: 1160, y: 600 }, price: 6500000, area: 6, unlockAfter: "equip-fridge" },
-  { id: "yuguchi", name: "湯口の拡張", detail: "源泉の湯汲み場に +6 ためられる", pos: { x: 860, y: 680 }, price: 3000000, area: 6, capacity: { stove: "stove-3", plus: 6 }, unlockAfter: "area-6" },
-  { id: "bunyu", name: "配湯管の増設", detail: "共同浴場の受付に +6 ためられる", pos: { x: 1690, y: 650 }, price: 11000000, area: 7, capacity: { stove: "bath-1", plus: 6 }, unlockAfter: "area-7" },
+  { id: "yuguchi", name: "湯口の拡張", detail: "源泉の湯汲み場に +6 ためられる・湯量 +18", pos: { x: 860, y: 680 }, price: 3000000, area: 6, capacity: { stove: "stove-3", plus: 6 }, unlockAfter: "area-6" },
+  { id: "bunyu", name: "配湯管の増設", detail: "共同浴場の受付に +6 ためられる・湯量 +18", pos: { x: 1690, y: 650 }, price: 11000000, area: 7, capacity: { stove: "bath-1", plus: 6 }, unlockAfter: "area-7" },
+  { id: "horimashi", name: "源泉の掘り増し", detail: "湯量 +48。町ぜんぶの湯にゆとりが出る", pos: { x: 1240, y: 690 }, price: 40000000, area: 6, unlockAfter: "area-14" },
+  { id: "yudamari", name: "大湯だまり", detail: "湯量 +72。大きな露天と大浴場を支える", pos: { x: 1000, y: 690 }, price: 900000000, area: 6, unlockAfter: "area-20" },
+  { id: "yusetsu", name: "融雪の湯道", detail: "小雪の日でも道の足がにぶらない", pos: { x: 1180, y: 1300 }, price: 300000000, area: 4, unlockAfter: "area-19" },
 
   /* 石畳（通ると足が速くなる。道をつなぐほど町が回る） */
   { id: "ishidatami1", name: "入口の石畳", detail: "石を敷き直す。町を歩く足が速くなる", pos: { x: 1030, y: 1400 }, price: 65000, area: 0, road: { from: { x: 1070, y: 1500 }, to: { x: 1270, y: 1100 } }, unlockAfter: "area-2" },

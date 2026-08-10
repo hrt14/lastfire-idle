@@ -34,6 +34,20 @@ import {
   type FireState,
 } from "@/lib/fire";
 import {
+  createOnsen,
+  drawBonus,
+  festivalOn,
+  fromOnsen,
+  moveBonus,
+  notePleased,
+  noteUpset,
+  onsenWork,
+  payBonus,
+  toOnsen,
+  updateOnsen,
+  type OnsenState,
+} from "@/lib/onsen";
+import {
   createTaiga,
   fromTaiga,
   taigaCrew,
@@ -170,6 +184,8 @@ export type SeatSpec = {
   value?: number;
   /** 一度に必要な枚数（大きい乗り物は2枚・3枚いる） */
   cost?: number;
+  /** 使う湯の量（温泉街。源泉の供給量をこえるとぬるくなる） */
+  heat?: number;
   /** 棚のとき、客がお金を払いに行く場所 */
   pay?: Vec;
   /** この区画（area-N）が開くまで出てこない */
@@ -956,6 +972,8 @@ export type Persisted = {
   stored?: Record<string, number>;
   /** 火のはじまりの集落の様子（昼夜・人口・冬・谷） */
   fire?: unknown;
+  /** 湯けむり温泉街の町の様子（昼夜・天気・評判・大祭） */
+  onsen?: unknown;
   /** 大河の文明の季節と増水 */
   taiga?: unknown;
 };
@@ -969,6 +987,7 @@ export type ShopState = Persisted & {
   parts: Record<string, Record<string, number>>;
   /** 火のはじまりの集落（昼夜・人口・冬・谷・川） */
   fire: FireState;
+  onsen: OnsenState;
   /** 大河の文明の季節と増水 */
   taiga: TaigaState;
   /** 次に新しい枠を出すまでの間（一度に増やしすぎない） */
@@ -1141,6 +1160,7 @@ export const createState = (): ShopState => ({
   built: [],
   parts: {},
   fire: createFire(),
+  onsen: createOnsen(),
   taiga: createTaiga(),
   revealWait: 0,
   padProgress: {},
@@ -1204,6 +1224,7 @@ export const toPersisted = (state: ShopState): Persisted => ({
   parts: state.parts,
   stored: storedNow(state),
   fire: toFire(state.fire),
+  onsen: toOnsen(state.onsen),
   taiga: toTaiga(state.taiga),
   padProgress: state.padProgress,
   levels: state.levels,
@@ -1318,6 +1339,7 @@ export const fromPersisted = (input: unknown): ShopState => {
     }
   }
   state.fire = fromFire(raw.fire);
+  state.onsen = fromOnsen(raw.onsen);
   state.taiga = fromTaiga(raw.taiga);
 
   for (const stove of stoves) {
@@ -1929,7 +1951,8 @@ export const playerSpeed = (state: ShopState) =>
   PLAYER_BASE_SPEED *
   (1 + state.levels.speed * 0.1) *
   (1 + skinShineBonus()) *
-  fireMove(state);
+  fireMove(state) *
+  moveBonus(state);
 
 export const hasEquip = (state: ShopState, id: EquipId) =>
   state.unlocked.includes(`equip-${id}`);
@@ -1952,7 +1975,7 @@ export const customerDraw = (state: ShopState) =>
     (total, item) =>
       item.draw && hasEquip(state, item.id) ? total * item.draw : total,
     1,
-  );
+  ) * drawBonus(state, festivalOn(state));
 
 export const spawnInterval = (state: ShopState) => SPAWN_TIME / customerDraw(state);
 
@@ -2407,7 +2430,8 @@ const updateStoves = (state: ShopState, dt: number) => {
     if (stove.manual && !isManned(state, stove)) continue;
     // 夜と吹雪は外の仕事を止める。寒いとみんな遅くなる（第2・第4区画）。
     // 大河の文明は、季節と増水でここが変わる
-    const weather = fireWork(state, stove) * taigaWork(state, stove);
+    const weather =
+      fireWork(state, stove) * taigaWork(state, stove) * onsenWork(state, stove, seats);
     if (weather <= 0) continue;
     const boost = stoveHasCook(state, stove.id) ? cookBoost() : 1;
     const work = stove.work ?? 1;
@@ -2661,7 +2685,11 @@ const liveTrees = (state: ShopState, stoveId?: string) =>
   );
 
 const payOut = (state: ShopState, seat: SeatSpec, at: Vec) => {
-  const value = coinValue(state.levels.price) * (seat.value ?? 1);
+  const value =
+    coinValue(state.levels.price) *
+    (seat.value ?? 1) *
+    payBonus(state, seat, festivalOn(state));
+  notePleased(state);
   if (hasEquip(state, "ticket")) {
     // 券売機／自動改札があるとお金は自動でサイフに入る
     state.money += value;
@@ -2784,6 +2812,7 @@ const updateCustomers = (state: ShopState, dt: number) => {
       customer.timer += dt;
       if (customer.timer > PATIENCE) {
         customer.state = "leaving";
+        noteUpset(state);
         pop(state, { x: customer.pos.x, y: customer.pos.y - 30 }, "また来ます…");
       }
     } else if (customer.state === "waiting" && mode === "shelf") {
@@ -4263,6 +4292,7 @@ export const update = (state: ShopState, input: Input, dt: number) => {
   state.playTime += dt;
   // 昼夜・天気・住民・谷・探索は、ほかの何より先に決める
   updateFire(state, dt, coinValue(state.levels.price));
+  updateOnsen(state, dt);
   updateTaiga(state, dt);
   updateStoves(state, dt);
   updateHunt(state, dt);
