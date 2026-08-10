@@ -11,7 +11,7 @@ const original = {
   areaPalettes: stage.areas.map((area) => ({ ...area.palette })),
   stoveLabels: stage.stoves.map((station) => station.label),
   seatLabels: stage.seats.map((seat) => seat.label),
-  equipLabels: stage.equipment.map((item) => item.label),
+  equipLabels: stage.equipment.map((item) => item.name),
   hireLabels: stage.hires.map((hire) => hire.label),
   labels: JSON.parse(JSON.stringify(stage.labels)) as typeof stage.labels,
 };
@@ -127,7 +127,7 @@ export const applyScrapStageTheme = () => {
     seat.label = scrapWords(seat.label) ?? seat.label;
   });
   stage.equipment.forEach((item) => {
-    item.label = scrapWords(item.label) ?? item.label;
+    item.name = scrapWords(item.name) ?? item.name;
   });
   stage.hires.forEach((hire) => {
     hire.label = hireName(hire.kind);
@@ -170,7 +170,7 @@ export const restoreTaigaStageTheme = () => {
     seat.label = original.seatLabels[index];
   });
   stage.equipment.forEach((item, index) => {
-    item.label = original.equipLabels[index];
+    item.name = original.equipLabels[index] ?? item.name;
   });
   stage.hires.forEach((hire, index) => {
     hire.label = original.hireLabels[index];
