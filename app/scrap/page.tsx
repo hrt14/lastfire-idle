@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import ScrapGame from "@/components/ScrapGame";
 import "./scrap.css";
 import "./scrap-world.css";
+import "./scrap-layout-fix.css";
 
 export const metadata: Metadata = {
   title: "SCRAP PLANET｜ワーキングプラネット",
