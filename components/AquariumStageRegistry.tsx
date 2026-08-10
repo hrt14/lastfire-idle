@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import "@/data/aquarium-balance";
+import "@/data/aquarium-balance-v2";
 
 /**
  * 水族館の登録とバランス調整を、Pageより外側で先に適用する。
