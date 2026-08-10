@@ -301,7 +301,7 @@ for (let area = 0; area < regions.length; area += 1) {
       price: tankPrices[rawIndex],
       area,
       label,
-      art: "fish",
+      art: `aquarium-${area}-${index}`,
       // display用。通常の券供給源にならないよう、完成を事実上止める。
       work: 999_999,
       hold: 1,
