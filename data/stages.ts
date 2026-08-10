@@ -1108,6 +1108,22 @@ const fireAreas: AreaSpec[] = [
     unlockAfter: "mark-pop-20",
     reveal: 100,
   },
+  /*
+   * 本編とは別の寄り道「夜の森」。
+   * マンモスの谷から北へ分岐し、文明を先へ進めず、夜の危険と動物との共生を掘る。
+   */
+  {
+    id: "area-6",
+    label: "夜の森へ入る",
+    price: 90000,
+    rect: { x0: 1620, y0: -820, x1: 2860, y1: 0 },
+    // 閉じているあいだも、谷側から入口の枠に触れられる
+    padPos: { x: 2240, y: 34 },
+    palette: { floor: "#243529", deep: "#101a14", prop: "nightforest" },
+    // まず一度マンモスを倒して「集団で野生に向き合う」を経験してから分岐する
+    unlockAfter: "mark-kills-1",
+    reveal: 52,
+  },
 ];
 
 /**
@@ -1355,6 +1371,18 @@ const fireStoves: StoveSpec[] = [
     gives: { sail: true, note: "大型いかだができた" },
     unlockAfter: "found-river", reveal: 110,
   },
+
+  /* ============ 寄り道 area-6 「夜の森」 ============ */
+  {
+    id: "night-wood", pos: { x: 1860, y: -170 }, price: 55000, area: 6,
+    takes: "wood", store: true, hold: 16, art: "woodstore", label: "夜番の薪置き場",
+    unlockAfter: "equip-hand-torch", reveal: 52.7,
+  },
+  {
+    id: "night-bait", pos: { x: 2470, y: -470 }, price: 80000, area: 6,
+    takes: "mmeat", store: true, hold: 10, art: "store", label: "オオカミの餌場",
+    unlockAfter: "equip-hand-torch", reveal: 52.9,
+  },
 ];
 
 const fireSeats: SeatSpec[] = [
@@ -1521,6 +1549,13 @@ const fireEquipment: EquipSpec[] = [
   /* --- 第6区画: 川の道具 --- */
   { id: "net-1", name: "網", detail: "川の瀬でとれる魚が増える", pos: { x: 5330, y: 380 }, price: 700000, area: 5, capacity: { stove: "fish-1", plus: 6 }, reveal: 106.5 },
   { id: "map-1", name: "地図作り", detail: "探索が 1.6倍のはやさで帰ってくる", pos: { x: 5090, y: 400 }, price: 1600000, area: 5, unlockAfter: "built-build-raft-s", reveal: 113.5 },
+
+  /* --- 寄り道「夜の森」: 光を点から線へ増やしていく --- */
+  { id: "hand-torch", name: "手持ちたいまつ", detail: "夜の森で自分の周囲を照らし、オオカミを追い払える", pos: { x: 1760, y: -100 }, price: 45000, area: 6, reveal: 52.2 },
+  { id: "night-torch-1", name: "森のたいまつ台", detail: "夜の森に最初の安全地帯をつくる。夜ごとに薪を1こ使う", pos: { x: 1960, y: -250 }, price: 65000, area: 6, unlockAfter: "equip-hand-torch", reveal: 53.1 },
+  { id: "night-torch-2", name: "奥のたいまつ台", detail: "安全地帯を森の中央まで伸ばす。夜ごとに薪を1こ使う", pos: { x: 2280, y: -430 }, price: 110000, area: 6, unlockAfter: "equip-night-torch-1", reveal: 53.5 },
+  { id: "night-torch-3", name: "最奥のたいまつ台", detail: "餌場まで光をつなぐ。夜ごとに薪を1こ使う", pos: { x: 2630, y: -620 }, price: 180000, area: 6, unlockAfter: "equip-night-torch-2", reveal: 53.9 },
+  { id: "wolf-bell", name: "見張りの鐘", detail: "遠くの群れを先に察知して、一度に近づくオオカミを減らす", pos: { x: 2670, y: -180 }, price: 160000, area: 6, unlockAfter: "equip-night-torch-2", reveal: 54.2 },
 ];
 
 /**
