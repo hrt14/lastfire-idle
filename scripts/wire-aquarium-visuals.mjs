@@ -6,7 +6,7 @@ const shopPath = path.join(root, "components", "Shop.tsx");
 const aquariumPath = path.join(root, "data", "aquarium.ts");
 
 const importLine = 'import { drawAquariumExhibit } from "@/lib/aquariumArt";';
-const hook = `  if (art.startsWith("aquarium-")) {\n    return drawAquariumExhibit(ctx, art, seed);\n  }\n\n`;
+const hook = `  if (art.startsWith("aquarium-")) {\n    return drawAquariumExhibit(ctx, art, Math.round(x * 31 + y * 17));\n  }\n\n`;
 
 let shop = fs.readFileSync(shopPath, "utf8");
 if (!shop.includes(importLine)) {
