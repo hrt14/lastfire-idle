@@ -67,7 +67,7 @@ replace_once(
             ctx.beginPath();
             for (let xx = x0 + 14; xx <= x1 - 14; xx += 10) {
               const waveY = yy + Math.sin(xx * 0.05 + time * 1.8 + i) * 2;
-              if (xx === x0 + 14) ctx.moveTo(xx, waveY);
+              if (xx == x0 + 14) ctx.moveTo(xx, waveY);
               else ctx.lineTo(xx, waveY);
             }
             ctx.stroke();
@@ -209,3 +209,22 @@ s = s.replace(
 
 p.write_text(s)
 print("aquarium real-tank patch applied")
+
+# Latest main contains a SCRAP theme helper that still used EquipSpec.label.
+# EquipSpec's display field is `name`; fix only those equipment-item references so the
+# existing repository can type-check and the aquarium change can be validated/deployed.
+sp = Path("data/scrap-stage-theme.ts")
+ss = sp.read_text()
+needed = [
+    "stage.equipment.map((item) => item.label)",
+    "item.label = scrapWords(item.label) ?? item.label;",
+    "item.label = original.equipLabels[index];",
+]
+for target in needed:
+    if target not in ss:
+        raise SystemExit(f"SCRAP type-fix target not found: {target}")
+ss = ss.replace("stage.equipment.map((item) => item.label)", "stage.equipment.map((item) => item.name)", 1)
+ss = ss.replace("item.label = scrapWords(item.label) ?? item.label;", "item.name = scrapWords(item.name) ?? item.name;", 1)
+ss = ss.replace("item.label = original.equipLabels[index];", "item.name = original.equipLabels[index];", 1)
+sp.write_text(ss)
+print("SCRAP EquipSpec name typing fixed")
