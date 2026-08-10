@@ -325,7 +325,8 @@ export default function Page() {
                     </span>
                   ) : (
                     <span className="stage-progress">
-                      🔒 ラーメン一直線で区画を{stageDefs[def.id].requiresAreas}つ開けると解禁
+                      🔒 {stageDefs[stageDefs[def.id].requiresStage ?? "ramen"].name}
+                      で区画を{stageDefs[def.id].requiresAreas}つ開けると解禁
                     </span>
                   )}
                 </div>

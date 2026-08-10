@@ -15,7 +15,7 @@ import type {
   Upgrade,
 } from "@/lib/shop";
 
-export type StageId = "ramen" | "park" | "fire" | "taiga";
+export type StageId = "ramen" | "park" | "onsen" | "fire" | "taiga";
 
 export type StageLabels = {
   /** 運ぶもの */
@@ -67,6 +67,8 @@ export type StageDef = {
   autoServer?: boolean;
   /** このステージを開けるのに必要な、前ステージの区画数 */
   requiresAreas: number;
+  /** どのステージの区画を数えるか（省略でラーメン一直線） */
+  requiresStage?: StageId;
   /** 最初から開いているもの（省略で stove-1 / seat-0-1 / seat-0-2） */
   start?: string[];
   /** このステージが工程（数珠つなぎ）を使うか。トップの表示に使う */
@@ -871,6 +873,821 @@ const parkUpgrades: Upgrade[] = [
   { id: "price", name: "乗り物券アップ", detail: (n) => `一回 ${Math.round(70 * Math.pow(1.4, n))}円`, pos: { x: 314, y: 66 }, basePrice: 150, growth: 1.9, max: 20, unlockAfter: "seat-0-3" },
   // 入場券は入口で取る。乗らない人からももらえる
   { id: "gate", name: "入場券アップ", detail: (n) => `入場料 ${Math.round(40 * Math.pow(1.45, n))}円`, pos: { x: 100, y: 0 }, basePrice: 400, growth: 1.9, max: 20, outside: true, unlockAfter: "area-1" },
+];
+
+/* ==================== ステージ3: 湯けむり温泉街 ==================== */
+
+/**
+ * 温泉街は、店の中ではなく道からはじまる。
+ *
+ * 区画は2種類ある。
+ *   道（building なし）― 壁がなく、どこからでも入れる。足湯と屋台がここに出る
+ *   建物（building あり）― 四方を壁で囲み、道に面した一辺に戸口を開ける
+ *
+ * 道を買うと、その道に面した建物用地が現れる。建物を買うと外側だけが建ち、
+ * 中の作業場・席・棚・店員は、そこから一つずつ買っていく。
+ * 店員は担当の店から出ない（shop の番号で分ける）ので、
+ * 店をひとつ建てるたびに、その店の中だけで人手のやりくりが起きる。
+ *
+ * 座標は「南（下）が温泉街の入口、北（上）が山」。
+ * いちばん下の入口道路が y1600 で、ここから上へ町が伸びていく。
+ * 入口道路より下に区画を置かないので、客が歩いてくる通りの位置は動かない。
+ */
+const onsenAreas: AreaSpec[] = [
+  /* ---------- 街区0: 温泉街入口（最初から開いている道） ---------- */
+  {
+    id: "area-0",
+    label: "入口道路",
+    price: 0,
+    rect: { x0: 720, y0: 1360, x1: 1420, y1: 1600 },
+    padPos: { x: 0, y: 0 },
+    palette: { floor: "#5b524a", deep: "#403830", prop: "stone" },
+  },
+  {
+    id: "area-1",
+    label: "蒸しまんじゅう屋をたてる",
+    price: 1200,
+    rect: { x0: 840, y0: 1120, x1: 1120, y1: 1360 },
+    padPos: { x: 1010, y: 1400 },
+    palette: { floor: "#6b5a42", deep: "#4a3d2c", prop: "tatami" },
+    building: "manju",
+    shop: 1,
+    door: { x: 1010, w: 60 },
+    // 足湯がひととおり並んでから、はじめて店を建てる話が出てくる
+    unlockAfter: "seat-0-3",
+  },
+
+  /* ---------- 街区1: 到着広場と、そこから登る湯坂 ---------- */
+  {
+    id: "area-2",
+    label: "到着広場をひらく",
+    price: 2900,
+    rect: { x0: 1420, y0: 1300, x1: 2160, y1: 1600 },
+    padPos: { x: 1390, y: 1500 },
+    palette: { floor: "#5f564c", deep: "#433b33", prop: "stone" },
+  },
+  {
+    id: "area-3",
+    label: "観光案内所をたてる",
+    price: 13000,
+    rect: { x0: 2160, y0: 1300, x1: 2440, y1: 1540 },
+    padPos: { x: 2130, y: 1420 },
+    palette: { floor: "#6b5a42", deep: "#4a3d2c", prop: "tatami" },
+    building: "annai",
+    shop: 2,
+    door: { x: 1420, w: 60, side: "w" },
+  },
+  {
+    id: "area-4",
+    label: "湯坂をのばす",
+    price: 27000,
+    rect: { x0: 1120, y0: 880, x1: 1420, y1: 1360 },
+    padPos: { x: 1250, y: 1400 },
+    palette: { floor: "#584f47", deep: "#3e372f", prop: "slope" },
+  },
+  /* ---------- 街区2: 源泉広場（温泉街の中心） ---------- */
+  {
+    id: "area-5",
+    label: "湯の里売店をたてる",
+    price: 65000,
+    rect: { x0: 1420, y0: 880, x1: 1700, y1: 1120 },
+    padPos: { x: 1390, y: 1000 },
+    palette: { floor: "#6d5c46", deep: "#4b3e2e", prop: "tatami" },
+    building: "baiten",
+    shop: 3,
+    door: { x: 1000, w: 60, side: "w" },
+  },
+
+  {
+    id: "area-6",
+    label: "源泉広場を復旧する",
+    price: 130000,
+    rect: { x0: 800, y0: 540, x1: 1420, y1: 880 },
+    padPos: { x: 1250, y: 910 },
+    palette: { floor: "#4d5a58", deep: "#33403f", prop: "yubatake" },
+  },
+  {
+    id: "area-7",
+    label: "共同浴場をたてる",
+    price: 170000,
+    rect: { x0: 1420, y0: 600, x1: 1740, y1: 880 },
+    padPos: { x: 1390, y: 740 },
+    palette: { floor: "#41606a", deep: "#2c434c", prop: "bath" },
+    building: "yuba",
+    shop: 4,
+    door: { x: 740, w: 60, side: "w" },
+  },
+  {
+    id: "area-8",
+    label: "湯もみ小屋をたてる",
+    price: 500000,
+    rect: { x0: 520, y0: 540, x1: 800, y1: 860 },
+    padPos: { x: 830, y: 700 },
+    palette: { floor: "#6b5a42", deep: "#4a3d2c", prop: "tatami" },
+    building: "yumomi",
+    shop: 5,
+    door: { x: 700, w: 60, side: "e" },
+  },
+  {
+    id: "area-9",
+    label: "甘酒茶屋をたてる",
+    price: 850000,
+    rect: { x0: 1060, y0: 240, x1: 1420, y1: 540 },
+    padPos: { x: 1240, y: 570 },
+    palette: { floor: "#6d5a44", deep: "#4a3c2c", prop: "tatami" },
+    building: "amazake",
+    shop: 6,
+    door: { x: 1240, w: 60 },
+  },
+
+  /* ---------- 街区3: 食べ歩き通り ---------- */
+  {
+    id: "area-10",
+    label: "食べ歩き通りをひらく",
+    price: 500000,
+    rect: { x0: 200, y0: 880, x1: 860, y1: 1080 },
+    padPos: { x: 830, y: 860 },
+    palette: { floor: "#5b524a", deep: "#403830", prop: "lantern" },
+  },
+  {
+    id: "area-11",
+    label: "山菜そば処をたてる",
+    price: 1500000,
+    rect: { x0: 200, y0: 620, x1: 520, y1: 880 },
+    padPos: { x: 360, y: 910 },
+    palette: { floor: "#5f4f3c", deep: "#413528", prop: "tatami" },
+    building: "soba",
+    shop: 7,
+    door: { x: 360, w: 60 },
+  },
+  {
+    id: "area-12",
+    label: "串焼きと温泉たまごの店をたてる",
+    price: 2600000,
+    rect: { x0: 200, y0: 1080, x1: 520, y1: 1320 },
+    padPos: { x: 360, y: 1050 },
+    palette: { floor: "#6a5340", deep: "#48382a", prop: "tatami" },
+    building: "kushi",
+    shop: 8,
+    door: { x: 360, w: 60, side: "n" },
+  },
+  {
+    id: "area-13",
+    label: "ミルクプリン店をたてる",
+    price: 6500000,
+    rect: { x0: 540, y0: 1080, x1: 800, y1: 1320 },
+    padPos: { x: 670, y: 1050 },
+    palette: { floor: "#7a6a52", deep: "#544736", prop: "tatami" },
+    building: "purin",
+    shop: 9,
+    door: { x: 670, w: 60, side: "n" },
+  },
+
+  /* ---------- 街区4: 裏湯路地 ---------- */
+  {
+    id: "area-14",
+    label: "裏湯路地をひらく",
+    price: 7400000,
+    rect: { x0: 1420, y0: 240, x1: 1740, y1: 600 },
+    padPos: { x: 1390, y: 570 },
+    palette: { floor: "#544b45", deep: "#3b342f", prop: "alley" },
+  },
+  {
+    id: "area-15",
+    label: "路地の甘味処をたてる",
+    price: 14000000,
+    rect: { x0: 1740, y0: 220, x1: 2020, y1: 460 },
+    padPos: { x: 1710, y: 340 },
+    palette: { floor: "#75634a", deep: "#514330", prop: "tatami" },
+    building: "kanmi",
+    shop: 10,
+    door: { x: 340, w: 60, side: "w" },
+  },
+  {
+    id: "area-16",
+    label: "小さな共同湯をたてる",
+    price: 24000000,
+    rect: { x0: 1420, y0: 0, x1: 1700, y1: 220 },
+    padPos: { x: 1560, y: 270 },
+    palette: { floor: "#41606a", deep: "#2c434c", prop: "bath" },
+    building: "koyu",
+    shop: 11,
+    door: { x: 1560, w: 60 },
+  },
+
+  /* ---------- 街区5: 宿場通り ---------- */
+  {
+    id: "area-17",
+    label: "湯宿をひらく",
+    price: 65000000,
+    rect: { x0: 880, y0: 880, x1: 1120, y1: 1120 },
+    padPos: { x: 1150, y: 1000 },
+    palette: { floor: "#6d5b45", deep: "#4a3c2c", prop: "inn" },
+    building: "yado1",
+    shop: 12,
+    door: { x: 1000, w: 60, side: "e" },
+  },
+  {
+    id: "area-18",
+    label: "大きな湯宿をたてる",
+    price: 260000000,
+    rect: { x0: 1700, y0: 1060, x1: 1980, y1: 1300 },
+    padPos: { x: 1840, y: 1330 },
+    palette: { floor: "#6d5b45", deep: "#4a3c2c", prop: "inn" },
+    building: "yado2",
+    shop: 13,
+    door: { x: 1840, w: 60 },
+  },
+
+  /* ---------- 街区6: 湯川公園 ---------- */
+  {
+    id: "area-19",
+    label: "湯川の遊歩道をひらく",
+    price: 430000000,
+    rect: { x0: 200, y0: 280, x1: 860, y1: 540 },
+    padPos: { x: 830, y: 570 },
+    palette: { floor: "#4a5a52", deep: "#33403a", prop: "river" },
+  },
+  {
+    id: "area-20",
+    label: "大露天風呂をひらく",
+    price: 870000000,
+    rect: { x0: 200, y0: 20, x1: 620, y1: 280 },
+    padPos: { x: 420, y: 310 },
+    palette: { floor: "#3f6570", deep: "#2a4650", prop: "bath" },
+    building: "roten",
+    shop: 14,
+    door: { x: 420, w: 72 },
+  },
+  {
+    id: "area-21",
+    label: "湯上がり茶屋をたてる",
+    price: 1300000000,
+    rect: { x0: 660, y0: 20, x1: 920, y1: 280 },
+    padPos: { x: 760, y: 310 },
+    palette: { floor: "#6d5a44", deep: "#4a3c2c", prop: "tatami" },
+    building: "chaya",
+    shop: 15,
+    door: { x: 760, w: 60 },
+  },
+
+  /* ---------- 街区7: 山門・展望坂 ---------- */
+  {
+    id: "area-22",
+    label: "石段坂をひらく",
+    price: 1900000000,
+    rect: { x0: 920, y0: 20, x1: 1060, y1: 540 },
+    padPos: { x: 990, y: 570 },
+    palette: { floor: "#57504a", deep: "#3d3833", prop: "steps" },
+  },
+  {
+    id: "area-23",
+    label: "湯守の社をたてる",
+    price: 2800000000,
+    rect: { x0: 1060, y0: 20, x1: 1420, y1: 220 },
+    padPos: { x: 1030, y: 120 },
+    palette: { floor: "#5f4f42", deep: "#42372e", prop: "shrine" },
+    building: "yashiro",
+    shop: 16,
+    door: { x: 120, w: 60, side: "w" },
+  },
+
+  /* ---------- 街区8: 夜見世通り ---------- */
+  {
+    id: "area-24",
+    label: "夜見世通りをひらく",
+    price: 4700000000,
+    rect: { x0: 2180, y0: 1040, x1: 2460, y1: 1300 },
+    padPos: { x: 2100, y: 1320 },
+    palette: { floor: "#4b4239", deep: "#342e28", prop: "night" },
+  },
+  {
+    id: "area-25",
+    label: "炉端焼きの店をたてる",
+    price: 5400000000,
+    rect: { x0: 2180, y0: 800, x1: 2440, y1: 1040 },
+    padPos: { x: 2260, y: 1070 },
+    palette: { floor: "#5d4a38", deep: "#3f3226", prop: "tatami" },
+    building: "robata",
+    shop: 17,
+    door: { x: 2260, w: 60 },
+  },
+  {
+    id: "area-26",
+    label: "夜パフェの店をたてる",
+    price: 6200000000,
+    rect: { x0: 2460, y0: 1040, x1: 2700, y1: 1280 },
+    padPos: { x: 2430, y: 1160 },
+    palette: { floor: "#6a5a6a", deep: "#483c48", prop: "night" },
+    building: "yomise",
+    shop: 18,
+    door: { x: 1160, w: 60, side: "w" },
+  },
+
+  /* ---------- 街区9: 湯けむり大旅館 ---------- */
+  {
+    id: "area-27",
+    label: "大旅館の車寄せをつくる",
+    price: 8700000000,
+    rect: { x0: 1980, y0: 800, x1: 2180, y1: 1300 },
+    padPos: { x: 2080, y: 1320 },
+    palette: { floor: "#5b524a", deep: "#403830", prop: "stone" },
+  },
+  {
+    id: "area-28",
+    label: "湯けむり大旅館をたてる",
+    price: 9900000000,
+    rect: { x0: 1980, y0: 460, x1: 2420, y1: 800 },
+    padPos: { x: 2080, y: 840 },
+    palette: { floor: "#705d46", deep: "#4d3f2e", prop: "inn" },
+    building: "taikan",
+    shop: 19,
+    door: { x: 2080, w: 72 },
+  },
+  {
+    /** 本館と壁でつながる棟。同じ building なので、あいだに壁は立たない */
+    id: "area-29",
+    label: "大浴場と庭園をつくる",
+    price: 11000000000,
+    rect: { x0: 2420, y0: 460, x1: 2700, y1: 800 },
+    padPos: { x: 2140, y: 900 },
+    palette: { floor: "#3f6570", deep: "#2a4650", prop: "garden" },
+    building: "taikan",
+    shop: 19,
+  },
+];
+
+/**
+ * 湯の席（足湯・浴槽・見物席）。
+ * 手ぬぐいと湯かごを運んで渡すと、湯に入って、料金を置いて帰る。
+ * つくりは乗り物の席と同じ（渡す・使う・帰る）
+ */
+const yuRow = (
+  area: number,
+  baseY: number,
+  baths: {
+    x: number;
+    price: number;
+    label: string;
+    art: string;
+    detail: string;
+    value: number;
+    cost?: number;
+    unlockAfter?: string;
+  }[],
+): SeatSpec[] =>
+  baths.map((bath, i) => ({
+    id: `seat-${area}-${i + 1}`,
+    pos: { x: bath.x, y: baseY + 64 },
+    serve: { x: bath.x, y: baseY },
+    tray: { x: bath.x, y: baseY + 24 },
+    price: bath.price,
+    area,
+    label: bath.label,
+    art: bath.art,
+    detail: bath.detail,
+    cost: bath.cost,
+    value: bath.value,
+    unlockAfter: bath.unlockAfter ?? chain("seat", area, i),
+  }));
+
+/** 食事処の席・旅館の客室。食べ終わると器が残るので、片づけないと次が来ない */
+const zenRow = (
+  area: number,
+  baseY: number,
+  tables: {
+    x: number;
+    price: number;
+    label: string;
+    art: string;
+    detail: string;
+    value: number;
+    unlockAfter?: string;
+  }[],
+): SeatSpec[] =>
+  tables.map((table, i) => ({
+    id: `table-${area}-${i + 1}`,
+    pos: { x: table.x, y: baseY + 64 },
+    serve: { x: table.x, y: baseY },
+    tray: { x: table.x, y: baseY + 24 },
+    price: table.price,
+    area,
+    label: table.label,
+    art: table.art,
+    detail: table.detail,
+    mode: "table" as const,
+    needs: "food" as const,
+    value: table.value,
+    unlockAfter: table.unlockAfter ?? chain("table", area, i),
+  }));
+
+/** 店先の棚・ショーケース。並べておくと客が自分で取り、帳場で払う */
+const tanaRow = (
+  area: number,
+  baseY: number,
+  till: { x: number; y: number },
+  shelves: {
+    x: number;
+    price: number;
+    label: string;
+    art: string;
+    detail: string;
+    value: number;
+    unlockAfter?: string;
+  }[],
+): SeatSpec[] =>
+  shelves.map((shelf, i) => ({
+    id: `shelf-${area}-${i + 1}`,
+    pos: { x: shelf.x, y: baseY + 64 },
+    serve: { x: shelf.x, y: baseY },
+    tray: { x: shelf.x, y: baseY + 24 },
+    price: shelf.price,
+    area,
+    label: shelf.label,
+    art: shelf.art,
+    detail: shelf.detail,
+    mode: "shelf" as const,
+    needs: "goods" as const,
+    value: shelf.value,
+    pay: till,
+    unlockAfter: shelf.unlockAfter ?? chain("shelf", area, i),
+  }));
+
+const onsenStoves: StoveSpec[] = [
+  /* 街区0: 道ばたの手ぬぐい箱。ここから温泉街がはじまる */
+  { id: "stove-1", pos: { x: 790, y: 1400 }, price: 0, area: 0, label: "手ぬぐい箱" },
+  { id: "stove-2", pos: { x: 1360, y: 1400 }, price: 1500, area: 0, label: "湯かご置き場", unlockAfter: "seat-0-4" },
+  /* 街区2: 源泉広場の湯汲み場。町じゅうの湯の元 */
+  { id: "stove-3", pos: { x: 860, y: 600 }, price: 130000, area: 6, label: "湯汲み場" },
+  { id: "stove-4", pos: { x: 1360, y: 600 }, price: 2200000, area: 6, label: "湯樋の汲み口" },
+
+  /* 蒸しまんじゅう屋 */
+  { id: "mushi-1", pos: { x: 890, y: 1170 }, price: 900, area: 1, item: "goods", art: "stock", label: "蒸し器" },
+  { id: "mushi-2", pos: { x: 1000, y: 1170 }, price: 7900, area: 1, item: "goods", art: "stock", label: "大蒸籠" },
+  /* 観光案内所（湯めぐりの案内と絵はがき） */
+  { id: "annai-1", pos: { x: 2210, y: 1350 }, price: 13000, area: 3, item: "goods", art: "stock", label: "刷り場" },
+  /* 湯の里売店 */
+  { id: "souvenir-1", pos: { x: 1480, y: 930 }, price: 65000, area: 5, item: "goods", art: "stock", label: "みやげ倉庫" },
+  { id: "souvenir-2", pos: { x: 1640, y: 930 }, price: 760000, area: 5, item: "goods", art: "stock", label: "木彫りの工房" },
+  /* 共同浴場・湯もみ小屋・小さな共同湯 */
+  { id: "bath-1", pos: { x: 1470, y: 650 }, price: 170000, area: 7, label: "湯札の受付" },
+  { id: "yumomi-1", pos: { x: 570, y: 590 }, price: 500000, area: 8, label: "木札の台" },
+  { id: "bath-2", pos: { x: 1470, y: 50 }, price: 24000000, area: 16, label: "湯札の箱" },
+  /* 甘酒茶屋・山菜そば処・串焼き・ミルクプリン */
+  { id: "kitchen-1", pos: { x: 1110, y: 290 }, price: 850000, area: 9, item: "food", art: "kitchen", label: "厨房" },
+  { id: "kitchen-2", pos: { x: 250, y: 670 }, price: 1500000, area: 11, item: "food", art: "kitchen", label: "厨房" },
+  { id: "kitchen-3", pos: { x: 250, y: 1130 }, price: 2600000, area: 12, item: "food", art: "kitchen", label: "焼き台" },
+  { id: "kitchen-4", pos: { x: 380, y: 1130 }, price: 11000000, area: 12, item: "food", art: "kitchen", label: "湯だまり（温泉たまご）" },
+  { id: "sweets-1", pos: { x: 590, y: 1130 }, price: 6500000, area: 13, item: "goods", art: "stock", label: "仕込み場" },
+  { id: "sweets-2", pos: { x: 1790, y: 270 }, price: 14000000, area: 15, item: "goods", art: "stock", label: "焼き菓子の窯" },
+  /* 湯宿 */
+  { id: "kitchen-5", pos: { x: 930, y: 930 }, price: 65000000, area: 17, item: "food", art: "kitchen", label: "板場" },
+  { id: "kitchen-6", pos: { x: 1790, y: 1110 }, price: 260000000, area: 18, item: "food", art: "kitchen", label: "板場" },
+  { id: "kitchen-7", pos: { x: 1900, y: 1110 }, price: 610000000, area: 18, item: "food", art: "kitchen", label: "板場" },
+  /* 湯川公園・山門 */
+  { id: "bath-3", pos: { x: 260, y: 70 }, price: 870000000, area: 20, label: "湯屋の受付" },
+  { id: "kitchen-8", pos: { x: 710, y: 70 }, price: 1300000000, area: 21, item: "food", art: "kitchen", label: "厨房" },
+  { id: "omamori-1", pos: { x: 1110, y: 60 }, price: 2800000000, area: 23, item: "goods", art: "stock", label: "御守り所" },
+  /* 夜見世通り */
+  { id: "kitchen-9", pos: { x: 2230, y: 850 }, price: 5400000000, area: 25, item: "food", art: "kitchen", label: "炉端" },
+  { id: "kitchen-10", pos: { x: 2350, y: 850 }, price: 7300000000, area: 25, item: "food", art: "kitchen", label: "炉端" },
+  { id: "sweets-3", pos: { x: 2510, y: 1090 }, price: 6200000000, area: 26, item: "goods", art: "stock", label: "夜パフェの仕込み" },
+  /* 大旅館 */
+  { id: "kitchen-11", pos: { x: 2030, y: 510 }, price: 9900000000, area: 28, item: "food", art: "kitchen", label: "大料理場" },
+  { id: "kitchen-12", pos: { x: 2150, y: 510 }, price: 12000000000, area: 28, item: "food", art: "kitchen", label: "大料理場" },
+  { id: "bath-4", pos: { x: 2470, y: 510 }, price: 11000000000, area: 29, label: "大浴場の受付" },
+];
+
+const onsenSeats: SeatSpec[] = [
+  /* ---------- 街区0: 道ばたの足湯。最初のふたつは無料 ---------- */
+  ...yuRow(0, 1460, [
+    { x: 900, price: 0, label: "こわれかけの足湯", art: "ashiyu", detail: "板を直した、道ばたの足湯", value: 1 },
+    { x: 990, price: 0, label: "石組みの足湯", art: "ashiyu", detail: "石を積んだ、二つめの足湯", value: 1 },
+    { x: 1080, price: 120, label: "腰かけ足湯", art: "ashiyu", detail: "長い腰かけが付いた足湯", value: 1.2 },
+    { x: 1170, price: 340, label: "屋根つき足湯", art: "ashiyuroof", detail: "雨の日でも入れる足湯", value: 1.4 },
+    { x: 1260, price: 900, label: "湯けむりの足湯", art: "ashiyuroof", detail: "湯気の立つ、いちばん熱い足湯", value: 1.6 },
+  ]),
+
+  /* ---------- 街区1: 到着広場の待合 ---------- */
+  ...yuRow(2, 1400, [
+    { x: 1520, price: 4900, label: "待合の腰かけ", art: "bench", detail: "着いたばかりの客が休む", value: 1.2 },
+    { x: 1640, price: 19000, label: "広場の足湯", art: "ashiyu", detail: "広場のまんなかの足湯", value: 1.6 },
+    { x: 1760, price: 98000, label: "手湯の水盤", art: "teyu", detail: "手だけ温める小さな湯", value: 2 },
+  ]),
+
+  /* ---------- 街区2: 源泉広場と共同浴場 ---------- */
+  ...yuRow(6, 760, [
+    { x: 900, price: 260000, label: "湯坪の足湯", art: "ashiyuroof", detail: "源泉のすぐ横で入る足湯", value: 2.4 },
+    { x: 1020, price: 760000, label: "湯滝の見物席", art: "taki", detail: "落ちてくる湯を眺める席", value: 3 },
+    { x: 1140, price: 1700000, label: "撮影デッキ", art: "deck", detail: "湯けむり越しに町を撮る", value: 3.6 },
+  ]),
+  ...yuRow(7, 750, [
+    { x: 1470, price: 320000, label: "檜の内湯", art: "hinoki", detail: "檜の香りがこもる湯船", value: 16 },
+    { x: 1580, price: 940000, label: "岩の湯", art: "iwaburo", detail: "岩を組んだ広い湯船", value: 18, cost: 2 },
+    { x: 1690, price: 2200000, label: "打たせ湯", art: "utase", detail: "肩へ湯を落とす湯船", value: 20, cost: 2 },
+  ]),
+  ...yuRow(8, 720, [
+    { x: 570, price: 500000, label: "湯もみの見物席", art: "mise", detail: "板で湯をかき混ぜる演目を見る", value: 8 },
+    { x: 660, price: 1200000, label: "桟敷席", art: "mise", detail: "一段高いところから見る", value: 9 },
+    { x: 750, price: 2800000, label: "湯もみ体験の板", art: "mise", detail: "自分でも板を持ってみる", value: 10 },
+  ]),
+
+  /* ---------- 街区4: 裏湯路地の小さな湯 ---------- */
+  ...yuRow(14, 460, [
+    { x: 1460, price: 8100000, label: "顔湯", art: "teyu", detail: "湯気を顔に当てる小さな穴", value: 3 },
+    { x: 1570, price: 16000000, label: "路地の手湯", art: "teyu", detail: "路地のかたすみの手湯", value: 3.6 },
+    { x: 1690, price: 29000000, label: "石畳の足湯", art: "ashiyu", detail: "石畳をくりぬいた足湯", value: 4.2 },
+  ]),
+  ...yuRow(16, 120, [
+    { x: 1470, price: 32000000, label: "板張りの湯船", art: "hinoki", detail: "地元の人が通う小さな湯", value: 22 },
+    { x: 1620, price: 52000000, label: "打たせの小湯", art: "utase", detail: "細い湯が肩に落ちる", value: 26, cost: 2 },
+  ]),
+
+  /* ---------- 街区3: 食べ歩き通りのベンチ ---------- */
+  ...yuRow(10, 950, [
+    { x: 280, price: 760000, label: "食べ歩きベンチ", art: "bench", detail: "買ったものをここで食べる", value: 2.4 },
+    { x: 420, price: 1500000, label: "屋根つきベンチ", art: "bench", detail: "日よけの下で休む", value: 3 },
+    { x: 700, price: 3800000, label: "通りの足湯", art: "ashiyu", detail: "歩きつかれた足を入れる", value: 3.6 },
+  ]),
+
+  /* ---------- 街区6・7・8: 遠くの湯 ---------- */
+  ...yuRow(19, 400, [
+    { x: 300, price: 520000000, label: "川辺の足湯", art: "ashiyu", detail: "湯の川に足をひたす", value: 4.5 },
+    { x: 440, price: 770000000, label: "河原の寝湯", art: "neyu", detail: "石に寝ころんで温まる", value: 6 },
+  ]),
+  ...yuRow(20, 160, [
+    { x: 260, price: 1100000000, label: "岩の大露天", art: "iwaburo", detail: "森に囲まれた大きな露天", value: 40 },
+    { x: 370, price: 1400000000, label: "檜の大露天", art: "hinoki", detail: "檜づくりの広い露天", value: 44, cost: 2 },
+    { x: 480, price: 2000000000, label: "見晴らしの湯", art: "utase", detail: "谷を見おろす湯船", value: 48, cost: 2 },
+    { x: 580, price: 2800000000, label: "湯滝の露天", art: "taki", detail: "湯滝の真下に入る", value: 52, cost: 3 },
+  ]),
+  ...yuRow(22, 380, [
+    { x: 990, price: 2200000000, label: "石段の高台足湯", art: "ashiyuroof", detail: "町ぜんぶを見おろす足湯", value: 6 },
+  ]),
+  ...yuRow(24, 1120, [
+    { x: 2230, price: 5100000000, label: "提灯の下の足湯", art: "ashiyuroof", detail: "夜がいちばんにぎわう足湯", value: 8 },
+    { x: 2350, price: 5800000000, label: "夜の寝湯", art: "neyu", detail: "提灯を見上げて寝ころぶ", value: 10 },
+  ]),
+  ...yuRow(29, 620, [
+    { x: 2470, price: 12000000000, label: "大浴場", art: "hinoki", detail: "旅館いちばんの広い湯", value: 300, cost: 2 },
+    { x: 2570, price: 14000000000, label: "庭の露天", art: "iwaburo", detail: "庭を眺めながら入る", value: 340, cost: 3 },
+    { x: 2660, price: 15000000000, label: "貸切の湯", art: "utase", detail: "一組だけで使う湯", value: 380, cost: 3 },
+  ]),
+
+  /* ---------- 食事処（膳を運ぶ・器を下げる） ---------- */
+  ...zenRow(9, 400, [
+    { x: 1120, price: 1100000, label: "甘酒の卓", art: "amazake", detail: "熱い甘酒と漬物", value: 10 },
+    { x: 1250, price: 2600000, label: "囲炉裏の卓", art: "irori", detail: "囲炉裏を囲んで食べる", value: 12 },
+    { x: 1370, price: 5000000, label: "縁側の卓", art: "chaya", detail: "広場を見ながら食べる", value: 13 },
+  ]),
+  ...zenRow(11, 760, [
+    { x: 250, price: 2200000, label: "そばの卓", art: "soba", detail: "山菜を載せた温かいそば", value: 12 },
+    { x: 360, price: 4000000, label: "小上がりの席", art: "soba", detail: "畳に上がって食べる", value: 13 },
+    { x: 470, price: 8100000, label: "窓ぎわの卓", art: "soba", detail: "通りを見ながら食べる", value: 14 },
+  ]),
+  ...zenRow(12, 1210, [
+    { x: 250, price: 3800000, label: "立ち食い台", art: "kushi", detail: "串を焼きたてで頬張る", value: 6 },
+    { x: 360, price: 8100000, label: "焼き台の前", art: "kushi", detail: "煙のなかで立って食べる", value: 7 },
+    { x: 470, price: 16000000, label: "たまごの台", art: "tamago", detail: "温泉たまごをその場で割る", value: 8 },
+  ]),
+  ...zenRow(21, 180, [
+    { x: 700, price: 1500000000, label: "湯上がりの卓", art: "chaya", detail: "冷たい牛乳とところてん", value: 24 },
+    { x: 830, price: 2200000000, label: "縁側の席", art: "chaya", detail: "森を見ながら涼む", value: 28 },
+  ]),
+  ...zenRow(25, 960, [
+    { x: 2230, price: 5800000000, label: "炉端の席", art: "irori", detail: "目の前で焼いて出す", value: 60 },
+    { x: 2320, price: 6500000000, label: "カウンター", art: "irori", detail: "板前と向かい合う席", value: 70 },
+    { x: 2410, price: 7600000000, label: "奥座敷", art: "irori", detail: "静かな奥の席", value: 80 },
+  ]),
+
+  /* ---------- 湯宿の客室（泊まり客に膳を運ぶ） ---------- */
+  ...zenRow(17, 1010, [
+    { x: 930, price: 120000000, label: "六畳の客室", art: "room", detail: "小さな宿のひと部屋", value: 100 },
+    { x: 1030, price: 190000000, label: "角部屋", art: "room", detail: "窓がふたつある部屋", value: 120 },
+  ]),
+  ...zenRow(18, 1220, [
+    { x: 1770, price: 340000000, label: "川見の客室", art: "room", detail: "湯坂の下を見おろす部屋", value: 140 },
+    { x: 1860, price: 580000000, label: "広縁つき客室", art: "room", detail: "広縁で碁を打てる部屋", value: 160 },
+    { x: 1950, price: 870000000, label: "露天つき客室", art: "roomyu", detail: "部屋に小さな露天がある", value: 180 },
+  ]),
+  ...zenRow(28, 640, [
+    { x: 2030, price: 11000000000, label: "本館の客室", art: "room", detail: "大旅館のふつうの部屋", value: 400 },
+    { x: 2130, price: 12000000000, label: "上階の客室", art: "room", detail: "町の灯りを見おろす部屋", value: 450 },
+    { x: 2230, price: 14000000000, label: "特別室", art: "roomyu", detail: "内風呂と広間が付く", value: 500 },
+    { x: 2330, price: 15000000000, label: "貴賓室", art: "roomyu", detail: "宿でいちばん奥の部屋", value: 550 },
+  ]),
+
+  /* ---------- 甘味・みやげの棚（客が自分で取り、帳場で払う） ---------- */
+  ...tanaRow(1, 1280, { x: 1080, y: 1170 }, [
+    { x: 890, price: 1700, label: "蒸したての棚", art: "manju", detail: "湯気の立つ蒸しまんじゅう", value: 4 },
+    { x: 990, price: 4900, label: "土産用の箱", art: "manju", detail: "持ち帰り用の箱入り", value: 5 },
+  ]),
+  ...tanaRow(3, 1420, { x: 2400, y: 1350 }, [
+    { x: 2210, price: 25000, label: "湯めぐりの案内", art: "annai", detail: "町の地図と入浴の手引き", value: 5 },
+    { x: 2320, price: 81000, label: "絵はがきの棚", art: "annai", detail: "湯けむりの絵はがき", value: 6 },
+  ]),
+  ...tanaRow(5, 1040, { x: 1560, y: 930 }, [
+    { x: 1480, price: 150000, label: "湯の花の棚", art: "yunohana", detail: "湯の花を詰めた小袋", value: 24 },
+    { x: 1560, price: 500000, label: "菓子の棚", art: "manju", detail: "箱入りのみやげ菓子", value: 28 },
+    { x: 1640, price: 1100000, label: "木彫りの棚", art: "kibori", detail: "この町でしか買えない木彫り", value: 34 },
+  ]),
+  ...tanaRow(13, 1210, { x: 770, y: 1130 }, [
+    { x: 590, price: 9600000, label: "冷蔵ショーケース", art: "purin", detail: "ガラス越しに並ぶミルクプリン", value: 8 },
+    { x: 700, price: 18000000, label: "季節の棚", art: "purin", detail: "季節ごとに味が変わる", value: 9 },
+  ]),
+  ...tanaRow(15, 350, { x: 1990, y: 270 }, [
+    { x: 1790, price: 20000000, label: "焼き菓子の棚", art: "yakigashi", detail: "窯から出したての焼き菓子", value: 10 },
+    { x: 1900, price: 34000000, label: "路地の甘味台", art: "yakigashi", detail: "座って食べていける台", value: 12 },
+  ]),
+  ...tanaRow(23, 120, { x: 1390, y: 60 }, [
+    { x: 1180, price: 3300000000, label: "御守りの棚", art: "omamori", detail: "湯を守る社の御守り", value: 40 },
+    { x: 1290, price: 4000000000, label: "記念の札所", art: "omamori", detail: "願いを書いて掛けていく", value: 50 },
+  ]),
+  ...tanaRow(26, 1150, { x: 2680, y: 1090 }, [
+    { x: 2510, price: 6500000000, label: "夜パフェの台", art: "parfait", detail: "夜だけ出す大きなパフェ", value: 60 },
+    { x: 2610, price: 7600000000, label: "夜の甘味棚", art: "parfait", detail: "湯上がりの客が並ぶ", value: 70 },
+  ]),
+];
+
+const onsenHires: HireSpec[] = [
+  /* ---------- 街区0: 道の係。足湯と屋台を見る ---------- */
+  { id: "waiter-1", kind: "waiter", pos: { x: 1120, y: 1570 }, price: 380, label: "手ぬぐい係", area: 0, unlockAfter: "seat-0-3" },
+  { id: "collector-1", kind: "collector", pos: { x: 1200, y: 1570 }, price: 1200, label: "集金係", area: 0, unlockAfter: "waiter-1" },
+  { id: "cook-1", kind: "cook", pos: { x: 860, y: 1400 }, price: 900, label: "湯かご係", stoveId: "stove-1", area: 0, unlockAfter: "stove-2" },
+  { id: "waiter-2", kind: "waiter", pos: { x: 1280, y: 1570 }, price: 4100, label: "手ぬぐい係", area: 0, unlockAfter: "waiter-1" },
+  { id: "cook-2", kind: "cook", pos: { x: 1290, y: 1400 }, price: 6100, label: "湯かご係", stoveId: "stove-2", area: 0 },
+  { id: "robot-1", kind: "robot", pos: { x: 1360, y: 1570 }, price: 13000, label: "巡回ワゴン", area: 0, unlockAfter: "waiter-2" },
+
+  /* 蒸しまんじゅう屋 */
+  { id: "cook-3", kind: "cook", pos: { x: 890, y: 1240 }, price: 3000, label: "蒸し方", stoveId: "mushi-1", area: 1 },
+  { id: "stocker-1", kind: "stocker", pos: { x: 1080, y: 1240 }, price: 4100, label: "品出し係", area: 1 },
+  { id: "collector-2", kind: "collector", pos: { x: 1080, y: 1310 }, price: 7900, label: "帳場のレジ係", area: 1 },
+  { id: "cook-4", kind: "cook", pos: { x: 1000, y: 1240 }, price: 19000, label: "蒸し方", stoveId: "mushi-2", area: 1 },
+
+  /* 到着広場 */
+  { id: "waiter-3", kind: "waiter", pos: { x: 1520, y: 1560 }, price: 13000, label: "手ぬぐい係", area: 2 },
+  { id: "collector-3", kind: "collector", pos: { x: 1640, y: 1560 }, price: 30000, label: "集金係", area: 2, unlockAfter: "waiter-3" },
+  { id: "robot-2", kind: "robot", pos: { x: 1760, y: 1560 }, price: 260000, label: "巡回ワゴン", area: 2, unlockAfter: "waiter-3" },
+
+  /* 観光案内所 */
+  { id: "cook-5", kind: "cook", pos: { x: 2320, y: 1350 }, price: 43000, label: "案内人", stoveId: "annai-1", area: 3 },
+  { id: "stocker-2", kind: "stocker", pos: { x: 2400, y: 1420 }, price: 65000, label: "品出し係", area: 3 },
+  { id: "collector-4", kind: "collector", pos: { x: 2400, y: 1500 }, price: 150000, label: "レジ係", area: 3 },
+
+  /* 湯の里売店 */
+  { id: "cook-6", kind: "cook", pos: { x: 1480, y: 1000 }, price: 260000, label: "倉庫番", stoveId: "souvenir-1", area: 5 },
+  { id: "stocker-3", kind: "stocker", pos: { x: 1560, y: 1000 }, price: 400000, label: "品出し係", area: 5 },
+  { id: "collector-5", kind: "collector", pos: { x: 1440, y: 930 }, price: 850000, label: "レジ係", area: 5 },
+  { id: "cook-7", kind: "cook", pos: { x: 1640, y: 1000 }, price: 1500000, label: "木彫り職人", stoveId: "souvenir-2", area: 5 },
+
+  /* 湯坂・源泉広場 */
+  { id: "waiter-4", kind: "waiter", pos: { x: 1360, y: 1300 }, price: 260000, label: "手ぬぐい係", area: 4 },
+  { id: "cook-8", kind: "cook", pos: { x: 930, y: 600 }, price: 500000, label: "湯守", stoveId: "stove-3", area: 6 },
+  { id: "waiter-5", kind: "waiter", pos: { x: 1260, y: 860 }, price: 850000, label: "手ぬぐい係", area: 6 },
+  { id: "collector-6", kind: "collector", pos: { x: 1340, y: 860 }, price: 1300000, label: "集金係", area: 6 },
+  { id: "robot-3", kind: "robot", pos: { x: 1180, y: 860 }, price: 5000000, label: "巡回ワゴン", area: 6, unlockAfter: "waiter-5" },
+  { id: "cook-9", kind: "cook", pos: { x: 1290, y: 600 }, price: 6500000, label: "湯守", stoveId: "stove-4", area: 6 },
+  { id: "master-1", kind: "master", pos: { x: 1100, y: 860 }, price: 34000000, label: "女将", area: 6 },
+
+  /* 共同浴場 */
+  { id: "cook-10", kind: "cook", pos: { x: 1570, y: 650 }, price: 590000, label: "番台", stoveId: "bath-1", area: 7 },
+  { id: "waiter-6", kind: "waiter", pos: { x: 1440, y: 860 }, price: 850000, label: "手ぬぐい係", area: 7 },
+  { id: "collector-7", kind: "collector", pos: { x: 1720, y: 860 }, price: 1700000, label: "集金係", area: 7 },
+
+  /* 湯もみ小屋 */
+  { id: "cook-11", kind: "cook", pos: { x: 660, y: 590 }, price: 940000, label: "湯もみ頭", stoveId: "yumomi-1", area: 8 },
+  { id: "waiter-7", kind: "waiter", pos: { x: 540, y: 840 }, price: 1500000, label: "案内係", area: 8 },
+  { id: "collector-8", kind: "collector", pos: { x: 780, y: 840 }, price: 2800000, label: "集金係", area: 8 },
+
+  /* 甘酒茶屋 */
+  { id: "cook-12", kind: "cook", pos: { x: 1200, y: 290 }, price: 1500000, label: "料理人", stoveId: "kitchen-1", area: 9 },
+  { id: "server-1", kind: "server", pos: { x: 1400, y: 290 }, price: 2200000, label: "配膳係", area: 9 },
+  { id: "busser-1", kind: "busser", pos: { x: 1400, y: 520 }, price: 2600000, label: "片づけ係", area: 9 },
+
+  /* 食べ歩き通り */
+  { id: "waiter-8", kind: "waiter", pos: { x: 560, y: 1060 }, price: 1000000, label: "手ぬぐい係", area: 10 },
+  { id: "collector-9", kind: "collector", pos: { x: 640, y: 1060 }, price: 1800000, label: "集金係", area: 10 },
+  { id: "robot-4", kind: "robot", pos: { x: 720, y: 1060 }, price: 11000000, label: "巡回ワゴン", area: 10, unlockAfter: "waiter-8" },
+
+  /* 山菜そば処 */
+  { id: "cook-13", kind: "cook", pos: { x: 350, y: 670 }, price: 2200000, label: "料理人", stoveId: "kitchen-2", area: 11 },
+  { id: "server-2", kind: "server", pos: { x: 460, y: 670 }, price: 3000000, label: "配膳係", area: 11 },
+  { id: "busser-2", kind: "busser", pos: { x: 500, y: 860 }, price: 4000000, label: "片づけ係", area: 11 },
+
+  /* 串焼きと温泉たまご */
+  { id: "cook-14", kind: "cook", pos: { x: 300, y: 1180 }, price: 3800000, label: "焼き方", stoveId: "kitchen-3", area: 12 },
+  { id: "server-3", kind: "server", pos: { x: 500, y: 1130 }, price: 5000000, label: "配膳係", area: 12 },
+  { id: "busser-3", kind: "busser", pos: { x: 500, y: 1300 }, price: 8100000, label: "片づけ係", area: 12 },
+  { id: "cook-15", kind: "cook", pos: { x: 430, y: 1180 }, price: 16000000, label: "湯だまり番", stoveId: "kitchen-4", area: 12 },
+
+  /* ミルクプリン店 */
+  { id: "cook-16", kind: "cook", pos: { x: 680, y: 1130 }, price: 9600000, label: "菓子職人", stoveId: "sweets-1", area: 13 },
+  { id: "stocker-5", kind: "stocker", pos: { x: 780, y: 1200 }, price: 13000000, label: "品出し係", area: 13 },
+  { id: "collector-10", kind: "collector", pos: { x: 780, y: 1300 }, price: 21000000, label: "レジ係", area: 13 },
+
+  /* 裏湯路地 */
+  { id: "waiter-9", kind: "waiter", pos: { x: 1450, y: 570 }, price: 11000000, label: "手ぬぐい係", area: 14 },
+  { id: "collector-11", kind: "collector", pos: { x: 1560, y: 570 }, price: 18000000, label: "集金係", area: 14 },
+
+  /* 路地の甘味処 */
+  { id: "cook-17", kind: "cook", pos: { x: 1890, y: 270 }, price: 21000000, label: "菓子職人", stoveId: "sweets-2", area: 15 },
+  { id: "stocker-6", kind: "stocker", pos: { x: 1990, y: 350 }, price: 29000000, label: "品出し係", area: 15 },
+  { id: "collector-12", kind: "collector", pos: { x: 1990, y: 430 }, price: 44000000, label: "レジ係", area: 15 },
+
+  /* 小さな共同湯 */
+  { id: "cook-18", kind: "cook", pos: { x: 1570, y: 50 }, price: 34000000, label: "番台", stoveId: "bath-2", area: 16 },
+  { id: "waiter-10", kind: "waiter", pos: { x: 1670, y: 50 }, price: 44000000, label: "手ぬぐい係", area: 16 },
+  { id: "collector-13", kind: "collector", pos: { x: 1670, y: 190 }, price: 65000000, label: "集金係", area: 16 },
+
+  /* 湯宿（小） */
+  { id: "cook-19", kind: "cook", pos: { x: 1010, y: 930 }, price: 120000000, label: "料理長", stoveId: "kitchen-5", area: 17 },
+  { id: "server-4", kind: "server", pos: { x: 1090, y: 930 }, price: 150000000, label: "仲居", area: 17 },
+  { id: "busser-4", kind: "busser", pos: { x: 1090, y: 1000 }, price: 190000000, label: "布団係", area: 17 },
+  { id: "collector-14", kind: "collector", pos: { x: 1090, y: 1070 }, price: 260000000, label: "帳場のレジ係", area: 17 },
+
+  /* 湯宿（大） */
+  { id: "cook-20", kind: "cook", pos: { x: 1790, y: 1175 }, price: 340000000, label: "料理長", stoveId: "kitchen-6", area: 18 },
+  { id: "server-5", kind: "server", pos: { x: 1720, y: 1175 }, price: 430000000, label: "仲居", area: 18 },
+  { id: "busser-5", kind: "busser", pos: { x: 1720, y: 1110 }, price: 580000000, label: "布団係", area: 18 },
+  { id: "collector-15", kind: "collector", pos: { x: 1960, y: 1175 }, price: 710000000, label: "帳場のレジ係", area: 18 },
+  { id: "cook-21", kind: "cook", pos: { x: 1900, y: 1240 }, price: 870000000, label: "料理長", stoveId: "kitchen-7", area: 18 },
+  { id: "server-6", kind: "server", pos: { x: 1720, y: 1245 }, price: 1100000000, label: "仲居", area: 18 },
+  { id: "master-2", kind: "master", pos: { x: 1960, y: 1110 }, price: 1800000000, label: "女将", area: 18 },
+
+  /* 湯川公園 */
+  { id: "waiter-11", kind: "waiter", pos: { x: 600, y: 520 }, price: 610000000, label: "手ぬぐい係", area: 19 },
+  { id: "collector-16", kind: "collector", pos: { x: 680, y: 520 }, price: 870000000, label: "集金係", area: 19 },
+  { id: "robot-5", kind: "robot", pos: { x: 760, y: 520 }, price: 2200000000, label: "人力車", area: 19, unlockAfter: "waiter-11" },
+  { id: "cook-22", kind: "cook", pos: { x: 360, y: 70 }, price: 1100000000, label: "番台", stoveId: "bath-3", area: 20 },
+  { id: "waiter-12", kind: "waiter", pos: { x: 260, y: 260 }, price: 1400000000, label: "手ぬぐい係", area: 20 },
+  { id: "collector-17", kind: "collector", pos: { x: 590, y: 260 }, price: 1700000000, label: "集金係", area: 20 },
+  { id: "cook-23", kind: "cook", pos: { x: 810, y: 70 }, price: 1500000000, label: "料理人", stoveId: "kitchen-8", area: 21 },
+  { id: "server-7", kind: "server", pos: { x: 900, y: 70 }, price: 1800000000, label: "配膳係", area: 21 },
+  { id: "busser-6", kind: "busser", pos: { x: 900, y: 260 }, price: 2200000000, label: "片づけ係", area: 21 },
+
+  /* 山門・展望坂 */
+  { id: "waiter-13", kind: "waiter", pos: { x: 990, y: 200 }, price: 2500000000, label: "手ぬぐい係", area: 22 },
+  { id: "collector-18", kind: "collector", pos: { x: 990, y: 290 }, price: 3000000000, label: "集金係", area: 22 },
+  { id: "cook-24", kind: "cook", pos: { x: 1180, y: 60 }, price: 3700000000, label: "社務の人", stoveId: "omamori-1", area: 23 },
+  { id: "stocker-7", kind: "stocker", pos: { x: 1290, y: 60 }, price: 4000000000, label: "品出し係", area: 23 },
+  { id: "collector-19", kind: "collector", pos: { x: 1390, y: 190 }, price: 4400000000, label: "レジ係", area: 23 },
+
+  /* 夜見世通り */
+  { id: "waiter-14", kind: "waiter", pos: { x: 2230, y: 1270 }, price: 5100000000, label: "手ぬぐい係", area: 24 },
+  { id: "collector-20", kind: "collector", pos: { x: 2320, y: 1270 }, price: 5800000000, label: "集金係", area: 24 },
+  { id: "robot-6", kind: "robot", pos: { x: 2410, y: 1270 }, price: 7300000000, label: "巡回ワゴン", area: 24, unlockAfter: "waiter-14" },
+  { id: "cook-25", kind: "cook", pos: { x: 2230, y: 910 }, price: 6200000000, label: "板前", stoveId: "kitchen-9", area: 25 },
+  { id: "server-8", kind: "server", pos: { x: 2420, y: 850 }, price: 6500000000, label: "配膳係", area: 25 },
+  { id: "busser-7", kind: "busser", pos: { x: 2420, y: 910 }, price: 7300000000, label: "片づけ係", area: 25 },
+  { id: "cook-26", kind: "cook", pos: { x: 2350, y: 910 }, price: 8400000000, label: "板前", stoveId: "kitchen-10", area: 25 },
+  { id: "cook-27", kind: "cook", pos: { x: 2610, y: 1090 }, price: 7300000000, label: "菓子職人", stoveId: "sweets-3", area: 26 },
+  { id: "stocker-8", kind: "stocker", pos: { x: 2680, y: 1160 }, price: 7600000000, label: "品出し係", area: 26 },
+  { id: "collector-21", kind: "collector", pos: { x: 2680, y: 1240 }, price: 8700000000, label: "レジ係", area: 26 },
+
+  /* 大旅館 */
+  { id: "cook-28", kind: "cook", pos: { x: 2030, y: 570 }, price: 11000000000, label: "料理長", stoveId: "kitchen-11", area: 28 },
+  { id: "cook-29", kind: "cook", pos: { x: 2150, y: 570 }, price: 13000000000, label: "料理長", stoveId: "kitchen-12", area: 28 },
+  { id: "server-9", kind: "server", pos: { x: 2280, y: 510 }, price: 12000000000, label: "仲居", area: 28 },
+  { id: "server-10", kind: "server", pos: { x: 2370, y: 510 }, price: 14000000000, label: "仲居", area: 28 },
+  { id: "busser-8", kind: "busser", pos: { x: 2280, y: 570 }, price: 14000000000, label: "布団係", area: 28 },
+  { id: "busser-9", kind: "busser", pos: { x: 2370, y: 570 }, price: 15000000000, label: "布団係", area: 28 },
+  { id: "collector-22", kind: "collector", pos: { x: 2380, y: 740 }, price: 15000000000, label: "帳場のレジ係", area: 28 },
+  { id: "master-3", kind: "master", pos: { x: 2000, y: 740 }, price: 18000000000, label: "大女将", area: 28 },
+  { id: "cook-30", kind: "cook", pos: { x: 2580, y: 510 }, price: 13000000000, label: "番台", stoveId: "bath-4", area: 29 },
+  { id: "waiter-15", kind: "waiter", pos: { x: 2470, y: 760 }, price: 14000000000, label: "手ぬぐい係", area: 29 },
+  { id: "waiter-16", kind: "waiter", pos: { x: 2570, y: 760 }, price: 15000000000, label: "手ぬぐい係", area: 29 },
+  { id: "collector-23", kind: "collector", pos: { x: 2660, y: 760 }, price: 16000000000, label: "集金係", area: 29 },
+];
+
+const onsenEquipment: EquipSpec[] = [
+  /* 湯まわりの強化（源泉から町じゅうの湯へ効く） */
+  { id: "noodle", name: "湯樋の掃除", detail: "すべての作業場が +30%", pos: { x: 1000, y: 600 }, price: 500000, area: 6, unlockAfter: "area-6" },
+  { id: "fridge", name: "木製分水槽", detail: "作業場に貯めておける数 +4", pos: { x: 1080, y: 600 }, price: 1100000, area: 6, unlockAfter: "equip-noodle" },
+  { id: "ticket", name: "湯銭箱", detail: "お金が自動で入る・集金係は手ぬぐいへ", pos: { x: 1160, y: 600 }, price: 6500000, area: 6, unlockAfter: "equip-fridge" },
+  { id: "yuguchi", name: "湯口の拡張", detail: "源泉の湯汲み場に +6 ためられる", pos: { x: 860, y: 680 }, price: 3000000, area: 6, capacity: { stove: "stove-3", plus: 6 }, unlockAfter: "area-6" },
+  { id: "bunyu", name: "配湯管の増設", detail: "共同浴場の受付に +6 ためられる", pos: { x: 1690, y: 650 }, price: 11000000, area: 7, capacity: { stove: "bath-1", plus: 6 }, unlockAfter: "area-7" },
+
+  /* 石畳（通ると足が速くなる。道をつなぐほど町が回る） */
+  { id: "ishidatami1", name: "入口の石畳", detail: "石を敷き直す。町を歩く足が速くなる", pos: { x: 1030, y: 1400 }, price: 65000, area: 0, road: { from: { x: 1070, y: 1500 }, to: { x: 1270, y: 1100 } }, unlockAfter: "area-2" },
+  { id: "ishidatami2", name: "湯坂の石畳", detail: "坂を石で舗装する。さらに足が速くなる", pos: { x: 1180, y: 1200 }, price: 2600000, area: 4, road: { from: { x: 1270, y: 1300 }, to: { x: 1100, y: 700 } }, unlockAfter: "area-6" },
+  { id: "ishidatami3", name: "通りの石畳", detail: "食べ歩き通りを舗装する", pos: { x: 560, y: 1000 }, price: 29000000, area: 10, road: { from: { x: 800, y: 980 }, to: { x: 260, y: 980 } }, unlockAfter: "area-10" },
+  { id: "kibashi", name: "湯川の木橋", detail: "川をまたぐ橋。公園までの足が速くなる", pos: { x: 600, y: 320 }, price: 1100000000, area: 19, road: { from: { x: 790, y: 420 }, to: { x: 300, y: 420 } }, unlockAfter: "area-19" },
+
+  /* 集客（かけ算で効く。町のにぎわいそのもの） */
+  { id: "nobori", name: "湯けむりののぼり", detail: "入口から目立つ。集客 1.25倍", pos: { x: 950, y: 1400 }, price: 13000, area: 0, draw: 1.25, unlockAfter: "waiter-1" },
+  { id: "annaiban", name: "大きな案内板", detail: "行き先が分かる。集客 1.4倍", pos: { x: 1880, y: 1400 }, price: 260000, area: 2, draw: 1.4, unlockAfter: "area-2" },
+  { id: "yumomiTaiko", name: "湯もみの太鼓", detail: "演目の音が町に響く。集客 1.6倍", pos: { x: 750, y: 590 }, price: 6500000, area: 8, draw: 1.6, unlockAfter: "area-8" },
+  { id: "chochin", name: "提灯の並木", detail: "夜の通りが明るくなる。集客 1.8倍", pos: { x: 260, y: 1060 }, price: 79000000, area: 10, draw: 1.8, unlockAfter: "area-10" },
+  { id: "yukata", name: "浴衣の貸し出し", detail: "浴衣で町を歩ける。集客 2倍", pos: { x: 1180, y: 1100 }, price: 870000000, area: 4, draw: 2, unlockAfter: "area-17" },
+  { id: "tenbo", name: "展望台", detail: "石段の上から町を見わたす。集客 2.4倍", pos: { x: 990, y: 60 }, price: 3700000000, area: 22, draw: 2.4, unlockAfter: "area-22" },
+  { id: "yuakari", name: "湯あかりの灯籠", detail: "町ぜんぶに灯籠がともる。集客 3倍", pos: { x: 2080, y: 1000 }, price: 11000000000, area: 27, draw: 3, unlockAfter: "area-28" },
+];
+
+const onsenUpgrades: Upgrade[] = [
+  { id: "carry", name: "湯かご", detail: (n) => `${3 + n}こまで持てる・スタッフも ${3 + Math.floor(n / 2)}こ`, pos: { x: 780, y: 1570 }, basePrice: 70, growth: 1.7, max: 9, unlockAfter: "seat-0-3" },
+  { id: "speed", name: "わらじ", detail: (n) => `足の速さ +${n * 10}%・スタッフも +${n * 5}%`, pos: { x: 860, y: 1570 }, basePrice: 60, growth: 1.65, max: 12, unlockAfter: "waiter-1" },
+  { id: "cook", name: "湯口の手入れ", detail: (n) => `作る速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 940, y: 1570 }, basePrice: 110, growth: 1.7, max: 14, unlockAfter: "stove-2" },
+  { id: "price", name: "もてなし", detail: (n) => `ひとり ${Math.round(60 * Math.pow(1.4, n))}円`, pos: { x: 1020, y: 1570 }, basePrice: 150, growth: 1.9, max: 20, unlockAfter: "seat-0-4" },
 ];
 
 /* ==================== ワーキングプラネット: 火のはじまり ==================== */
@@ -1933,6 +2750,80 @@ export const stageDefs: Record<StageId, StageDef> = {
       outsideDetail: "自動改札と園内アナウンスはこの外に置く",
     },
   },
+  onsen: {
+    id: "onsen",
+    name: "湯けむり温泉街",
+    subtitle: "一本の道からはじめる",
+    icon: "♨️",
+    itemIcon: "🧺",
+    // 作業場は建物の中に散らばっているので、帯は持たない
+    frontRoom: { top: 0, bottom: 0 },
+    areas: onsenAreas,
+    stoves: onsenStoves,
+    seats: onsenSeats,
+    hires: onsenHires,
+    equipment: onsenEquipment,
+    upgrades: onsenUpgrades,
+    baseValue: 60,
+    // ドリームパークを最後まで開けた人にだけ、次の町の話が来る
+    requiresAreas: 10,
+    requiresStage: "park",
+    // 建物は一軒ずつ壁と戸口を持つ。道からは戸口だけで出入りする
+    walls: true,
+    // 町が広いので、少し引いて見せてカメラで追う
+    view: 440,
+    // 客が歩いてくるのは、いちばん下の入口道路の先
+    entranceX: 1150,
+    startPos: { x: 900, y: 1540 },
+    // 序盤は次の一手だけ、町が広がると5〜8個から選べるようにする
+    revealLimit: 4,
+    revealLimitBy: {
+      "area-2": 6,
+      "area-5": 7,
+      "area-6": 8,
+      "area-10": 8,
+      "area-14": 8,
+    },
+    labels: {
+      item: "手ぬぐい",
+      producer: "置き場",
+      tray: "湯口",
+      guest: "お客さん",
+      using: "湯に入っている",
+      staff: {
+        waiter: "手ぬぐい係",
+        robot: "巡回ワゴン",
+        collector: "集金係",
+        cook: "担当の人",
+        master: "女将",
+        busser: "片づけ係",
+        stocker: "品出し係",
+        server: "配膳係",
+        seller: "受付",
+        gatekeeper: "門番",
+        hunter: "狩人",
+        logger: "木こり",
+        splitter: "薪割り",
+        butcher: "解体係",
+        builder: "建築係",
+        keeper: "倉庫番",
+        nightman: "夜番",
+        explorer: "案内人",
+        runner: "仕込み係",
+        boat: "運搬船",
+      },
+      objective: {
+        pickup: "置き場で手ぬぐいを受け取ろう",
+        serve: "光っている湯口まで運ぼう",
+        coin: "お金を踏んで回収しよう",
+        waitItem: "手ぬぐいがそろうまで待とう",
+        waitGuest: "お客さんを待っています",
+      },
+      auto: "自動の湯かご置き",
+      outside: "温泉街の入口",
+      outsideDetail: "客はこの先から歩いてくる",
+    },
+  },
   fire: {
     id: "fire",
     name: "火のはじまり",
@@ -2099,7 +2990,11 @@ export const stageDefs: Record<StageId, StageDef> = {
 };
 
 
-export const stageList: StageDef[] = [stageDefs.ramen, stageDefs.park];
+export const stageList: StageDef[] = [
+  stageDefs.ramen,
+  stageDefs.park,
+  stageDefs.onsen,
+];
 
 /** ワーキングプラネットの並び（トップページで別のかたまりに出す） */
 export const planetStages: StageDef[] = [stageDefs.fire, stageDefs.taiga];

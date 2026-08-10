@@ -267,7 +267,34 @@ export type AreaPalette = {
     | "fossil"
     | "diner"
     | "market"
-    | "volcano";
+    | "volcano"
+    /* ---- 湯けむり温泉街 ---- */
+    /** 石畳の道 */
+    | "stone"
+    /** 湯坂（石段まじりの坂道） */
+    | "slope"
+    /** 源泉広場（湯坪と湯樋） */
+    | "yubatake"
+    /** 提灯の下がる通り */
+    | "lantern"
+    /** 細い裏路地 */
+    | "alley"
+    /** 湯の川ぞい */
+    | "river"
+    /** 石段 */
+    | "steps"
+    /** 夜見世（暖色の灯り） */
+    | "night"
+    /** 畳と板の間（店の中） */
+    | "tatami"
+    /** 浴場（湯船の湯気） */
+    | "bath"
+    /** 旅館の中 */
+    | "inn"
+    /** 社（山門の高台） */
+    | "shrine"
+    /** 庭園 */
+    | "garden";
 };
 
 export type AreaSpec = {
@@ -283,10 +310,14 @@ export type AreaSpec = {
   /** どの店に属するか（0＝1号店 / 1＝2号店）。店員はこの店から出ない */
   shop?: number;
   /**
-   * 客用の戸口。棟の南の壁（通り側）に開いた穴。
-   * 壁の位置は開いている区画によって変わるので、横位置と幅だけを持つ
+   * 客用の戸口。棟の壁（通り側）に開いた穴。
+   * 壁の位置は開いている区画によって変わるので、壁に沿った位置と幅だけを持つ。
+   *
+   * side を省くと南の壁（ラーメンの棟はすべてこれ）。
+   * 温泉街は道の北側にも南側にも建物が並ぶので、四辺どこにでも開けられる。
+   * x は「壁に沿った中心」で、東西の壁では縦の位置を指す
    */
-  door?: { x: number; w: number };
+  door?: { x: number; w: number; side?: "s" | "n" | "e" | "w" };
   /** この区画を買うとついてくる渡り廊下（棟と棟をつなぐ、歩ける床） */
   corridor?: Rect;
   /** 買う枠の位置（すでに開いている区画の中に置く） */
@@ -1614,11 +1645,6 @@ export const wallsOn = () => !!currentStage.walls;
 const inRect = (rect: Rect, pos: Vec) =>
   pos.x > rect.x0 && pos.x < rect.x1 && pos.y > rect.y0 && pos.y < rect.y1;
 
-const centerOf = (rect: Rect): Vec => ({
-  x: (rect.x0 + rect.x1) / 2,
-  y: (rect.y0 + rect.y1) / 2,
-});
-
 const touches = (a: Rect, b: Rect, slack = 6) =>
   a.x0 - slack < b.x1 && a.x1 + slack > b.x0 && a.y0 - slack < b.y1 && a.y1 + slack > b.y0;
 
@@ -1627,7 +1653,49 @@ export type Opening = { rect: Rect; nodes: string[] };
 type WallCache = {
   key: string;
   rooms: { id: string; rect: Rect }[];
+  /** 道の区画（温泉街）。壁はないが、通り道の点として経路に使う */
+  roads: { id: string; rect: Rect }[];
   openings: Opening[];
+};
+
+/**
+ * 二つの長方形が接している辺（重なっている部分）。
+ * 道と道のつなぎ目になる。触れていなければ null
+ */
+const sharedEdge = (a: Rect, b: Rect, slack = 4): Rect | null => {
+  const overlapY = { y0: Math.max(a.y0, b.y0), y1: Math.min(a.y1, b.y1) };
+  const overlapX = { x0: Math.max(a.x0, b.x0), x1: Math.min(a.x1, b.x1) };
+  if (overlapY.y1 - overlapY.y0 > 24) {
+    for (const x of [a.x1, a.x0]) {
+      if (Math.abs(x - b.x0) <= slack || Math.abs(x - b.x1) <= slack)
+        return { x0: x - 14, x1: x + 14, ...overlapY };
+    }
+  }
+  if (overlapX.x1 - overlapX.x0 > 24) {
+    for (const y of [a.y1, a.y0]) {
+      if (Math.abs(y - b.y0) <= slack || Math.abs(y - b.y1) <= slack)
+        return { ...overlapX, y0: y - 14, y1: y + 14 };
+    }
+  }
+  return null;
+};
+
+/**
+ * 通り抜ける点。その穴のなかで、いまいるところにいちばん近いところを選ぶ。
+ *
+ * ただし縁ぎりぎりは通らない。狭い戸口では、はしを狙うと
+ * 抜けたとたんに壁へ向き直って、そのまま引っかかってしまう。
+ * 穴の幅の 1/3（最大24）だけ内側に寄せて、まんなか寄りを抜ける
+ */
+const clampTo = (rect: Rect, pos: Vec): Vec => {
+  const pick = (a: number, b: number, at: number) => {
+    const span = b - a;
+    // 壁をまたぐ薄い向きは、まんなか（壁の線）をまっすぐ通る
+    if (span <= 40) return (a + b) / 2;
+    const inset = Math.min(span / 3, 24);
+    return Math.min(Math.max(at, a + inset), b - inset);
+  };
+  return { x: pick(rect.x0, rect.x1, pos.x), y: pick(rect.y0, rect.y1, pos.y) };
 };
 let wallCache: WallCache | null = null;
 
@@ -1658,21 +1726,50 @@ const wallData = (state: ShopState): WallCache => {
   }
   const rooms = [...boxes.entries()].map(([id, rect]) => ({ id, rect }));
 
-  // 穴＝戸口（棟 ↔ 外）と渡り廊下（棟 ↔ 棟）
+  /*
+   * 道の区画。壁は持たないが、経路のうえでは「通り」という点になる。
+   * 温泉街では、客も店員も道から道へ辻をたどって歩く。
+   * 建物を突っ切る道はないので、遠くの店へも通りづたいに向かうことになる
+   */
+  const roads = openAreas(state)
+    .filter((area) => !area.building)
+    .map((area) => ({ id: `road:${area.id}`, rect: area.rect }));
+  const roadAt = (pos: Vec) => roads.find((road) => inRect(road.rect, pos))?.id;
+
+  // 穴＝戸口（棟 ↔ 通り）・渡り廊下（棟 ↔ 棟）・辻（通り ↔ 通り）
   const openings: Opening[] = [];
   for (const area of openAreas(state)) {
     if (!area.door || !area.building) continue;
     const box = boxes.get(area.building);
     if (!box) continue;
-    // 戸口は南の壁（通り側）。壁の位置は棟が広がると下がる
+    // 戸口は指定した壁（省略で南＝通り側）。壁の位置は棟が広がると動く
+    const { x, w, side = "s" } = area.door;
+    const half = w / 2;
+    const flat = side === "s" || side === "n";
+    const wall = side === "s" ? box.y1 : side === "n" ? box.y0 : side === "e" ? box.x1 : box.x0;
+    const rect = flat
+      ? { x0: x - half, x1: x + half, y0: wall - 14, y1: wall + 14 }
+      : { x0: wall - 14, x1: wall + 14, y0: x - half, y1: x + half };
+    // 戸口の外がどの通りに面しているか（面していなければ、ただの屋外）
+    const out = flat
+      ? { x, y: side === "s" ? wall + 22 : wall - 22 }
+      : { x: side === "e" ? wall + 22 : wall - 22, y: x };
+    openings.push({ rect, nodes: [area.building, roadAt(out) ?? "out"] });
+  }
+  // 通りと通りの辻
+  for (let i = 0; i < roads.length; i += 1) {
+    for (let j = i + 1; j < roads.length; j += 1) {
+      const gate = sharedEdge(roads[i].rect, roads[j].rect);
+      if (gate) openings.push({ rect: gate, nodes: [roads[i].id, roads[j].id] });
+    }
+  }
+  // 町の入口。いちばん手前の通りだけが、外（客の来る道）につながる
+  const front = openAreas(state).reduce((max, area) => Math.max(max, area.rect.y1), 0);
+  for (const road of roads) {
+    if (road.rect.y1 < front - 4) continue;
     openings.push({
-      rect: {
-        x0: area.door.x - area.door.w / 2,
-        x1: area.door.x + area.door.w / 2,
-        y0: box.y1 - 14,
-        y1: box.y1 + 14,
-      },
-      nodes: [area.building, "out"],
+      rect: { x0: road.rect.x0, x1: road.rect.x1, y0: road.rect.y1 - 14, y1: road.rect.y1 + 14 },
+      nodes: [road.id, "out"],
     });
   }
   const halls: Rect[] = [
@@ -1687,17 +1784,30 @@ const wallData = (state: ShopState): WallCache => {
     const ends = rooms.filter((room) => touches(rect, room.rect)).map((room) => room.id);
     openings.push({ rect, nodes: ends.length > 0 ? ends : ["out"] });
   }
-  wallCache = { key, rooms, openings };
+  wallCache = { key, rooms, roads, openings };
   return wallCache;
 };
 
 export const roomRects = (state: ShopState) => wallData(state).rooms;
 export const openingsOf = (state: ShopState) => wallData(state).openings;
 
-/** いまいる場所（棟の id か、屋外なら "out"） */
+/** いまいる場所（棟の id・通りの id・そのどちらでもなければ "out"） */
 export const placeOf = (state: ShopState, pos: Vec): string => {
-  for (const room of wallData(state).rooms) if (inRect(room.rect, pos)) return room.id;
-  return "out";
+  const { rooms, roads } = wallData(state);
+  for (const room of rooms) if (inRect(room.rect, pos)) return room.id;
+  for (const road of roads) if (inRect(road.rect, pos)) return road.id;
+  /*
+   * 区画と区画のすきま（舗装されていない地面）に立っているとき。
+   * すぐ横の通りにいることにして、そこから道をたどらせる
+   */
+  let near: { id: string; gap: number } | null = null;
+  for (const road of roads) {
+    const gap =
+      Math.max(road.rect.x0 - pos.x, 0, pos.x - road.rect.x1) +
+      Math.max(road.rect.y0 - pos.y, 0, pos.y - road.rect.y1);
+    if (gap < 40 && (!near || gap < near.gap)) near = { id: road.id, gap };
+  }
+  return near ? near.id : "out";
 };
 
 /** その一歩で棟の壁をまたぐか（戸口・渡り廊下のところだけ通れる） */
@@ -1723,7 +1833,7 @@ export const routeTo = (state: ShopState, from: Vec, to: Vec): Vec[] => {
   const goal = placeOf(state, to);
   if (start === goal) return [];
   const { openings } = wallData(state);
-  const back = new Map<string, { node: string; at: Vec }>();
+  const back = new Map<string, { node: string; at: Rect }>();
   const seen = new Set<string>([start]);
   const queue: string[] = [start];
   while (queue.length > 0) {
@@ -1734,19 +1844,30 @@ export const routeTo = (state: ShopState, from: Vec, to: Vec): Vec[] => {
       for (const next of hole.nodes) {
         if (next === cur || seen.has(next)) continue;
         seen.add(next);
-        back.set(next, { node: cur, at: centerOf(hole.rect) });
+        back.set(next, { node: cur, at: hole.rect });
         queue.push(next);
       }
     }
   }
   if (!seen.has(goal)) return [];
-  const out: Vec[] = [];
+  const gates: Rect[] = [];
   let cur = goal;
   while (cur !== start) {
     const step = back.get(cur);
     if (!step) break;
-    out.unshift(step.at);
+    gates.unshift(step.at);
     cur = step.node;
+  }
+  /*
+   * 通り抜けるところは、まんなかではなく「いま居るところにいちばん近い点」を通る。
+   * 辻の幅がある温泉街で、わざわざ交差点の中心まで遠回りしないようにするため
+   */
+  const out: Vec[] = [];
+  let from2 = from;
+  for (const gate of gates) {
+    const at = clampTo(gate, from2);
+    out.push(at);
+    from2 = at;
   }
   return out;
 };
@@ -2133,22 +2254,22 @@ const unlock = (state: ShopState, padId: string) => {
  * 遠い区画のベンチにたどり着くだけで何十秒もかかる。
  * その区画の野から来てもらう（帰るときも同じ方角へ帰る）。
  */
-/** その席のある棟の、客用の戸口（無ければ null） */
-const doorFor = (seat: SeatSpec | null): { x: number; w: number } | null => {
+/** その席のある棟（無ければ null） */
+const buildingOf = (seat: SeatSpec | null): string | null => {
   if (!seat) return null;
-  const own = areaById.get(`area-${seat.area}`);
-  if (!own) return null;
-  if (own.door) return own.door;
-  // 同じ棟のどこかにある戸口を使う（1号店は area-0 に置く）
-  const mate = areas.find((item) => item.building === own.building && item.door);
-  return mate?.door ?? null;
+  return areaById.get(`area-${seat.area}`)?.building ?? null;
 };
 
 /** その席の客が出入りする、通りの位置 */
 const streetFor = (state: ShopState, seat: SeatSpec | null): Vec => {
   const street = streetPos(state);
-  const door = doorFor(seat);
-  return { x: door ? door.x : street.x, y: street.y };
+  const building = buildingOf(seat);
+  if (!building) return street;
+  // 棟から外へ出る穴（戸口）の真下の通りへ。四辺どこに開いていても同じように扱える
+  const door = openingsOf(state).find(
+    (hole) => hole.nodes.includes("out") && hole.nodes.includes(building),
+  );
+  return { x: door ? (door.rect.x0 + door.rect.x1) / 2 : street.x, y: street.y };
 };
 
 const guestEntry = (state: ShopState, seat: SeatSpec | null): Vec => {

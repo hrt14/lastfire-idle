@@ -199,8 +199,9 @@ export const stageUnlocked = (id: StageId): boolean => {
   }
   const need = stageDefs[id].requiresAreas;
   if (need <= 0) return true;
-  const ramen = vault.stages.ramen;
-  const opened = ramen?.unlocked?.filter((key) => key.startsWith("area-")).length ?? 0;
+  // どのステージの区画を数えるか（省略でラーメン一直線）
+  const from = vault.stages[stageDefs[id].requiresStage ?? "ramen"];
+  const opened = from?.unlocked?.filter((key) => key.startsWith("area-")).length ?? 0;
   // area-0 は最初から開いているので +1
   return opened + 1 >= need;
 };
