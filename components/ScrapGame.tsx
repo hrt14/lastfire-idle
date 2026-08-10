@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import Shop, { type Sample } from "@/components/Shop";
-import ScrapOverlay from "@/components/ScrapOverlay";
 import {
   enterScrapSession,
   leaveScrapSession,
@@ -13,6 +12,8 @@ import {
 import { applyScrapStageTheme, restoreTaigaStageTheme } from "@/data/scrap-stage-theme";
 import { formatMoney } from "@/lib/format";
 
+const SCRAP_RUNTIME_VERSION = "scrap-runtime-v3";
+
 export default function ScrapGame() {
   const [ready, setReady] = useState(false);
   const [sample, setSample] = useState<Sample | null>(null);
@@ -21,6 +22,14 @@ export default function ScrapGame() {
   useEffect(() => {
     applyScrapStageTheme();
     enterScrapSession();
+
+    // 以前の壊れたSCRAP実装で保存された座標・進行を一度だけ破棄する。
+    // 他ステージのセーブには触れない。
+    if (window.localStorage.getItem(SCRAP_RUNTIME_VERSION) !== "1") {
+      resetState();
+      window.localStorage.setItem(SCRAP_RUNTIME_VERSION, "1");
+    }
+
     setReady(true);
     const persist = () => save();
     window.addEventListener("pagehide", persist);
@@ -42,7 +51,7 @@ export default function ScrapGame() {
           <Link href="/" className="chip-button" aria-label="ステージ選択へ">☰</Link>
           <div>
             <strong>SCRAP PLANET</strong>
-            <small>PLANET RECLAMATION / SECTOR 01</small>
+            <small>TAIGA ENGINE / CLEAN RUNTIME</small>
           </div>
         </div>
         <div className="hud-right">
@@ -55,17 +64,8 @@ export default function ScrapGame() {
         </div>
       </header>
 
-      <div className="scrap-sector-strip" aria-hidden>
-        <span>SECTOR 01</span>
-        <strong>廃棄平原・再生ライン</strong>
-        <i>ONLINE</i>
-      </div>
-
       <div className="scrap-world-shell">
-        <Shop key="scrap-taiga-engine" onSample={setSample} paused={resetOpen} />
-        <ScrapOverlay />
-        <div className="scrap-scanlines" aria-hidden />
-        <div className="scrap-warning-rail" aria-hidden><span /><span /><span /><span /><span /><span /></div>
+        <Shop key="scrap-taiga-engine-clean" onSample={setSample} paused={resetOpen} />
       </div>
 
       <footer className="dock scrap-dock">
@@ -74,7 +74,7 @@ export default function ScrapGame() {
           <strong>{sample?.carry ?? 0}<small> / {sample?.maxCarry ?? 3}</small></strong>
           <small className="carry-note">回収資源</small>
         </div>
-        <p className="dock-note">回収 → 選別 → 破砕 → 精製 → 搬送。廃棄惑星を再生工場へ変えていく。</p>
+        <p className="dock-note">まず操作確認版。大河の文明と同じ移動・回収・運搬ロジックで動作します。</p>
       </footer>
 
       {sample?.toast ? <div className="toast">{sample.toast}</div> : null}
