@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import Shop, { type Sample } from "@/components/Shop";
+import ScrapOverlay from "@/components/ScrapOverlay";
 import {
   enterScrapSession,
   leaveScrapSession,
@@ -62,6 +63,7 @@ export default function ScrapGame() {
 
       <div className="scrap-world-shell">
         <Shop key="scrap-taiga-engine" onSample={setSample} paused={resetOpen} />
+        <ScrapOverlay />
         <div className="scrap-scanlines" aria-hidden />
         <div className="scrap-warning-rail" aria-hidden><span /><span /><span /><span /><span /><span /></div>
       </div>
