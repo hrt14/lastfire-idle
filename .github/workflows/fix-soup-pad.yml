@@ -1,0 +1,43 @@
+name: Fix unreachable soup warehouse build pad
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move soup warehouse build pad into reachable area
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('data/stages.ts')
+          text = path.read_text()
+          old = '''    id: "area-8",
+    label: "スープ蔵をたてる",
+    price: 48000000000,
+    rect: { x0: 1500, y0: 420, x1: 1840, y1: 790 },
+    padPos: { x: 1620, y: 450 },'''
+          new = '''    id: "area-8",
+    label: "スープ蔵をたてる",
+    price: 48000000000,
+    rect: { x0: 1500, y0: 420, x1: 1840, y1: 790 },
+    padPos: { x: 1620, y: 350 },'''
+          if old not in text:
+              raise SystemExit('Expected soup warehouse block not found; refusing broad replacement')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit fix and remove one-shot workflow
+        run: |
+          rm .github/workflows/fix-soup-pad.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/stages.ts .github/workflows/fix-soup-pad.yml
+          git commit -m "Fix unreachable soup warehouse build pad"
+          git push origin HEAD:main
