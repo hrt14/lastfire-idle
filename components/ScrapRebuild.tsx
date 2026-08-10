@@ -158,12 +158,16 @@ const restoreTaigaTheme = () => {
 export default function ScrapRebuild() {
   const [ready, setReady] = useState(false);
 
-  applyScrapTheme();
-
   useEffect(() => {
+    // Strict Mode では effect が setup → cleanup → setup と動く。
+    // テーマ適用を effect の中に置くことで、2回目の setup でも必ず再適用する。
+    applyScrapTheme();
     switchStage("taiga");
     setReady(true);
-    return () => restoreTaigaTheme();
+
+    return () => {
+      restoreTaigaTheme();
+    };
   }, []);
 
   if (!ready) return <div className={styles.loading}>SCRAP PLANET 起動中…</div>;
