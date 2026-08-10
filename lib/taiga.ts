@@ -200,7 +200,9 @@ export const taigaWork = (state: ShopState, stove: StoveSpec) => {
       if (isField(stove)) rate *= 1.6;
       break;
     case "dry":
-      if (isWater(stove)) rate *= 0.6;
+      if (isWater(stove)) {
+        rate *= state.built.includes("build-reservoir") ? 1.0 : 0.6;
+      }
       if (isField(stove)) rate *= 0.85;
       break;
   }
@@ -210,7 +212,12 @@ export const taigaWork = (state: ShopState, stove: StoveSpec) => {
      * 増水で畑が水につかる。土手を築いてあれば、そのまま育つ。
      * 作物が消える仕様にはしない（仕様書 §6.5）。止まるだけ
      */
-    if (!hasEquip(state, "levee")) return 0;
+    if (
+      !hasEquip(state, "levee") &&
+      !state.built.includes("build-great-levee")
+    ) {
+      return 0;
+    }
   }
   // 洪水のあとの泥で、しばらく畑がよく育つ
   if (taiga.rich > 0 && isField(stove)) rate *= 1.4;
@@ -288,7 +295,11 @@ export const taigaCrew = (state: ShopState, kind: string) => {
 
 /** 歩く速さの倍率（増水中はぬかるむ） */
 export const taigaMove = (state: ShopState) =>
-  flooding(state) && !hasEquip(state, "levee") ? 0.82 : 1;
+  flooding(state) &&
+  !hasEquip(state, "levee") &&
+  !state.built.includes("build-great-levee")
+    ? 0.82
+    : 1;
 
 const toast = (state: ShopState, text: string) => {
   state.toast = { text, at: Date.now() };
@@ -391,7 +402,11 @@ export const updateTaiga = (state: ShopState, dt: number) => {
     taiga.clock >= SEASON_TIME * 0.45
   ) {
     taiga.flooded = true;
-    taiga.flood = hasEquip(state, "drain") ? FLOOD_TIME / 2 : FLOOD_TIME;
+    taiga.flood = state.built.includes("build-great-levee")
+      ? FLOOD_TIME / 4
+      : hasEquip(state, "drain")
+        ? FLOOD_TIME / 2
+        : FLOOD_TIME;
     taiga.flash = "flood";
     toast(
       state,
@@ -402,10 +417,13 @@ export const updateTaiga = (state: ShopState, dt: number) => {
   }
 };
 
-/** 大型交易船が建ったときの、旅の終わり */
+/** 大河の水門が完成したときの、この時代の終わり */
 export const taigaSail = (state: ShopState) => {
   if (state.taiga.sailed) return;
   state.taiga.sailed = true;
   state.taiga.flash = "sail";
-  toast(state, "上流から使者が来た ― 「大河の文明」の旅はここまで");
+  toast(
+    state,
+    "大河の流れを治めた ― 農耕・水運・治水の文明が完成した。次は新しい時代へ",
+  );
 };

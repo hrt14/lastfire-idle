@@ -1294,6 +1294,13 @@ export const fromPersisted = (input: unknown): ShopState => {
   }
   state.fire = fromFire(raw.fire);
   state.taiga = fromTaiga(raw.taiga);
+  if (
+    state.stageId === "taiga" &&
+    state.taiga.sailed &&
+    !state.built.includes("build-great-weir")
+  ) {
+    state.taiga.sailed = false;
+  }
 
   for (const stove of stoves) {
     if (state.unlocked.includes(stove.id)) {
