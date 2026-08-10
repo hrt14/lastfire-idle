@@ -218,15 +218,62 @@ const collectOneSource = (state: OceanState, id: OceanAreaId): OceanState => {
   };
 };
 
-const purchasePosition = (purchases: OceanPurchase[], purchase: OceanPurchase) => {
-  const index = purchases.findIndex((item) => item.id === purchase.id);
-  return PURCHASE_POSITIONS[Math.max(0, index)] ?? PURCHASE_POSITIONS[0];
+/** 投資する先の枠と、そこまでの案内に使う中身（大河の文明の PadTarget と同じ） */
+type PurchaseTarget = {
+  purchase: OceanPurchase;
+  pos: Vec;
+  /** あといくら貝がらが足りないか */
+  remain: number;
+  /** いまの貝がらで払えるか */
+  ready: boolean;
+};
+
+/**
+ * いま投資できる、いちばん近い枠。
+ *
+ * 選びかたは大河の文明（`nearestPadTarget` / lib/shop.ts）とそろえてある:
+ *   1. いまの貝がらで払える枠のうち、いちばん近いもの
+ *   2. どれも払えなければ、いちばん近い枠（薄い線で出す）
+ *
+ * 設備投資ドックは画面のいちばん下にあるので、資源を追っているあいだは
+ * 次にどこへ貝がらを入れるのかが見えなくなる。そこへ緑の点線を引く。
+ */
+const nearestPurchaseTarget = (
+  state: OceanState,
+  player: Vec,
+): PurchaseTarget | null => {
+  // 貝がらが1つもないあいだは投資できない。空の案内を出さない
+  if (state.shells <= 0) return null;
+
+  let ready: PurchaseTarget | null = null;
+  let readyAway = Infinity;
+  let near: PurchaseTarget | null = null;
+  let nearAway = Infinity;
+  const purchases = availablePurchases(state, state.currentArea);
+  for (const [index, purchase] of purchases.entries()) {
+    const pos = PURCHASE_POSITIONS[index] ?? PURCHASE_POSITIONS[0];
+    const away = distance(player, pos);
+    const target: PurchaseTarget = {
+      purchase,
+      pos,
+      remain: Math.max(0, purchase.cost - state.shells),
+      ready: state.shells >= purchase.cost,
+    };
+    if (away < nearAway) {
+      near = target;
+      nearAway = away;
+    }
+    if (target.ready && away < readyAway) {
+      ready = target;
+      readyAway = away;
+    }
+  }
+  return ready ?? near;
 };
 
 const guidance = (state: OceanState, player: Vec, time: number): Guidance => {
   const def = oceanArea(state.currentArea);
   const line = state.lines[state.currentArea];
-  const purchases = availablePurchases(state, state.currentArea);
 
   if (state.carry.kind === def.source && state.carry.amount > 0) {
     return { pos: INPUT, label: `${def.processorName}へ運ぶ`, kind: "work" };
@@ -238,13 +285,9 @@ const guidance = (state: OceanState, player: Vec, time: number): Guidance => {
     return { pos: OUTPUT, label: `${def.productName}を受け取る`, kind: "work" };
   }
 
-  const affordable = purchases.find((purchase) => state.shells >= purchase.cost);
-  if (affordable) {
-    return {
-      pos: purchasePosition(purchases, affordable),
-      label: affordable.label,
-      kind: "buy",
-    };
+  const invest = nearestPurchaseTarget(state, player);
+  if (invest?.ready) {
+    return { pos: invest.pos, label: invest.purchase.label, kind: "buy" };
   }
 
   if (line.input > 0) {
@@ -263,18 +306,30 @@ const guidance = (state: OceanState, player: Vec, time: number): Guidance => {
   return { pos: SOURCE_PICKUP, label: "資源の再出現を待つ", kind: "wait" };
 };
 
-const drawGuidance = (
+/*
+ * 案内の色。用がちがうので色で分ける ――
+ * 黄は「いまやる仕事」、緑は「投資できる枠」（大河の文明と同じ分けかた）。
+ */
+const GUIDE_WORK = "255,225,112";
+const GUIDE_BUY = "126,240,194";
+
+/**
+ * 目印への案内。動く点線を引き、目印を脈動するリングで囲む。
+ * fade を下げると、まだ届いていない先へ薄く引ける。
+ */
+const drawGuideLine = (
   ctx: CanvasRenderingContext2D,
   from: Vec,
-  next: Guidance,
+  to: Vec,
+  rgb: string,
   time: number,
+  fade = 1,
 ) => {
-  const to = next.pos;
   if (distance(from, to) > 42) {
     ctx.save();
     ctx.setLineDash([6, 8]);
     ctx.lineDashOffset = -((time * 0.04) % 14);
-    ctx.strokeStyle = next.kind === "buy" ? "rgba(126,240,194,0.75)" : "rgba(255,225,112,0.72)";
+    ctx.strokeStyle = `rgba(${rgb},${0.74 * fade})`;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(from.x, from.y - 8);
@@ -284,13 +339,21 @@ const drawGuidance = (
   }
 
   const pulse = 0.5 + Math.sin(time * 0.006) * 0.5;
-  ctx.strokeStyle = next.kind === "buy"
-    ? `rgba(126,240,194,${0.55 + pulse * 0.4})`
-    : `rgba(255,225,112,${0.5 + pulse * 0.45})`;
+  ctx.strokeStyle = `rgba(${rgb},${(0.53 + pulse * 0.42) * fade})`;
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.arc(to.x, to.y, 22 + pulse * 6, 0, Math.PI * 2);
   ctx.stroke();
+};
+
+const drawGuidance = (
+  ctx: CanvasRenderingContext2D,
+  from: Vec,
+  next: Guidance,
+  time: number,
+) => {
+  const to = next.pos;
+  drawGuideLine(ctx, from, to, next.kind === "buy" ? GUIDE_BUY : GUIDE_WORK, time);
 
   ctx.font = "800 10px system-ui";
   const label = `NEXT  ${next.label}`;
@@ -661,7 +724,20 @@ const drawScene = (
     ctx.fillText(`🐚 ${short(purchase.cost)}`, at.x, at.y + 13);
   });
 
-  drawGuidance(ctx, player, guidance(state, player, time), time);
+  /*
+   * --- 投資できる、いちばん近い枠（緑の点線） ---
+   *
+   * 仕事の案内が出ているあいだも、投資できる枠へは緑の点線を引いておく。
+   * 払い切れる枠があればそこへ、まだ足りないうちは薄い線でいちばん近い枠へ。
+   * 仕事の案内（黄）より先に描いて、重なっても仕事のほうが上に来るようにする。
+   */
+  const next = guidance(state, player, time);
+  const invest = nearestPurchaseTarget(state, player);
+  // 仕事がなくて案内そのものが投資先を指しているときは、二重に引かない
+  if (invest && next.kind !== "buy") {
+    drawGuideLine(ctx, player, invest.pos, GUIDE_BUY, time, invest.ready ? 1 : 0.5);
+  }
+  drawGuidance(ctx, player, next, time);
   drawPlayer(ctx, player, skin, state, time);
   ctx.restore();
 
