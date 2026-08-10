@@ -69,7 +69,9 @@ import {
   isDone,
   partsAt,
   recommendedPad,
+  nearestPadTarget,
   type Inspect,
+  type Vec,
   type Input,
   type OfflineReport,
   type ShopState,
@@ -10430,16 +10432,23 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
-      /* --- 案内 --- */
-      const objective = currentObjective(state);
-      if (objective.pos) {
+      /*
+       * 目印への案内。
+       *
+       * プレイヤーから目印へ動く点線を引き、目印を脈動するリングで囲む。
+       * 目印が画面の外にあるときは、画面のへりに向きと札を出す（§7.2）。
+       * 広い区画では、次に行く先がどちらか分からなくならないように。
+       *
+       * 色で用がちがう。橙は「いまやる仕事」、緑は「投資できる枠」。
+       */
+      const guideTo = (to: Vec, rgb: string, tag: string, fade = 1) => {
         const from = player.pos;
-        const to = objective.pos;
-        if (Math.hypot(to.x - from.x, to.y - from.y) > 46) {
+        const away = Math.hypot(to.x - from.x, to.y - from.y);
+        if (away > 46) {
           ctx.save();
           ctx.setLineDash([5, 7]);
           ctx.lineDashOffset = -((time * 40) % 12);
-          ctx.strokeStyle = "rgba(255,209,102,0.55)";
+          ctx.strokeStyle = `rgba(${rgb},${0.55 * fade})`;
           ctx.lineWidth = 2.5;
           ctx.beginPath();
           ctx.moveTo(from.x, from.y - 6);
@@ -10448,17 +10457,13 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.restore();
 
           const ring = 0.5 + Math.sin(time * 5) * 0.5;
-          ctx.strokeStyle = `rgba(255,209,102,${0.35 + ring * 0.5})`;
+          ctx.strokeStyle = `rgba(${rgb},${(0.35 + ring * 0.5) * fade})`;
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.arc(to.x, to.y, 18 + ring * 5, 0, Math.PI * 2);
           ctx.stroke();
         }
 
-        /*
-         * 目的地が画面の外にあるときは、画面のへりに向きを出す（§7.2）。
-         * 広い区画では、次に行く先がどちらか分からなくならないように
-         */
         const viewH = canvas.height / scale;
         const pad = 26;
         const outside =
@@ -10466,47 +10471,76 @@ export default function Shop({ onSample, paused }: Props) {
           to.x > camX + view - pad ||
           to.y < camY + pad ||
           to.y > camY + viewH - pad;
-        if (outside) {
-          const cx = camX + view / 2;
-          const cy = camY + viewH / 2;
-          const angle = Math.atan2(to.y - cy, to.x - cx);
-          // 画面の内側のふちに、矢印を貼りつける
-          const hx = view / 2 - pad;
-          const hy = viewH / 2 - pad;
-          const scaleT = Math.min(
-            Math.abs(hx / Math.cos(angle)),
-            Math.abs(hy / Math.sin(angle)),
-          );
-          const ax = cx + Math.cos(angle) * scaleT;
-          const ay = cy + Math.sin(angle) * scaleT;
-          const beat = 0.6 + Math.abs(Math.sin(time * 4)) * 0.4;
-          ctx.save();
-          ctx.translate(ax, ay);
-          ctx.rotate(angle);
-          ctx.fillStyle = `rgba(255,209,102,${beat})`;
-          ctx.beginPath();
-          ctx.moveTo(13, 0);
-          ctx.lineTo(-8, -9);
-          ctx.lineTo(-4, 0);
-          ctx.lineTo(-8, 9);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = "rgba(10,8,6,0.7)";
-          ctx.lineWidth = 1.4;
-          ctx.stroke();
-          ctx.restore();
-          // どれくらい遠いか
-          const away = Math.round(Math.hypot(to.x - from.x, to.y - from.y));
-          ctx.font = SMALL;
-          ctx.fillStyle = "rgba(10,8,6,0.75)";
-          const tag = `${away}`;
-          const tw = ctx.measureText(tag).width + 8;
-          roundRect(ctx, ax - tw / 2, ay + 12, tw, 11, 5);
-          ctx.fill();
-          ctx.fillStyle = "#ffd166";
-          ctx.fillText(tag, ax, ay + 18);
-          ctx.font = FONT;
-        }
+        if (!outside) return;
+        const cx = camX + view / 2;
+        const cy = camY + viewH / 2;
+        const angle = Math.atan2(to.y - cy, to.x - cx);
+        // 画面の内側のふちに、矢印を貼りつける
+        const hx = view / 2 - pad;
+        const hy = viewH / 2 - pad;
+        const scaleT = Math.min(
+          Math.abs(hx / Math.cos(angle)),
+          Math.abs(hy / Math.sin(angle)),
+        );
+        const ax = cx + Math.cos(angle) * scaleT;
+        const ay = cy + Math.sin(angle) * scaleT;
+        const beat = 0.6 + Math.abs(Math.sin(time * 4)) * 0.4;
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(angle);
+        ctx.fillStyle = `rgba(${rgb},${beat * fade})`;
+        ctx.beginPath();
+        ctx.moveTo(13, 0);
+        ctx.lineTo(-8, -9);
+        ctx.lineTo(-4, 0);
+        ctx.lineTo(-8, 9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "rgba(10,8,6,0.7)";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.restore();
+        // 札は矢印の下に。画面のかどでも読めるように、へりの内側へ寄せる
+        ctx.font = SMALL;
+        ctx.fillStyle = "rgba(10,8,6,0.75)";
+        const tw = ctx.measureText(tag).width + 8;
+        const tx = Math.min(
+          camX + view - tw / 2 - 4,
+          Math.max(camX + tw / 2 + 4, ax),
+        );
+        const ty = Math.min(camY + viewH - 16, ay + 12);
+        roundRect(ctx, tx - tw / 2, ty, tw, 11, 5);
+        ctx.fill();
+        ctx.fillStyle = `rgba(${rgb},${fade})`;
+        ctx.fillText(tag, tx, ty + 6);
+        ctx.font = FONT;
+      };
+
+      /*
+       * --- 投資できる、いちばん近い枠（緑の点線） ---
+       *
+       * 区画が広がると枠が画面の外へ出て、どこに投資できるのか分からなくなる。
+       * 払い切れる枠があればそこへ、なければいちばん近い枠へ薄く引く。
+       * 仕事の案内（橙）より先に描いて、重なっても仕事のほうが上に来るようにする
+       */
+      const buy = nearestPadTarget(state);
+      if (buy) {
+        guideTo(
+          buy.pos,
+          "126,231,168",
+          `${buy.pad.label} ${formatMoney(buy.remain, currency())}`,
+          buy.ready ? 1 : 0.5,
+        );
+      }
+
+      /* --- 案内 --- */
+      const objective = currentObjective(state);
+      if (objective.pos) {
+        // 札には、どれくらい遠いかを出す
+        const away = Math.round(
+          Math.hypot(objective.pos.x - player.pos.x, objective.pos.y - player.pos.y),
+        );
+        guideTo(objective.pos, "255,209,102", `${away}`);
       }
 
       ctx.save();

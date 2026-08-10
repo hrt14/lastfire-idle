@@ -2045,6 +2045,65 @@ export const recommendedPad = (state: ShopState): string | null => {
   return firePriorityPads(state).find((id) => open.has(id)) ?? null;
 };
 
+/** 投資する先の枠と、そこまでの案内に使う中身 */
+export type PadTarget = {
+  pad: Pad;
+  pos: Vec;
+  /** あといくら払えば手に入るか */
+  remain: number;
+  /** いまの持ち金で払い切れるか */
+  ready: boolean;
+};
+
+/**
+ * いま投資できる、いちばん近い枠。
+ *
+ * 区画が広がると枠が画面の外へ出て、どこに投資できるのかが分からなくなる。
+ * ここで選んだ枠へ、緑の点線を引いて向きを出す（すべてのステージで使う）。
+ *
+ * 選びかたは2段:
+ *   1. いまの持ち金で払い切れる枠のうち、いちばん近いもの
+ *   2. どれも払い切れなければ、いちばん近い枠（少しずつ払い込める）
+ *
+ * 立っている枠は、もう向かう先ではないので外す。
+ */
+export const nearestPadTarget = (state: ShopState): PadTarget | null => {
+  // お金がないあいだは投資できない。空の案内を出さない
+  if (state.money <= 0) return null;
+  const from = state.player.pos;
+  const left = (pad: Pad) =>
+    Math.max(0, padPrice(state, pad) - (state.padProgress[pad.id] ?? 0));
+
+  let ready: Pad | null = null;
+  let readyAway = Infinity;
+  let near: Pad | null = null;
+  let nearAway = Infinity;
+  for (const pad of availablePads(state)) {
+    if (pad.id === state.activePad) continue;
+    // 値段が入っていない枠は向かう先にしない（データの取りこぼし対策）
+    if (!Number.isFinite(padPrice(state, pad))) continue;
+    const away = dist(from, padPosOf(state, pad));
+    if (away < nearAway) {
+      near = pad;
+      nearAway = away;
+    }
+    if (away < readyAway && state.money >= left(pad)) {
+      ready = pad;
+      readyAway = away;
+    }
+  }
+
+  const pick = ready ?? near;
+  if (!pick) return null;
+  const remain = left(pick);
+  return {
+    pad: pick,
+    pos: padPosOf(state, pick),
+    remain,
+    ready: state.money >= remain,
+  };
+};
+
 /** 一度に新しく出す枠の数と、次に出すまでの間（秒） */
 const REVEAL_BURST = 2;
 const REVEAL_GAP = 10;
