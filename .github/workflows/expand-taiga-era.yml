@@ -19,7 +19,15 @@ jobs:
       - name: Apply Taiga expansion
         shell: bash
         run: |
-          sed -i 's/id: "area-6"/label: "大穀倉地帯を拓く"/' scripts/expand-taiga-era.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/expand-taiga-era.py')
+          s = p.read_text(encoding='utf-8')
+          old = "if 'id: \"area-6\"' in stages:"
+          new = "if 'label: \"大穀倉地帯を拓く\"' in stages:"
+          assert s.count(old) == 1, s.count(old)
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
           python scripts/expand-taiga-era.py
 
       - name: Install dependencies
