@@ -40,8 +40,6 @@ export type OnsenState = {
   festivals: number;
   /** 大祭をやりきったか（クリア） */
   cleared: boolean;
-  /** 描画側が拾う合図 */
-  flash: string | null;
 };
 
 export const createOnsen = (): OnsenState => ({
@@ -54,7 +52,6 @@ export const createOnsen = (): OnsenState => ({
   upset: 0,
   festivals: 0,
   cleared: false,
-  flash: null,
 });
 
 export const toOnsen = (onsen: OnsenState) => ({
@@ -296,7 +293,6 @@ const nextWeather = (state: ShopState): OnsenWeather => {
 export const updateOnsen = (state: ShopState, dt: number) => {
   if (state.stageId !== "onsen") return;
   const onsen = state.onsen;
-  onsen.flash = null;
   if (!onsenLive(state)) {
     onsen.phase = "day";
     onsen.clock = 0;
@@ -326,18 +322,14 @@ export const updateOnsen = (state: ShopState, dt: number) => {
 
   // 時間帯が変わった。合図と、大祭の始まり／終わり
   if (onsen.phase === "dusk") {
-    onsen.flash = "dusk";
     state.toast = { text: "日が暮れてきた ― 提灯に灯が入る", at: Date.now() };
   }
   if (onsen.phase === "night") {
     if (festivalReady(state)) {
-      onsen.flash = "festival";
       state.toast = {
         text: "湯あかり大祭がはじまった！ 町じゅうに灯籠がともる",
         at: Date.now(),
       };
-    } else {
-      onsen.flash = "night";
     }
   }
   if (was === "night") {
@@ -347,7 +339,6 @@ export const updateOnsen = (state: ShopState, dt: number) => {
       const fame = reputation(onsen);
       if (fame >= FESTIVAL_FAME && !onsen.cleared) {
         onsen.cleared = true;
-        onsen.flash = "cleared";
         state.toast = {
           text: "一本道から、ひとつの温泉街が生まれた",
           at: Date.now(),
@@ -359,6 +350,5 @@ export const updateOnsen = (state: ShopState, dt: number) => {
         };
       }
     }
-    onsen.flash = onsen.flash ?? "dawn";
   }
 };

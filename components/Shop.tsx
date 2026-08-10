@@ -82,6 +82,7 @@ import {
   phaseLeft as onsenPhaseLeft,
   reputation,
   springCap,
+  springLabel,
   springUse,
   weatherLabel,
 } from "@/lib/onsen";
@@ -9884,7 +9885,10 @@ export default function Shop({ onSample, paused }: Props) {
         const fame = reputation(onsen);
         const left = Math.max(0, Math.ceil(onsenPhaseLeft(onsen)));
         const rows: { text: string; ok: boolean }[] = [
-          { text: `湯量 ${use} / ${cap}`, ok: use <= cap },
+          {
+            text: `湯量 ${use} / ${cap}・${springLabel(Math.min(1, cap / Math.max(1, use)))}`,
+            ok: use <= cap,
+          },
           { text: `評判 ${Math.round(fame * 100)}%`, ok: fame >= 0.8 },
         ];
         const title = festivalOn(state)
