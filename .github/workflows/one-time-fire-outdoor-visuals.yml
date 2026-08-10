@@ -1,0 +1,37 @@
+name: One-time Fire outdoor visuals
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/one-time-fire-outdoor-visuals.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply Fire outdoor visual overhaul
+        run: python3 scripts/patch_fire_outdoor_visuals.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint changed code
+        run: npx eslint components/Shop.tsx
+      - name: Build
+        run: npm run build
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/one-time-fire-outdoor-visuals.yml
+          rm -f scripts/patch_fire_outdoor_visuals.py
+          git add components/Shop.tsx app/globals.css .github/workflows/one-time-fire-outdoor-visuals.yml scripts/patch_fire_outdoor_visuals.py
+          git commit -m "Make Fire world feel outdoors and primitive"
+          git push origin main
