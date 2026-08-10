@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import AquariumStageRegistry from "@/components/AquariumStageRegistry";
 import ScrollMode from "@/components/ScrollMode";
+import ScrapTopLink from "@/components/ScrapTopLink";
 import OceanTopLink from "@/components/OceanTopLink";
 import "@/data/aquarium-balance-v2";
 import "./globals.css";
@@ -9,7 +10,7 @@ export const metadata: Metadata = {
   applicationName: "ワーキングプラネット",
   title: "ワーキングプラネット ― 働いて大きくする放置ゲーム",
   description:
-    "働いて街と星を大きくしていく放置ゲームのシリーズ。はんじょうダッシュ、世界水族館、OCEAN PLANETを遊べます。",
+    "働いて街と星を大きくしていく放置ゲームのシリーズ。はんじょうダッシュ、世界水族館、SCRAP PLANET、OCEAN PLANETを遊べます。",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -35,15 +36,10 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body>
-        <style>{`
-          h2.series-head:has(+ .stages .stage-scrap),
-          .stages:has(.stage-scrap) {
-            display: none !important;
-          }
-        `}</style>
         <AquariumStageRegistry>
           <ScrollMode />
           {children}
+          <ScrapTopLink />
           <OceanTopLink />
         </AquariumStageRegistry>
       </body>
