@@ -3572,9 +3572,18 @@ const updateHauler = (state: ShopState, worker: Staff, dt: number) => {
   // 下ろす先が1つもないなら「詰まっている」。そのときは拾う品種を選ばない
   const drops = dropJobs(state, worker).filter((job) => jobAllowed(worker, job));
   const stuck = drops.length === 0 && carryTotal(worker) > 0;
-  const jobs = [...drops, ...pickJobs(state, worker, stuck)].filter(
-    (job) => jobAllowed(worker, job) && claimCount(state, worker, job.id) < job.slots,
-  );
+  const all = [...dropJobs(state, worker), ...pickJobs(state, worker, stuck)];
+  const open = (allow: (job: HaulJob) => boolean) =>
+    all.filter((job) => allow(job) && claimCount(state, worker, job.id) < job.slots);
+
+  let jobs = open((job) => jobAllowed(worker, job));
+  /*
+   * 建築係は建てるのが持ち場だが、いま運べる材料が1つも無いときは
+   * ふつうの運びも手伝う。そうしないと、建て終わったとたんに手を止め、
+   * 運びかけの荷を持ったまま突っ立ってしまう（実際そうなった）。
+   * 建てる仕事が出てくれば、そちらが強く優先されるので戻ってくる
+   */
+  if (jobs.length === 0 && worker.kind === "builder") jobs = open(() => true);
 
   if (jobs.length === 0) {
     worker.target = null;

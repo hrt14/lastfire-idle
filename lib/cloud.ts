@@ -86,10 +86,19 @@ export const pullVault = async (uid: string): Promise<Bag | null> => {
   return snap.data() as Bag;
 };
 
+/**
+ * Firestore は undefined を受け付けない（値が1つでもあると書き込みごと失敗する）。
+ * セーブには「まだ遊んでいない分」が undefined で入っていることがあるので、
+ * いちど JSON を通して、そういう欄ごと落としてから送る。
+ * これを忘れると、ログインしていても保存が毎回失敗し、
+ * 別の端末には何も届かない（実際そうなっていた）
+ */
+const plain = (vault: Bag): Bag => JSON.parse(JSON.stringify(vault)) as Bag;
+
 export const pushVault = async (uid: string, vault: Bag) => {
   const ref = docRef(uid);
   if (!ref) return;
-  await setDoc(ref, vault, { merge: false });
+  await setDoc(ref, plain(vault), { merge: false });
 };
 
 /* ---------- ログイン ---------- */

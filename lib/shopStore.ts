@@ -107,7 +107,11 @@ const readVault = (): Vault => {
       : [];
     return {
       savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : 0,
-      active: parsed.active === "park" ? "park" : "ramen",
+      // 遊んでいたステージを覚えておく（知らない名前のときだけラーメンに戻す）
+      active:
+        typeof parsed.active === "string" && parsed.active in stageDefs
+          ? (parsed.active as StageId)
+          : "ramen",
       stages: (parsed.stages ?? {}) as Partial<Record<StageId, Persisted>>,
       scrap:
         parsed.scrap && typeof parsed.scrap === "object"
