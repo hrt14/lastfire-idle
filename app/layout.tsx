@@ -5,6 +5,7 @@ import ScrapTopLink from "@/components/ScrapTopLink";
 import OceanTopLink from "@/components/OceanTopLink";
 import "@/data/aquarium-balance-v2";
 import "./globals.css";
+import "./fx-toggle-fix.css";
 
 export const metadata: Metadata = {
   applicationName: "ワーキングプラネット",
