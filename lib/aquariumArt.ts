@@ -576,7 +576,12 @@ const drawHabitat = (ctx: CanvasRenderingContext2D, habitat: Habitat, seed: numb
   }
 };
 
-const drawSchool = (ctx: CanvasRenderingContext2D, visual: ExhibitVisual, seed: number) => {
+const drawSchool = (
+  ctx: CanvasRenderingContext2D,
+  visual: ExhibitVisual,
+  seed: number,
+  sizeBoost = 1,
+) => {
   const hero = Math.max(1, visual.heroScale ?? 1);
   const count = Math.max(1, visual.count);
   const density = visual.density ?? 1;
@@ -585,7 +590,9 @@ const drawSchool = (ctx: CanvasRenderingContext2D, visual: ExhibitVisual, seed: 
 
   for (let i = 0; i < primaryCount; i += 1) {
     const isHero = i === 0 && hero > 1.35;
-    const s = (isHero ? hero : 0.78 + seeded(seed, i + 4) * 0.32) * (count > 20 ? 0.72 : count > 14 ? 0.82 : 1);
+    const s = (isHero ? hero : 0.78 + seeded(seed, i + 4) * 0.32)
+      * (count > 20 ? 0.72 : count > 14 ? 0.82 : 1)
+      * sizeBoost;
     const x = isHero ? 2 : -29 + seeded(seed, i + 50) * 58;
     const y = isHero ? -1 : -11 + seeded(seed, i + 90) * (22 / density);
     const dir = seeded(seed, i + 120) > 0.22 ? 1 : -1;
@@ -595,7 +602,9 @@ const drawSchool = (ctx: CanvasRenderingContext2D, visual: ExhibitVisual, seed: 
   if (visual.secondary) {
     const secondaryCount = Math.max(1, count - primaryCount);
     for (let i = 0; i < secondaryCount; i += 1) {
-      const s = (0.9 + seeded(seed, i + 180) * 0.25) * (visual.heroScale && visual.heroScale > 1.4 ? 1.15 : 1);
+      const s = (0.9 + seeded(seed, i + 180) * 0.25)
+        * (visual.heroScale && visual.heroScale > 1.4 ? 1.15 : 1)
+        * sizeBoost;
       const x = -24 + seeded(seed, i + 210) * 50;
       const y = -9 + seeded(seed, i + 240) * 18;
       drawCreature(ctx, visual.secondary, x, y, s, visual.secondaryColor ?? accent, "none", visual.color, seeded(seed, i + 270) > 0.35 ? 1 : -1);
@@ -635,14 +644,20 @@ export const drawAquariumExhibit = (
   // 魚は少し大きくし、背景色に応じたリム光を付ける。
   // 特に小魚の群れが「模様」にならず、一匹ずつ読めることを狙う。
   ctx.save();
-  ctx.scale(display.fishScaleBoost, display.fishScaleBoost);
   ctx.shadowColor = display.outlineMode === "light"
     ? `rgba(218,248,255,${0.48 * display.contrastBoost})`
     : `rgba(1,16,20,${0.58 * display.contrastBoost})`;
   ctx.shadowBlur = display.hero ? 3.6 : 2.4;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
-  drawSchool(ctx, visual, seed + area * 101 + index * 17);
+  // 魚の座標は動かさず、魚体サイズだけ補正する。
+  // 群れを座標ごと拡大すると水槽端で切れやすいため。
+  drawSchool(
+    ctx,
+    visual,
+    seed + area * 101 + index * 17,
+    display.fishScaleBoost,
+  );
   ctx.restore();
 
   ctx.restore();
