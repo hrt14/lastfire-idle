@@ -1455,6 +1455,144 @@ const drawFireCompletionContrast = (
   ctx.restore();
 };
 
+const drawFireAreaAtmosphere = (
+  ctx: CanvasRenderingContext2D,
+  area: AreaView,
+) => {
+  const { rect } = area;
+  const w = rect.x1 - rect.x0;
+  const h = rect.y1 - rect.y0;
+  const colors: Record<string, [string, string]> = {
+    "area-0": ["rgba(205,108,45,0.055)", "rgba(82,49,28,0)"],
+    "area-1": ["rgba(151,107,58,0.040)", "rgba(74,54,35,0)"],
+    "area-2": ["rgba(126,88,50,0.065)", "rgba(71,52,37,0)"],
+    "area-3": ["rgba(164,198,207,0.070)", "rgba(68,88,96,0)"],
+    "area-4": ["rgba(158,111,54,0.045)", "rgba(80,58,36,0)"],
+    "area-5": ["rgba(60,122,130,0.060)", "rgba(32,70,76,0)"],
+    "area-6": ["rgba(13,46,32,0.095)", "rgba(8,24,18,0)"],
+    "area-7": ["rgba(114,145,88,0.050)", "rgba(71,92,58,0)"],
+    "area-8": ["rgba(63,119,111,0.070)", "rgba(38,72,68,0)"],
+    "area-9": ["rgba(85,88,87,0.075)", "rgba(45,48,49,0)"],
+    "area-10": ["rgba(54,61,91,0.090)", "rgba(24,29,49,0)"],
+    "area-11": ["rgba(99,162,166,0.065)", "rgba(45,89,94,0)"],
+  };
+  const pair = colors[area.id];
+  if (!pair) return;
+  ctx.save();
+  const g = ctx.createLinearGradient(rect.x0, rect.y0, rect.x1, rect.y1);
+  g.addColorStop(0, pair[0]);
+  g.addColorStop(1, pair[1]);
+  ctx.fillStyle = g;
+  ctx.fillRect(rect.x0, rect.y0, w, h);
+  ctx.restore();
+};
+
+const drawFireConstructionForeshadowing = (
+  ctx: CanvasRenderingContext2D,
+  areas: AreaView[],
+  unlocked: ReadonlySet<string>,
+) => {
+  ctx.save();
+
+  // 集落: 共同たき火ができたら、次の集会所の骨組みが見え始める。
+  if (areas.some((area) => area.id === "area-1") && unlocked.has("built-build-hearth") && !unlocked.has("built-build-hall")) {
+    const x = 1420;
+    const y = 590;
+    ctx.strokeStyle = "rgba(118,83,49,0.46)";
+    ctx.lineWidth = 6;
+    for (const dx of [-62, 0, 62]) {
+      ctx.beginPath();
+      ctx.moveTo(x + dx, y + 18);
+      ctx.lineTo(x + dx, y - 72);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(x - 76, y - 70);
+    ctx.lineTo(x, y - 108);
+    ctx.lineTo(x + 76, y - 70);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(137,94,52,0.30)";
+    ctx.fillRect(x - 96, y + 14, 192, 12);
+  }
+
+  // マンモス谷: 討伐後は宴会場の予定地に旗竿と資材が先に出る。
+  if (areas.some((area) => area.id === "area-2") && unlocked.has("mark-kills-1") && !unlocked.has("built-build-feast")) {
+    for (const x of [2690, 2770, 2850]) {
+      ctx.strokeStyle = "rgba(112,76,43,0.50)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x, 628);
+      ctx.lineTo(x, 535);
+      ctx.stroke();
+    }
+    cargoPile(ctx, 2780, 630, 8, 0.72);
+  }
+
+  // 冬: 住居と共同火がそろうと、灯りの柱だけが先に並び、次の投資先を示す。
+  const winterReady = unlocked.has("built-build-hearth-2") && unlocked.has("built-build-hut-4") && unlocked.has("built-build-hut-5");
+  if (areas.some((area) => area.id === "area-3") && winterReady && !unlocked.has("built-build-lamp")) {
+    ctx.strokeStyle = "rgba(93,76,61,0.44)";
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 6; i += 1) {
+      const x = 3040 + i * 82;
+      const y = 580 + (i % 2) * 12;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 16);
+      ctx.lineTo(x, y - 34);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(121,99,75,0.38)";
+      ctx.fillRect(x - 7, y - 38, 14, 10);
+    }
+  }
+
+  // 村: 基本施設がそろうと、中央の大集会所が建築途中で立ち上がる。
+  const villageReady = unlocked.has("built-build-gate") && unlocked.has("built-build-watch") && unlocked.has("built-build-hut-6") && unlocked.has("built-build-hut-7");
+  if (areas.some((area) => area.id === "area-4") && villageReady && !unlocked.has("built-build-hall2")) {
+    const x = 4480;
+    const y = 585;
+    ctx.strokeStyle = "rgba(104,70,40,0.58)";
+    ctx.lineWidth = 7;
+    for (const dx of [-82, -27, 27, 82]) {
+      ctx.beginPath();
+      ctx.moveTo(x + dx, y + 20);
+      ctx.lineTo(x + dx, y - 82);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(x - 104, y - 78);
+    ctx.lineTo(x, y - 132);
+    ctx.lineTo(x + 104, y - 78);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(181,137,75,0.30)";
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 4; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(x - 90, y - 55 + i * 22);
+      ctx.lineTo(x + 90, y - 55 + i * 22);
+      ctx.stroke();
+    }
+  }
+
+  // 川辺: 小いかだ完成後は大型いかだの長い船台が先に見える。
+  if (areas.some((area) => area.id === "area-5") && unlocked.has("built-build-raft-s") && !unlocked.has("built-build-raft-l")) {
+    ctx.strokeStyle = "rgba(108,73,43,0.52)";
+    ctx.lineWidth = 6;
+    for (let i = 0; i < 6; i += 1) {
+      const x = 5225 + i * 34;
+      ctx.beginPath();
+      ctx.moveTo(x, 214);
+      ctx.lineTo(x + 18, 178);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(5205, 214);
+    ctx.lineTo(5415, 214);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+};
+
 export const drawFireGraphicPass = (
   ctx: CanvasRenderingContext2D,
   box: Rect,
@@ -1484,10 +1622,12 @@ export const drawFireGraphicPass = (
   for (const area of areas) {
     drawFireAreaLife(ctx, area, progress, time, effects);
     drawFireLateAreaIdentity(ctx, area, time, effects);
+    drawFireAreaAtmosphere(ctx, area);
   }
   const unlockedSet = new Set(unlocked);
   drawFireInvestmentGrowth(ctx, areas, unlockedSet, time, effects);
   drawFireLateInvestmentGrowth(ctx, areas, unlockedSet, time, effects);
+  drawFireConstructionForeshadowing(ctx, areas, unlockedSet);
   drawFireAmbientLife(ctx, areas, unlockedSet, time);
   drawFireHeroScalePolish(ctx, areas, unlockedSet, time, effects);
   drawFireCompletionContrast(ctx, areas, unlockedSet, time, effects);
@@ -2296,6 +2436,148 @@ const drawTaigaCompletionContrast = (
   ctx.restore();
 };
 
+const drawTaigaAreaAtmosphere = (
+  ctx: CanvasRenderingContext2D,
+  area: AreaView,
+) => {
+  const { rect } = area;
+  const pairs: Record<string, [string, string]> = {
+    "area-0": ["rgba(128,141,71,0.040)", "rgba(82,91,50,0)"],
+    "area-1": ["rgba(144,133,69,0.045)", "rgba(82,76,47,0)"],
+    "area-2": ["rgba(159,137,69,0.045)", "rgba(94,80,47,0)"],
+    "area-3": ["rgba(124,110,70,0.040)", "rgba(75,66,45,0)"],
+    "area-4": ["rgba(169,116,59,0.055)", "rgba(88,65,43,0)"],
+    "area-5": ["rgba(147,100,61,0.055)", "rgba(73,60,47,0)"],
+    "area-6": ["rgba(188,157,57,0.060)", "rgba(112,98,47,0)"],
+    "area-7": ["rgba(61,129,126,0.055)", "rgba(40,77,78,0)"],
+    "area-8": ["rgba(120,88,58,0.060)", "rgba(55,85,91,0)"],
+  };
+  const pair = pairs[area.id];
+  if (!pair) return;
+  ctx.save();
+  const g = ctx.createLinearGradient(rect.x0, rect.y0, rect.x1, rect.y1);
+  g.addColorStop(0, pair[0]);
+  g.addColorStop(1, pair[1]);
+  ctx.fillStyle = g;
+  ctx.fillRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
+  ctx.restore();
+};
+
+const drawTaigaConstructionForeshadowing = (
+  ctx: CanvasRenderingContext2D,
+  areas: AreaView[],
+  unlocked: ReadonlySet<string>,
+  riverLane: number,
+) => {
+  ctx.save();
+
+  // 船着き場ができたら、市場予定地に屋台骨組みが並ぶ。
+  if (areas.some((area) => area.id === "area-4") && unlocked.has("built-build-dock") && !unlocked.has("built-build-market")) {
+    for (let i = 0; i < 5; i += 1) {
+      const x = 3780 + i * 72;
+      const y = 545 + (i % 2) * 22;
+      ctx.strokeStyle = "rgba(105,72,45,0.48)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x - 24, y + 14);
+      ctx.lineTo(x - 24, y - 36);
+      ctx.lineTo(x, y - 54);
+      ctx.lineTo(x + 24, y - 36);
+      ctx.lineTo(x + 24, y + 14);
+      ctx.stroke();
+    }
+    cargoPile(ctx, 3980, 625, 8, 0.70);
+  }
+
+  // 川の町では、穀倉と井戸ができると記念塔の足場が先に立つ。
+  const townReady = unlocked.has("built-build-granary") && unlocked.has("built-build-well");
+  if (areas.some((area) => area.id === "area-5") && townReady && !unlocked.has("built-build-temple")) {
+    const x = 4820;
+    const y = 585;
+    ctx.strokeStyle = "rgba(101,73,48,0.52)";
+    ctx.lineWidth = 5;
+    for (const dx of [-34, 34]) {
+      ctx.beginPath();
+      ctx.moveTo(x + dx, y + 8);
+      ctx.lineTo(x + dx, y - 160);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 5; i += 1) {
+      const yy = y - 18 - i * 31;
+      ctx.beginPath();
+      ctx.moveTo(x - 48, yy);
+      ctx.lineTo(x + 48, yy);
+      ctx.stroke();
+    }
+  }
+
+  // 大穀倉地帯は、大穀倉完成前から巨大な基礎だけが土地に現れる。
+  if (areas.some((area) => area.id === "area-6") && !unlocked.has("built-build-granary-2")) {
+    ctx.fillStyle = "rgba(126,96,54,0.22)";
+    ctx.fillRect(5750, 620, 340, 24);
+    ctx.strokeStyle = "rgba(113,82,47,0.38)";
+    ctx.lineWidth = 5;
+    for (let x = 5780; x <= 6060; x += 70) {
+      ctx.beginPath();
+      ctx.moveTo(x, 620);
+      ctx.lineTo(x, 560);
+      ctx.stroke();
+    }
+  }
+
+  // 三角州: 交易小屋完成後、次の船着き場の杭が川へ伸びる。
+  if (areas.some((area) => area.id === "area-7") && unlocked.has("built-build-delta-hall") && !unlocked.has("built-build-delta-dock")) {
+    ctx.strokeStyle = "rgba(91,65,43,0.48)";
+    ctx.lineWidth = 5;
+    for (const x of [6710, 6770, 6830]) {
+      ctx.beginPath();
+      ctx.moveTo(x, riverLane + 84);
+      ctx.lineTo(x, riverLane + 18);
+      ctx.stroke();
+    }
+  }
+
+  // 大治水: 貯水池→堤防→水門と、未完成の巨大骨組みが次の到達点を示す。
+  if (areas.some((area) => area.id === "area-8")) {
+    if (unlocked.has("built-build-reservoir") && !unlocked.has("built-build-great-levee")) {
+      ctx.strokeStyle = "rgba(111,78,49,0.40)";
+      ctx.lineWidth = 16;
+      ctx.beginPath();
+      ctx.moveTo(7350, 640);
+      ctx.quadraticCurveTo(7550, 568, 7740, 630);
+      ctx.stroke();
+      for (let x = 7400; x <= 7700; x += 75) cargoPile(ctx, x, 642, 4, 0.62);
+    }
+    if (unlocked.has("built-build-great-levee") && !unlocked.has("built-build-great-weir")) {
+      const x = 7780;
+      const y = riverLane + 86;
+      ctx.strokeStyle = "rgba(90,64,43,0.56)";
+      ctx.lineWidth = 7;
+      for (const dx of [-105, -52, 0, 52, 105]) {
+        ctx.beginPath();
+        ctx.moveTo(x + dx, y + 38);
+        ctx.lineTo(x + dx, y - 86);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(x - 145, y - 86);
+      ctx.lineTo(x + 145, y - 86);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(154,113,67,0.32)";
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 4; i += 1) {
+        const yy = y - 58 + i * 27;
+        ctx.beginPath();
+        ctx.moveTo(x - 130, yy);
+        ctx.lineTo(x + 130, yy);
+        ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
+};
+
 export const drawTaigaGraphicPass = (
   ctx: CanvasRenderingContext2D,
   box: Rect,
@@ -2323,8 +2605,10 @@ export const drawTaigaGraphicPass = (
 
   const unlockedSet = new Set(unlocked);
   for (const area of areas) drawTaigaAreaLife(ctx, area, progress, time, riverLane, unlockedSet);
+  for (const area of areas) drawTaigaAreaAtmosphere(ctx, area);
   drawTaigaAmbientLife(ctx, areas, unlockedSet, time, riverLane);
   drawTaigaHeroScalePolish(ctx, areas, unlockedSet, time, riverLane);
+  drawTaigaConstructionForeshadowing(ctx, areas, unlockedSet, riverLane);
   drawTaigaCompletionContrast(ctx, areas, unlockedSet, time, riverLane);
 
   // 船は人口・交易の成長を背景側で見せる。実働の船とは別の遠景なので当たり判定を持たない。
