@@ -1,0 +1,2 @@
+Batch production deploy trigger for World Aquarium graphics improvements.
+Includes spatial redesign, differentiated tank profiles, fish visibility/contrast improvements, and fish scale safety.
