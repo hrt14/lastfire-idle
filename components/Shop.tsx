@@ -8,6 +8,10 @@ import {
   drawTaigaForegroundPass,
   drawTaigaGraphicPass,
 } from "@/lib/worldGraphicPass";
+import {
+  drawClassicStageForegroundPass,
+  drawClassicStageGraphicPass,
+} from "@/lib/stageVisualOverhaul";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -9481,6 +9485,17 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
+      if (stage().id === "ramen" || isPark || isOnsen) {
+        drawClassicStageGraphicPass(
+          ctx,
+          stage().id,
+          openAreas(state),
+          state.unlocked,
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+        );
+      }
+
       if (isFire) {
         drawFireGraphicPass(
           ctx,
@@ -11410,6 +11425,15 @@ export default function Shop({ onSample, paused }: Props) {
       for (const actor of actors) actor.render();
 
       // 前景をキャラクターより手前に被せ、背景→プレイ層→前景の3層にする。
+      if (stage().id === "ramen" || isPark || isOnsen) {
+        drawClassicStageForegroundPass(
+          ctx,
+          stage().id,
+          openAreas(state),
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+        );
+      }
       if (isFire) drawFireForegroundPass(ctx, openAreas(state));
       if (isTaiga) drawTaigaForegroundPass(ctx, openAreas(state), RIVER_LANE);
 
