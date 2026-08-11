@@ -3,27 +3,18 @@ import { aquariumCardDef, aquariumRuntimeDef } from "@/data/aquarium";
 /**
  * 世界水族館 visual v3
  *
- * ゲームロジックは既存のまま、展示の配置だけを「横一列」から
- * 曲がる観覧動線へ変更する。背景は lib/aquariumTheme.ts と同じ配置規則を使う。
- *
- * 原則:
- * - 3展示を同じ高さ・等間隔に置かない
- * - 小展示 → 中展示 → 主役展示のスケール感を作る
- * - 展示名と見た目の意味を一致させる
- * - 来館者が同じ一直線上に並ばず、奥行きのある群れになる
+ * ゲームロジックは既存のまま、展示の配置と命名を
+ * 「横一列の同型水槽」から「地域ごとの見せ場がある館内」へ寄せる。
+ * 背景は lib/aquariumTheme.ts と同じ配置規則を使う。
  */
 
 const AREA_H = 420;
 
-type ExhibitLayout = {
-  x: number;
-  y: number;
-};
+type ExhibitLayout = { x: number; y: number };
 
 const layoutForArea = (area: number): ExhibitLayout[] => {
   const y0 = area * AREA_H;
   const mirrored = area % 2 === 1;
-
   if (mirrored) {
     return [
       { x: 278, y: y0 + 286 },
@@ -31,7 +22,6 @@ const layoutForArea = (area: number): ExhibitLayout[] => {
       { x: 82, y: y0 + 258 },
     ];
   }
-
   return [
     { x: 82, y: y0 + 286 },
     { x: 176, y: y0 + 330 },
@@ -43,20 +33,19 @@ const tank = (area: number, index: number) =>
   aquariumRuntimeDef.stoves.find((item) => item.id === `tank-${area}-${index}`);
 const seat = (area: number, index: number) =>
   aquariumRuntimeDef.seats.find((item) => item.id === `seat-${area}-${index}`);
+const area = (index: number) =>
+  aquariumRuntimeDef.areas.find((item) => item.id === `area-${index}`);
 
-for (let area = 0; area < aquariumRuntimeDef.areas.length; area += 1) {
-  const layout = layoutForArea(area);
-
+for (let region = 0; region < aquariumRuntimeDef.areas.length; region += 1) {
+  const layout = layoutForArea(region);
   for (let index = 1; index <= 3; index += 1) {
-    const exhibit = tank(area, index);
-    const viewing = seat(area, index);
+    const exhibit = tank(region, index);
+    const viewing = seat(region, index);
     const p = layout[index - 1];
     if (!p) continue;
 
     if (exhibit) {
       exhibit.pos = { x: p.x, y: p.y };
-      // 元実装と同じ「展示の少し手前」を作業/接近ゾーンにしつつ、
-      // 配置の曲線に追従させる。
       exhibit.zone = {
         x0: p.x - 48,
         y0: p.y - 138,
@@ -73,10 +62,9 @@ for (let area = 0; area < aquariumRuntimeDef.areas.length; area += 1) {
   }
 }
 
-// 最初に見る展示は、UIラベルだけでも「何が見えるか」が想像できる名前にする。
-const rename = (area: number, index: number, label: string, detail?: string) => {
-  const exhibit = tank(area, index);
-  const viewing = seat(area, index);
+const rename = (region: number, index: number, label: string, detail?: string) => {
+  const exhibit = tank(region, index);
+  const viewing = seat(region, index);
   if (exhibit) exhibit.label = label;
   if (viewing) {
     viewing.label = label;
@@ -84,47 +72,62 @@ const rename = (area: number, index: number, label: string, detail?: string) => 
   }
 };
 
-const firstArea = aquariumRuntimeDef.areas.find((item) => item.id === "area-0");
-if (firstArea) firstArea.label = "日本の淡水・里川";
-const secondArea = aquariumRuntimeDef.areas.find((item) => item.id === "area-1");
-if (secondArea) secondArea.label = "日本の清流をひらく";
+const areaNames = [
+  "日本の淡水・里川",
+  "日本の清流",
+  "東アジアの大河",
+  "メコン川",
+  "東南アジア・水没森林",
+  "アフリカの湖と川",
+  "アマゾン熱帯雨林",
+  "アマゾン大河",
+  "日本の海",
+  "北の海",
+  "沖縄・サンゴ礁",
+  "カリフォルニア・ケルプの森",
+  "東南アジアの海",
+  "オーストラリア大礁",
+  "インド洋",
+  "外洋",
+  "深海",
+  "世界の海",
+];
 
-rename(
-  0,
-  1,
-  "小川のメダカ水槽",
-  "FRESH WATER · JAPAN｜浅い小川を再現。水草の間をメダカの群れが泳ぐ。",
-);
-rename(
-  0,
-  2,
-  "田んぼの生きもの水槽",
-  "FRESH WATER · JAPAN｜ドジョウは川底を進み、フナは中層を泳ぐ。田園の水辺を再現。",
-);
-rename(
-  0,
-  3,
-  "里川大水槽",
-  "FRESH WATER · JAPAN｜オイカワ、タナゴ、ナマズが同じ水辺をつくる最初の主役展示。",
-);
-rename(
-  1,
-  1,
-  "清流のアユ水槽",
-  "FRESH WATER · JAPAN｜澄んだ流れをアユが群れて泳ぐ清流展示。",
-);
-rename(
-  1,
-  2,
-  "渓流のヤマメ水槽",
-  "FRESH WATER · JAPAN｜岩陰と速い流れを再現したヤマメの渓流展示。",
-);
-rename(
-  1,
-  3,
-  "清流大水槽",
-  "FRESH WATER · JAPAN｜冷たい山の水、岩場、大型の渓流魚を見せる日本淡水エリアのランドマーク。",
-);
+for (let i = 0; i < areaNames.length; i += 1) {
+  const target = area(i);
+  if (!target) continue;
+  target.label = i === 0 ? areaNames[i] : `${areaNames[i]}をひらく`;
+}
+
+// 最初の二地域は、身近な小さな水辺から大水槽へスケールが上がる流れを明示する。
+rename(0, 1, "小川のメダカ水槽", "FRESH WATER · JAPAN｜浅い小川を再現。水草の間をメダカの群れが泳ぐ。");
+rename(0, 2, "田んぼの生きもの水槽", "FRESH WATER · JAPAN｜ドジョウは川底を進み、フナは中層を泳ぐ。田園の水辺を再現。");
+rename(0, 3, "里川大水槽", "FRESH WATER · JAPAN｜オイカワ、タナゴ、ナマズが同じ水辺をつくる最初の主役展示。");
+rename(1, 1, "清流のアユ水槽", "FRESH WATER · JAPAN｜澄んだ流れをアユが群れて泳ぐ清流展示。");
+rename(1, 2, "渓流のヤマメ水槽", "FRESH WATER · JAPAN｜岩陰と速い流れを再現したヤマメの渓流展示。");
+rename(1, 3, "清流大水槽", "FRESH WATER · JAPAN｜冷たい山の水、岩場、大型の渓流魚を見せる日本淡水エリアのランドマーク。");
+
+// 以降も各地域の3番展示を必ず「この地域の顔」にする。
+const landmarks: Array<[number, string, string]> = [
+  [2, "東アジア大河水槽", "FRESH WATER · EAST ASIA｜大型ナマズが現れ、小魚中心だった展示から一段スケールが上がる大河の見せ場。"],
+  [3, "メコン巨大魚水槽", "FRESH WATER · MEKONG｜メコンの巨大ナマズが悠々と横切る、東南アジア淡水の主役展示。"],
+  [4, "水没森林アロワナ大水槽", "FRESH WATER · FLOODED FOREST｜沈んだ巨木の根の間をアジアアロワナが泳ぐ、水没森林の象徴展示。"],
+  [5, "アフリカ大湖水槽", "FRESH WATER · AFRICA｜岩場と色鮮やかな魚群の奥を大型魚が通る、アフリカ淡水のランドマーク。"],
+  [6, "アマゾン熱帯雨林大水槽", "FRESH WATER · AMAZON｜密生する水草と流木の間を色鮮やかな魚が満たす熱帯雨林の大展示。"],
+  [7, "ピラルク大河水槽", "FRESH WATER · GRAND FINALE｜淡水編最大級のピラルクが泳ぐ、川の旅のクライマックス。"],
+  [8, "日本沿岸大水槽", "OCEAN · JAPAN｜群泳魚、岩礁魚、タコやウツボが同じ海をつくり、淡水から海へ景色が一変する。"],
+  [9, "北海底大水槽", "OCEAN · COLD WATER｜冷たい青の海底を大きなカニが歩く、北の海の低層展示。"],
+  [10, "沖縄サンゴ礁大水槽", "OCEAN · OKINAWA｜カラフルな魚群の上をウミガメが泳ぐ、明るいサンゴ礁の主役展示。"],
+  [11, "ケルプフォレスト大水槽", "OCEAN · KELP FOREST｜巨大海藻の森を小型サメが横切る、縦方向の奥行きを見せる展示。"],
+  [12, "東南アジア海中大水槽", "OCEAN · SOUTH EAST ASIA｜魚群、ミノカサゴ、フグ、エイが層ごとに動く密度の高い熱帯海域展示。"],
+  [13, "グレートリーフ大水槽", "OCEAN · AUSTRALIA｜巨大サンゴ礁、ウミガメ、大型エイ、リーフシャークが共存する大展示。"],
+  [14, "インド洋大型魚水槽", "OCEAN · INDIAN OCEAN｜大型エイと大型サメがゆったり横切り、魚の数ではなく大きさで圧倒する。"],
+  [15, "外洋回遊大水槽", "OCEAN · OPEN OCEAN｜大群泳の中をマグロ、サメ、大型エイが回遊する水族館らしい巨大展示。"],
+  [16, "深海発光大水槽", "OCEAN · DEEP SEA｜暗闇の中で深海魚が光り、館内の雰囲気そのものが変わる特殊展示。"],
+  [17, "WORLD OCEAN 巨大水槽", "WORLD OCEAN · GRAND FINALE｜世界の魚群、マンタ、大型サメ、巨大魚が同じ水槽を泳ぐ最終ランドマーク。"],
+];
+
+for (const [region, label, detail] of landmarks) rename(region, 3, label, detail);
 
 // カメラ開始位置も直線中央ではなく、入口から奥の展示へ視線が抜ける位置にする。
 aquariumRuntimeDef.startPos = { x: 176, y: 274 };
