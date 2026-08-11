@@ -2,6 +2,12 @@
 
 import { drawAquariumExhibit } from "@/lib/aquariumArt";
 import { drawAquariumHall } from "@/lib/aquariumTheme";
+import {
+  drawFireForegroundPass,
+  drawFireGraphicPass,
+  drawTaigaForegroundPass,
+  drawTaigaGraphicPass,
+} from "@/lib/worldGraphicPass";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -3156,7 +3162,7 @@ const drawBeast = (
   ctx.save();
   ctx.translate(pos.x, pos.y);
   ctx.rotate(tilt * 0.9);
-  ctx.scale(face, 1);
+  ctx.scale(face * 1.18, 1.18);
 
   ctx.fillStyle = "rgba(0,0,0,0.3)";
   ctx.beginPath();
@@ -9453,6 +9459,17 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
+      if (isFire) {
+        drawFireGraphicPass(
+          ctx,
+          box,
+          openAreas(state),
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+          state.fire.beast?.pos ?? null,
+          state.unlocked,
+        );
+      }
       /*
        * 大河。区画をまたいで、世界のはしからはしまで流れている。
        * 水くみ場や取水口はこの岸に立ち、運搬船はこの上を行き来する。
@@ -9489,6 +9506,18 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fillStyle = "rgba(150,128,92,0.5)";
           ctx.fillRect(box.x0, edge + 6, wide, -rise * 16);
         }
+      }
+      if (isTaiga) {
+        drawTaigaGraphicPass(
+          ctx,
+          box,
+          openAreas(state),
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+          RIVER_LANE,
+          riverRise(state),
+          state.unlocked,
+        );
       }
       // 冬が来ると、地面が少しずつ白くなる（第4区画）
       const snow = isFire ? snowDepth(state) : 0;
@@ -11231,6 +11260,10 @@ export default function Shop({ onSample, paused }: Props) {
 
       actors.sort((a, b) => a.y - b.y);
       for (const actor of actors) actor.render();
+
+      // 前景をキャラクターより手前に被せ、背景→プレイ層→前景の3層にする。
+      if (isFire) drawFireForegroundPass(ctx, openAreas(state));
+      if (isTaiga) drawTaigaForegroundPass(ctx, openAreas(state), RIVER_LANE);
 
       /* --- 演出 --- */
       for (const item of state.pops) {
