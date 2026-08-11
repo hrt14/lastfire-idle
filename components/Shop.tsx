@@ -9142,14 +9142,36 @@ export default function Shop({ onSample, paused }: Props) {
             ? "rgba(20,24,28,0)"
             : "#191512";
       ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
-      for (const area of openAreas(state)) {
+      // 水族館は「次の地域」が視界に入るレイアウトなので、未開放区画も館内背景だけ先に描く。
+      // 後段の半透明ゲートで閉鎖中と分かるようにし、水槽だけ暗闇に浮く状態を防ぐ。
+      const openedAreasForBackground = openAreas(state);
+      const openedAreaIdsForBackground = isAquarium
+        ? new Set(openedAreasForBackground.map((area) => area.id))
+        : null;
+      const backgroundAreas = isAquarium
+        ? areas.filter(
+            (area) =>
+              area.rect.x1 > box.x0 &&
+              area.rect.x0 < box.x1 &&
+              area.rect.y1 > box.y0 &&
+              area.rect.y0 < box.y1,
+          )
+        : openedAreasForBackground;
+      for (const area of backgroundAreas) {
         const { rect, palette } = area;
         const grad = ctx.createLinearGradient(0, rect.y0, 0, rect.y1);
         grad.addColorStop(0, palette.floor);
         grad.addColorStop(1, palette.deep);
         ctx.fillStyle = grad;
         ctx.fillRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
-        drawProps(ctx, area, effectsRef.current ? time : 0);
+        if (isAquarium && !openedAreaIdsForBackground?.has(area.id)) {
+          ctx.save();
+          ctx.globalAlpha = 0.72;
+          drawProps(ctx, area, effectsRef.current ? time : 0);
+          ctx.restore();
+        } else {
+          drawProps(ctx, area, effectsRef.current ? time : 0);
+        }
         if (isFire) {
           drawFireGroundTexture(ctx, area, time, effectsRef.current);
           drawFireEarlyLife(ctx, area, time, effectsRef.current);
@@ -9656,12 +9678,36 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.moveTo(x - 38, y - 38);
           ctx.lineTo(x - 18, y + 6);
           ctx.stroke();
-          ctx.fillStyle = "rgba(5,16,22,0.88)";
-          roundRect(ctx, x - 46, y + 12, 92, 14, 6);
+          // 展示名は水槽の絵に埋もれない独立プレートにする。
+          // 長い名前は自動でフォントを縮めるが、最低8pxを確保してスマホでも読めるようにする。
+          const exhibitLabel = (stove.label ?? "AQUARIUM").replace(/水槽$/, "");
+          ctx.save();
+          const labelGrad = ctx.createLinearGradient(x - 49, 0, x + 49, 0);
+          labelGrad.addColorStop(0, "rgba(2,14,20,0.94)");
+          labelGrad.addColorStop(0.5, "rgba(8,35,45,0.96)");
+          labelGrad.addColorStop(1, "rgba(2,14,20,0.94)");
+          ctx.fillStyle = labelGrad;
+          roundRect(ctx, x - 49, y + 7, 98, 22, 8);
           ctx.fill();
-          ctx.fillStyle = "#d6fbff";
-          ctx.font = SMALL;
-          ctx.fillText(stove.label ?? "AQUARIUM", x, y + 19);
+          ctx.strokeStyle = "rgba(126,235,242,0.76)";
+          ctx.lineWidth = 1.2;
+          roundRect(ctx, x - 49, y + 7, 98, 22, 8);
+          ctx.stroke();
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          let labelSize = 10.5;
+          do {
+            ctx.font = `900 ${labelSize}px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+            if (ctx.measureText(exhibitLabel).width <= 86 || labelSize <= 8) break;
+            labelSize -= 0.5;
+          } while (labelSize > 8);
+          ctx.lineJoin = "round";
+          ctx.strokeStyle = "rgba(0,8,12,0.96)";
+          ctx.lineWidth = 3;
+          ctx.strokeText(exhibitLabel, x, y + 18.5);
+          ctx.fillStyle = "#f2fdff";
+          ctx.fillText(exhibitLabel, x, y + 18.5);
+          ctx.restore();
           ctx.font = FONT;
           continue;
         }
@@ -10217,22 +10263,61 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.beginPath();
           ctx.rect(ix0, iy0, ix1 - ix0, iy1 - iy0);
           ctx.clip();
-          ctx.fillStyle = "#150f0c";
-          ctx.fillRect(ix0, iy0, ix1 - ix0, iy1 - iy0);
-          ctx.fillStyle = "rgba(255,209,102,0.07)";
-          for (let x = ix0 - 40; x < ix1 + 40; x += 30) {
-            ctx.beginPath();
-            ctx.moveTo(x, iy0);
-            ctx.lineTo(x + 15, iy0);
-            ctx.lineTo(x + 15 - (iy1 - iy0), iy1);
-            ctx.lineTo(x - (iy1 - iy0), iy1);
-            ctx.closePath();
-            ctx.fill();
+          if (isAquarium) {
+            // 次の展示室は真っ黒に潰さず、背景を残したままガラスゲート越しに予告する。
+            ctx.fillStyle = "rgba(2,13,20,0.48)";
+            ctx.fillRect(ix0, iy0, ix1 - ix0, iy1 - iy0);
+            ctx.strokeStyle = "rgba(127,226,238,0.18)";
+            ctx.lineWidth = 2;
+            for (let x = ix0 + 18; x < ix1; x += 34) {
+              ctx.beginPath();
+              ctx.moveTo(x, iy0);
+              ctx.lineTo(x, iy1);
+              ctx.stroke();
+            }
+            ctx.fillStyle = "rgba(110,226,238,0.06)";
+            for (let y = iy0 + 22; y < iy1; y += 38) {
+              ctx.fillRect(ix0, y, ix1 - ix0, 1);
+            }
+          } else {
+            ctx.fillStyle = "#150f0c";
+            ctx.fillRect(ix0, iy0, ix1 - ix0, iy1 - iy0);
+            ctx.fillStyle = "rgba(255,209,102,0.07)";
+            for (let x = ix0 - 40; x < ix1 + 40; x += 30) {
+              ctx.beginPath();
+              ctx.moveTo(x, iy0);
+              ctx.lineTo(x + 15, iy0);
+              ctx.lineTo(x + 15 - (iy1 - iy0), iy1);
+              ctx.lineTo(x - (iy1 - iy0), iy1);
+              ctx.closePath();
+              ctx.fill();
+            }
           }
           ctx.restore();
-          ctx.fillStyle = "rgba(246,231,207,0.5)";
-          ctx.font = SMALL;
-          ctx.fillText("工事中", (ix0 + ix1) / 2, (iy0 + iy1) / 2);
+          const gateX = (ix0 + ix1) / 2;
+          const gateY = (iy0 + iy1) / 2;
+          if (isAquarium) {
+            const nextTitle = areaTitle(area.label);
+            const plateW = Math.min(ix1 - ix0 - 24, 190);
+            ctx.fillStyle = "rgba(3,17,25,0.88)";
+            roundRect(ctx, gateX - plateW / 2, gateY - 23, plateW, 46, 14);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(118,233,242,0.66)";
+            ctx.lineWidth = 1.5;
+            roundRect(ctx, gateX - plateW / 2, gateY - 23, plateW, 46, 14);
+            ctx.stroke();
+            ctx.textAlign = "center";
+            ctx.fillStyle = "rgba(162,239,245,0.82)";
+            ctx.font = `800 7px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+            ctx.fillText("NEXT GALLERY", gateX, gateY - 8);
+            ctx.fillStyle = "#f2fdff";
+            ctx.font = `900 12px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+            ctx.fillText(nextTitle, gateX, gateY + 9);
+          } else {
+            ctx.fillStyle = "rgba(246,231,207,0.5)";
+            ctx.font = SMALL;
+            ctx.fillText("工事中", gateX, gateY);
+          }
           ctx.font = FONT;
           continue;
         }

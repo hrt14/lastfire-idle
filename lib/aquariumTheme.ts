@@ -63,7 +63,7 @@ const LANDMARK_LABELS = [
   "里川大水槽",
   "清流大水槽",
   "東アジア大河水槽",
-  "メコン巨大魚水槽",
+  "巨大ナマズ",
   "水没森林アロワナ大水槽",
   "アフリカ湖大水槽",
   "アマゾン雨林大水槽",
@@ -192,25 +192,37 @@ const drawCeiling = (ctx: CanvasRenderingContext2D, rect: AquariumArea["rect"], 
 
 const drawHeader = (ctx: CanvasRenderingContext2D, rect: AquariumArea["rect"], theme: Theme, index: number) => {
   const cx = (rect.x0 + rect.x1) / 2;
-  const darkText = theme.warm === true;
+  const w = rect.x1 - rect.x0;
+  const plateW = Math.min(w - 36, 300);
+  const plateY = rect.y0 + 33;
+  ctx.save();
+  const plate = ctx.createLinearGradient(cx - plateW / 2, 0, cx + plateW / 2, 0);
+  plate.addColorStop(0, theme.warm ? "rgba(31,52,43,0.90)" : "rgba(2,15,24,0.92)");
+  plate.addColorStop(0.5, theme.warm ? "rgba(45,76,61,0.94)" : "rgba(7,37,50,0.96)");
+  plate.addColorStop(1, theme.warm ? "rgba(31,52,43,0.90)" : "rgba(2,15,24,0.92)");
+  ctx.fillStyle = plate;
+  rounded(ctx, cx - plateW / 2, plateY, plateW, 46, 14);
+  ctx.fill();
+  ctx.strokeStyle = theme.warm ? "rgba(210,235,214,0.70)" : `${theme.accent}bb`;
+  ctx.lineWidth = 1.5;
+  rounded(ctx, cx - plateW / 2, plateY, plateW, 46, 14);
+  ctx.stroke();
   ctx.textAlign = "center";
-  ctx.fillStyle = darkText ? "rgba(42,63,56,0.78)" : theme.accent;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = theme.warm ? "rgba(220,245,228,0.84)" : "rgba(179,241,247,0.86)";
   ctx.font = '800 7px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
-  ctx.fillText(theme.chapter, cx, rect.y0 + 45);
-  ctx.fillStyle = darkText ? "#263b34" : "#f2fdff";
-  ctx.font = '900 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
-  ctx.fillText(theme.name, cx, rect.y0 + 64);
-  ctx.fillStyle = darkText ? "rgba(43,65,55,0.64)" : "rgba(222,250,255,0.66)";
-  ctx.font = '700 7px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
-  ctx.fillText(REGION_NOTES[index] ?? "世界の水辺", cx, rect.y0 + 73);
-  if (index === 0) {
-    ctx.fillStyle = "rgba(80,69,51,0.86)";
-    rounded(ctx, rect.x0 + 30, rect.y0 + 78, rect.x1 - rect.x0 - 60, 30, 12);
-    ctx.fill();
-    ctx.fillStyle = "#fff7df";
-    ctx.font = '900 11px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
-    ctx.fillText("日本の小さな川から、世界の大海へ", cx, rect.y0 + 97);
-  }
+  ctx.fillText(theme.chapter, cx, plateY + 11);
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(0,8,12,0.72)";
+  ctx.lineWidth = 3;
+  ctx.font = '900 17px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  ctx.strokeText(theme.name, cx, plateY + 29);
+  ctx.fillStyle = "#f7ffff";
+  ctx.fillText(theme.name, cx, plateY + 29);
+  ctx.fillStyle = theme.warm ? "rgba(228,245,229,0.72)" : "rgba(222,250,255,0.72)";
+  ctx.font = '800 7px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  ctx.fillText(REGION_NOTES[index] ?? "世界の水辺", cx, plateY + 40);
+  ctx.restore();
 };
 
 const drawWaterRays = (ctx: CanvasRenderingContext2D, x0: number, x1: number, y0: number, y1: number, time: number, count = 6, alpha = 0.1) => {
@@ -747,13 +759,21 @@ const drawLandmarkFrame = (ctx: CanvasRenderingContext2D, rect: AquariumArea["re
   ctx.beginPath();
   ctx.arc(heroX, heroY - 12, index === 17 ? 68 : 61, Math.PI * 1.12, Math.PI * 1.88);
   ctx.stroke();
-  ctx.fillStyle = theme.warm ? "rgba(75,70,50,0.9)" : "rgba(4,17,27,0.88)";
-  rounded(ctx, heroX - 61, heroY - 92, 122, 23, 9);
+  ctx.fillStyle = theme.warm ? "rgba(44,54,42,0.94)" : "rgba(3,18,27,0.94)";
+  rounded(ctx, heroX - 65, heroY - 96, 130, 28, 10);
   ctx.fill();
-  ctx.fillStyle = theme.warm ? "#fff6d9" : theme.light;
-  ctx.font = '900 7px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  ctx.strokeStyle = theme.warm ? "rgba(229,239,205,0.66)" : `${theme.accent}aa`;
+  ctx.lineWidth = 1.2;
+  rounded(ctx, heroX - 65, heroY - 96, 130, 28, 10);
+  ctx.stroke();
+  ctx.fillStyle = "#f8ffff";
+  ctx.font = '900 9px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
   ctx.textAlign = "center";
-  ctx.fillText(LANDMARK_LABELS[index] ?? "LANDMARK", heroX, heroY - 77);
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(0,8,12,0.8)";
+  ctx.lineWidth = 2.5;
+  ctx.strokeText(LANDMARK_LABELS[index] ?? "LANDMARK", heroX, heroY - 78);
+  ctx.fillText(LANDMARK_LABELS[index] ?? "LANDMARK", heroX, heroY - 78);
   const pulse = 0.45 + Math.abs(Math.sin(time * 1.5)) * 0.25;
   ctx.fillStyle = theme.warm ? `rgba(255,233,162,${pulse})` : `rgba(150,235,255,${pulse})`;
   ctx.beginPath();
