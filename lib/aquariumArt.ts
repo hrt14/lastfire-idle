@@ -1,3 +1,10 @@
+import {
+  clipTankInterior,
+  drawSwimBand,
+  drawTankFrame,
+  getAquariumDisplay,
+} from "./aquariumDisplay";
+
 type Habitat =
   | "satogawa"
   | "mountain"
@@ -213,19 +220,48 @@ const fishBody = (
   color: string,
   dir = 1,
 ) => {
+  // 魚が背景に埋もれないよう、全魚共通で濃い輪郭と小さなハイライトを持たせる。
+  // リアルさより「スマホで一目で魚だと読める」ことを優先する。
+  const outline = "rgba(5,22,28,0.84)";
+  const line = Math.max(0.85, Math.min(1.8, sy * 0.42));
+
   ctx.fillStyle = color;
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = line;
   ctx.beginPath();
   ctx.ellipse(x, y, sx, sy, 0, 0, TAU);
   ctx.fill();
+  ctx.stroke();
+
   ctx.beginPath();
   ctx.moveTo(x - dir * sx * 0.85, y);
   ctx.lineTo(x - dir * sx * 1.55, y - sy * 1.05);
   ctx.lineTo(x - dir * sx * 1.55, y + sy * 1.05);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = "rgba(20,40,48,0.82)";
+  ctx.stroke();
+
+  // 上面の反射を一筋だけ入れ、小さい魚でも立体に見せる。
+  ctx.fillStyle = "rgba(255,255,255,0.34)";
   ctx.beginPath();
-  ctx.arc(x + dir * sx * 0.55, y - sy * 0.28, Math.max(0.45, sy * 0.18), 0, TAU);
+  ctx.ellipse(
+    x + dir * sx * 0.12,
+    y - sy * 0.34,
+    Math.max(0.8, sx * 0.34),
+    Math.max(0.35, sy * 0.16),
+    -0.08 * dir,
+    0,
+    TAU,
+  );
+  ctx.fill();
+
+  ctx.fillStyle = "#102b31";
+  ctx.beginPath();
+  ctx.arc(x + dir * sx * 0.62, y - sy * 0.18, Math.max(0.55, sy * 0.18), 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.beginPath();
+  ctx.arc(x + dir * sx * 0.66, y - sy * 0.23, Math.max(0.22, sy * 0.07), 0, TAU);
   ctx.fill();
 };
 
@@ -583,16 +619,35 @@ export const drawAquariumExhibit = (
   const visual = EXHIBITS[area]?.[index];
   if (!visual) return false;
 
-  drawHabitat(ctx, visual.habitat, seed + area * 31 + index * 7);
-  drawSchool(ctx, visual, seed + area * 101 + index * 17);
+  const display = getAquariumDisplay(area, index + 1);
 
-  // ガラス面のハイライト。水槽らしい箱感を全展示で共通化。
-  ctx.strokeStyle = "rgba(226,249,255,0.54)";
-  ctx.lineWidth = 1.2;
-  rr(ctx, -38, -19, 76, 40, 12);
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(255,255,255,0.24)";
-  ctx.beginPath(); ctx.moveTo(-29, -14); ctx.quadraticCurveTo(-8, -19, 9, -14); ctx.stroke();
+  ctx.save();
+  ctx.scale(display.tankScale, display.tankScale);
+
+  // 水槽タイプごとに窓形状を変え、その中だけに生息環境と魚を描く。
+  ctx.save();
+  clipTankInterior(ctx, display.profile);
+  ctx.clip();
+
+  drawHabitat(ctx, visual.habitat, seed + area * 31 + index * 7);
+  drawSwimBand(ctx, display.profile, display.outlineMode);
+
+  // 魚は少し大きくし、背景色に応じたリム光を付ける。
+  // 特に小魚の群れが「模様」にならず、一匹ずつ読めることを狙う。
+  ctx.save();
+  ctx.scale(display.fishScaleBoost, display.fishScaleBoost);
+  ctx.shadowColor = display.outlineMode === "light"
+    ? `rgba(218,248,255,${0.48 * display.contrastBoost})`
+    : `rgba(1,16,20,${0.58 * display.contrastBoost})`;
+  ctx.shadowBlur = display.hero ? 3.6 : 2.4;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+  drawSchool(ctx, visual, seed + area * 101 + index * 17);
+  ctx.restore();
+
+  ctx.restore();
+  drawTankFrame(ctx, display.profile, display.hero, area);
+  ctx.restore();
 
   return true;
 };
