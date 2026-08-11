@@ -9461,6 +9461,7 @@ export default function Shop({ onSample, paused }: Props) {
           openAreas(state),
           effectsRef.current ? time : 0,
           effectsRef.current,
+          state.fire.beast?.pos ?? null,
         );
       }
       /*
