@@ -2,7 +2,12 @@
 
 import { drawAquariumExhibit } from "@/lib/aquariumArt";
 import { drawAquariumHall } from "@/lib/aquariumTheme";
-import { drawFireGraphicPass, drawTaigaGraphicPass } from "@/lib/worldGraphicPass";
+import {
+  drawFireForegroundPass,
+  drawFireGraphicPass,
+  drawTaigaForegroundPass,
+  drawTaigaGraphicPass,
+} from "@/lib/worldGraphicPass";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -3157,7 +3162,7 @@ const drawBeast = (
   ctx.save();
   ctx.translate(pos.x, pos.y);
   ctx.rotate(tilt * 0.9);
-  ctx.scale(face, 1);
+  ctx.scale(face * 1.18, 1.18);
 
   ctx.fillStyle = "rgba(0,0,0,0.3)";
   ctx.beginPath();
@@ -9462,6 +9467,7 @@ export default function Shop({ onSample, paused }: Props) {
           effectsRef.current ? time : 0,
           effectsRef.current,
           state.fire.beast?.pos ?? null,
+          state.unlocked,
         );
       }
       /*
@@ -9510,6 +9516,7 @@ export default function Shop({ onSample, paused }: Props) {
           effectsRef.current,
           RIVER_LANE,
           riverRise(state),
+          state.unlocked,
         );
       }
       // 冬が来ると、地面が少しずつ白くなる（第4区画）
@@ -11253,6 +11260,10 @@ export default function Shop({ onSample, paused }: Props) {
 
       actors.sort((a, b) => a.y - b.y);
       for (const actor of actors) actor.render();
+
+      // 前景をキャラクターより手前に被せ、背景→プレイ層→前景の3層にする。
+      if (isFire) drawFireForegroundPass(ctx, openAreas(state));
+      if (isTaiga) drawTaigaForegroundPass(ctx, openAreas(state), RIVER_LANE);
 
       /* --- 演出 --- */
       for (const item of state.pops) {
