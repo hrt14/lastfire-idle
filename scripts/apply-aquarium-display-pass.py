@@ -1,0 +1,435 @@
+from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parents[1]
+art_path = ROOT / "lib" / "aquariumArt.ts"
+display_path = ROOT / "lib" / "aquariumDisplay.ts"
+workflow_path = ROOT / ".github" / "workflows" / "aquarium-display-pass.yml"
+script_path = Path(__file__)
+
+art = art_path.read_text(encoding="utf-8")
+
+IMPORT = '''import {
+  clipTankInterior,
+  drawSwimBand,
+  drawTankFrame,
+  getAquariumDisplay,
+} from "./aquariumDisplay";
+
+'''
+if 'from "./aquariumDisplay"' not in art:
+    art = IMPORT + art
+
+fish_body = r'''const fishBody = \(
+[\s\S]*?
+\};
+
+const applyPattern'''
+fish_body_replacement = '''const fishBody = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  sx: number,
+  sy: number,
+  color: string,
+  dir = 1,
+) => {
+  // 魚が背景に埋もれないよう、全魚共通で濃い輪郭と小さなハイライトを持たせる。
+  // リアルさより「スマホで一目で魚だと読める」ことを優先する。
+  const outline = "rgba(5,22,28,0.84)";
+  const line = Math.max(0.85, Math.min(1.8, sy * 0.42));
+
+  ctx.fillStyle = color;
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = line;
+  ctx.beginPath();
+  ctx.ellipse(x, y, sx, sy, 0, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(x - dir * sx * 0.85, y);
+  ctx.lineTo(x - dir * sx * 1.55, y - sy * 1.05);
+  ctx.lineTo(x - dir * sx * 1.55, y + sy * 1.05);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 上面の反射を一筋だけ入れ、小さい魚でも立体に見せる。
+  ctx.fillStyle = "rgba(255,255,255,0.34)";
+  ctx.beginPath();
+  ctx.ellipse(
+    x + dir * sx * 0.12,
+    y - sy * 0.34,
+    Math.max(0.8, sx * 0.34),
+    Math.max(0.35, sy * 0.16),
+    -0.08 * dir,
+    0,
+    TAU,
+  );
+  ctx.fill();
+
+  ctx.fillStyle = "#102b31";
+  ctx.beginPath();
+  ctx.arc(x + dir * sx * 0.62, y - sy * 0.18, Math.max(0.55, sy * 0.18), 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.beginPath();
+  ctx.arc(x + dir * sx * 0.66, y - sy * 0.23, Math.max(0.22, sy * 0.07), 0, TAU);
+  ctx.fill();
+};
+
+const applyPattern'''
+art, n = re.subn(fish_body, fish_body_replacement, art, count=1)
+if n != 1:
+    raise SystemExit(f"fishBody patch failed: {n} matches")
+
+exhibit_fn = r'''export const drawAquariumExhibit = \(
+[\s\S]*?\n\};\s*$'''
+exhibit_replacement = '''export const drawAquariumExhibit = (
+  ctx: CanvasRenderingContext2D,
+  art: string,
+  seed: number,
+) => {
+  const match = /^aquarium-(\\d+)-(\\d+)$/.exec(art);
+  if (!match) return false;
+  const area = Number(match[1]);
+  const index = Number(match[2]) - 1;
+  const visual = EXHIBITS[area]?.[index];
+  if (!visual) return false;
+
+  const display = getAquariumDisplay(area, index + 1);
+
+  ctx.save();
+  ctx.scale(display.tankScale, display.tankScale);
+
+  // 水槽タイプごとに窓形状を変え、その中だけに生息環境と魚を描く。
+  ctx.save();
+  clipTankInterior(ctx, display.profile);
+  ctx.clip();
+
+  drawHabitat(ctx, visual.habitat, seed + area * 31 + index * 7);
+  drawSwimBand(ctx, display.profile, display.outlineMode);
+
+  // 魚は少し大きくし、背景色に応じたリム光を付ける。
+  // 特に小魚の群れが「模様」にならず、一匹ずつ読めることを狙う。
+  ctx.save();
+  ctx.scale(display.fishScaleBoost, display.fishScaleBoost);
+  ctx.shadowColor = display.outlineMode === "light"
+    ? `rgba(218,248,255,${0.48 * display.contrastBoost})`
+    : `rgba(1,16,20,${0.58 * display.contrastBoost})`;
+  ctx.shadowBlur = display.hero ? 3.6 : 2.4;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+  drawSchool(ctx, visual, seed + area * 101 + index * 17);
+  ctx.restore();
+
+  ctx.restore();
+  drawTankFrame(ctx, display.profile, display.hero, area);
+  ctx.restore();
+
+  return true;
+};
+'''
+art, n = re.subn(exhibit_fn, exhibit_replacement, art, count=1)
+if n != 1:
+    raise SystemExit(f"drawAquariumExhibit patch failed: {n} matches")
+
+art_path.write_text(art, encoding="utf-8")
+
+display_path.write_text(r'''export type TankProfile =
+  | "freshSmall"
+  | "stream"
+  | "panorama"
+  | "cylinder"
+  | "reefDome"
+  | "jungleRiver"
+  | "kelpTall"
+  | "tunnel"
+  | "megaWall"
+  | "deepSeaLab";
+
+export type AquariumDisplay = {
+  profile: TankProfile;
+  hero: boolean;
+  tankScale: number;
+  fishScaleBoost: number;
+  contrastBoost: number;
+  outlineMode: "dark" | "light";
+};
+
+const PROFILES: TankProfile[][] = [
+  ["freshSmall", "freshSmall", "panorama"],
+  ["stream", "stream", "panorama"],
+  ["panorama", "panorama", "jungleRiver"],
+  ["jungleRiver", "jungleRiver", "jungleRiver"],
+  ["jungleRiver", "jungleRiver", "jungleRiver"],
+  ["panorama", "panorama", "megaWall"],
+  ["jungleRiver", "jungleRiver", "jungleRiver"],
+  ["jungleRiver", "panorama", "megaWall"],
+  ["panorama", "panorama", "megaWall"],
+  ["kelpTall", "kelpTall", "megaWall"],
+  ["reefDome", "reefDome", "reefDome"],
+  ["kelpTall", "kelpTall", "kelpTall"],
+  ["panorama", "reefDome", "megaWall"],
+  ["reefDome", "reefDome", "reefDome"],
+  ["panorama", "megaWall", "megaWall"],
+  ["megaWall", "megaWall", "tunnel"],
+  ["deepSeaLab", "deepSeaLab", "deepSeaLab"],
+  ["megaWall", "tunnel", "megaWall"],
+];
+
+export const getAquariumDisplay = (area: number, index: number): AquariumDisplay => {
+  const profile = PROFILES[area]?.[index - 1] ?? "panorama";
+  const hero = index === 3;
+  const darkWater = area >= 15 || profile === "deepSeaLab" || profile === "tunnel";
+  const tinyFishArea = [0, 3, 6, 8, 10, 12, 13, 15, 17].includes(area);
+
+  return {
+    profile,
+    hero,
+    tankScale: hero ? 1.15 : index === 2 ? 1.035 : 0.98,
+    fishScaleBoost: (tinyFishArea ? 1.13 : 1.08) + (hero ? 0.025 : 0),
+    contrastBoost: darkWater ? 1.24 : hero ? 1.18 : 1.1,
+    outlineMode: darkWater ? "light" : "dark",
+  };
+};
+
+const rr = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) => {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+};
+
+const domePath = (ctx: CanvasRenderingContext2D, wide = 37, tall = 21) => {
+  ctx.beginPath();
+  ctx.moveTo(-wide, 18);
+  ctx.lineTo(-wide, 2);
+  ctx.bezierCurveTo(-wide, -13, -20, -tall, 0, -tall);
+  ctx.bezierCurveTo(20, -tall, wide, -13, wide, 2);
+  ctx.lineTo(wide, 18);
+  ctx.closePath();
+};
+
+const tunnelPath = (ctx: CanvasRenderingContext2D) => {
+  ctx.beginPath();
+  ctx.moveTo(-39, 20);
+  ctx.lineTo(-39, 1);
+  ctx.bezierCurveTo(-39, -20, -17, -25, 0, -25);
+  ctx.bezierCurveTo(17, -25, 39, -20, 39, 1);
+  ctx.lineTo(39, 20);
+  ctx.lineTo(21, 20);
+  ctx.lineTo(21, 4);
+  ctx.bezierCurveTo(21, -8, 10, -11, 0, -11);
+  ctx.bezierCurveTo(-10, -11, -21, -8, -21, 4);
+  ctx.lineTo(-21, 20);
+  ctx.closePath();
+};
+
+export const clipTankInterior = (
+  ctx: CanvasRenderingContext2D,
+  profile: TankProfile,
+) => {
+  switch (profile) {
+    case "freshSmall":
+      rr(ctx, -34, -17, 68, 35, 6);
+      return;
+    case "stream":
+      rr(ctx, -38, -20, 76, 40, 11);
+      return;
+    case "panorama":
+      rr(ctx, -40, -20, 80, 41, 14);
+      return;
+    case "cylinder":
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 24, 22, 0, 0, Math.PI * 2);
+      return;
+    case "reefDome":
+      domePath(ctx, 38, 23);
+      return;
+    case "jungleRiver":
+      rr(ctx, -34, -23, 68, 45, 9);
+      return;
+    case "kelpTall":
+      rr(ctx, -29, -24, 58, 48, 8);
+      return;
+    case "tunnel":
+      tunnelPath(ctx);
+      return;
+    case "megaWall":
+      rr(ctx, -42, -23, 84, 46, 16);
+      return;
+    case "deepSeaLab":
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 35, 22, 0, 0, Math.PI * 2);
+      return;
+  }
+};
+
+export const drawSwimBand = (
+  ctx: CanvasRenderingContext2D,
+  profile: TankProfile,
+  outlineMode: "dark" | "light",
+) => {
+  const g = ctx.createLinearGradient(0, -13, 0, 14);
+  if (outlineMode === "light") {
+    g.addColorStop(0, "rgba(0,7,18,0.02)");
+    g.addColorStop(0.5, "rgba(0,4,13,0.28)");
+    g.addColorStop(1, "rgba(0,7,18,0.04)");
+  } else {
+    g.addColorStop(0, "rgba(5,25,28,0.01)");
+    g.addColorStop(0.5, "rgba(3,22,26,0.16)");
+    g.addColorStop(1, "rgba(5,25,28,0.02)");
+  }
+  ctx.fillStyle = g;
+  if (profile === "kelpTall" || profile === "jungleRiver") {
+    ctx.fillRect(-43, -13, 86, 27);
+  } else {
+    rr(ctx, -43, -12, 86, 25, 10);
+    ctx.fill();
+  }
+};
+
+const strokeWindow = (
+  ctx: CanvasRenderingContext2D,
+  profile: TankProfile,
+  stroke: string,
+  width: number,
+) => {
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = width;
+  clipTankInterior(ctx, profile);
+  ctx.stroke();
+};
+
+export const drawTankFrame = (
+  ctx: CanvasRenderingContext2D,
+  profile: TankProfile,
+  hero: boolean,
+  area: number,
+) => {
+  const glass = area >= 15 ? "rgba(193,241,255,0.72)" : "rgba(225,251,255,0.68)";
+  const frame = area <= 1
+    ? "#78684d"
+    : profile === "deepSeaLab"
+      ? "#687284"
+      : profile === "reefDome"
+        ? "#d8e8e1"
+        : "#243d45";
+
+  // 背面にわずかな影を置き、床の上の絵ではなく「厚みのある設備」にする。
+  ctx.save();
+  ctx.translate(2.5, 4);
+  strokeWindow(ctx, profile, "rgba(0,0,0,0.34)", hero ? 6 : 4.6);
+  ctx.restore();
+
+  strokeWindow(ctx, profile, frame, hero ? 5.4 : 4.1);
+  strokeWindow(ctx, profile, glass, hero ? 1.5 : 1.15);
+
+  // タイプ固有のシルエット。遠目でも水槽の種類を判別できるようにする。
+  if (profile === "freshSmall") {
+    ctx.fillStyle = "#8e7958";
+    ctx.fillRect(-37, 18, 74, 4);
+    ctx.fillRect(-34, 22, 4, 5);
+    ctx.fillRect(30, 22, 4, 5);
+  } else if (profile === "stream") {
+    ctx.strokeStyle = "rgba(225,249,255,0.5)";
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 3; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(-31 + i * 20, -15);
+      ctx.quadraticCurveTo(-20 + i * 20, -11, -9 + i * 20, -15);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#66716b";
+    ctx.beginPath(); ctx.ellipse(-24, 20, 15, 5, -0.12, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(18, 20, 20, 6, 0.08, 0, Math.PI * 2); ctx.fill();
+  } else if (profile === "panorama" || profile === "megaWall") {
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-30, -16);
+    ctx.quadraticCurveTo(0, -23, 28, -16);
+    ctx.stroke();
+    if (hero) {
+      ctx.fillStyle = "rgba(118,221,236,0.12)";
+      ctx.beginPath();
+      ctx.ellipse(0, 2, profile === "megaWall" ? 52 : 46, 29, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (profile === "cylinder") {
+    ctx.strokeStyle = "rgba(222,249,255,0.75)";
+    ctx.beginPath(); ctx.ellipse(0, -20, 20, 5, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, 20, 20, 5, 0, 0, Math.PI * 2); ctx.stroke();
+  } else if (profile === "reefDome") {
+    ctx.strokeStyle = "rgba(255,255,255,0.38)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 1, 29, Math.PI * 1.12, Math.PI * 1.88);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(242,235,207,0.7)";
+    ctx.fillRect(-34, 18, 68, 3);
+  } else if (profile === "jungleRiver") {
+    ctx.strokeStyle = "#675943";
+    ctx.lineWidth = 3;
+    for (const x of [-25, 21]) {
+      ctx.beginPath();
+      ctx.moveTo(x, -25);
+      ctx.bezierCurveTo(x + 10, -12, x - 8, 3, x + 4, 18);
+      ctx.stroke();
+    }
+  } else if (profile === "kelpTall") {
+    ctx.strokeStyle = "rgba(80,149,112,0.65)";
+    ctx.lineWidth = 2.2;
+    for (const x of [-20, 0, 18]) {
+      ctx.beginPath();
+      ctx.moveTo(x, 23);
+      ctx.bezierCurveTo(x + 8, 8, x - 7, -8, x + 2, -23);
+      ctx.stroke();
+    }
+  } else if (profile === "tunnel") {
+    ctx.strokeStyle = "rgba(177,236,248,0.45)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 3, 31, Math.PI, Math.PI * 2);
+    ctx.stroke();
+  } else if (profile === "deepSeaLab") {
+    ctx.strokeStyle = "#8c96aa";
+    ctx.lineWidth = 2.2;
+    for (let i = 0; i < 8; i += 1) {
+      const a = (i / 8) * Math.PI * 2;
+      const x = Math.cos(a) * 38;
+      const y = Math.sin(a) * 24;
+      ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  if (hero) {
+    // ランドマーク展示は照明まで別物にする。
+    const glow = ctx.createRadialGradient(0, -8, 2, 0, -8, 48);
+    glow.addColorStop(0, "rgba(171,244,255,0.16)");
+    glow.addColorStop(1, "rgba(171,244,255,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(0, -2, 48, 30, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+''', encoding="utf-8")
+
+# 一回限りのパッチなので、適用後は補助ファイルとworkflowを消す。
+if workflow_path.exists():
+    workflow_path.unlink()
+if script_path.exists():
+    script_path.unlink()
