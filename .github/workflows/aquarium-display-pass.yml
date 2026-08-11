@@ -23,7 +23,22 @@ jobs:
           node-version: 20
           cache: npm
       - name: Apply aquarium visual patch
-        run: python3 scripts/apply-aquarium-display-pass.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply-aquarium-display-pass.py')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+              'art, n = re.subn(fish_body, fish_body_replacement, art, count=1)',
+              'art, n = re.subn(fish_body, lambda _: fish_body_replacement, art, count=1)',
+          )
+          s = s.replace(
+              'art, n = re.subn(exhibit_fn, exhibit_replacement, art, count=1)',
+              'art, n = re.subn(exhibit_fn, lambda _: exhibit_replacement, art, count=1)',
+          )
+          p.write_text(s, encoding='utf-8')
+          PY
+          python3 scripts/apply-aquarium-display-pass.py
       - name: Validate build
         run: |
           npm ci
