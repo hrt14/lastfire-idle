@@ -24,6 +24,7 @@ import {
 } from "@/data/skins";
 import { setSkinShine } from "@/lib/shop";
 import { bindVault, syncVault } from "@/lib/cloud";
+import { bindOnsenClear } from "@/lib/onsen";
 
 type Vault = {
   savedAt?: number;
@@ -156,6 +157,17 @@ const writeVaultFromCloud = (incoming: Record<string, unknown>) => {
 };
 
 bindVault(readVaultForCloud, writeVaultFromCloud);
+
+/**
+ * ステージをクリアしたときに、ごほうびのすがたを配る。
+ * ガチャの玉には入っていないので、ここで持ちものに足すだけ
+ */
+bindOnsenClear((skin) => {
+  ensureLoaded();
+  if (vault.skins.includes(skin)) return;
+  vault.skins.push(skin);
+  writeVault();
+});
 
 export const getState = (): ShopState => {
   ensureLoaded();

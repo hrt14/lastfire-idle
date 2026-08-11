@@ -88,6 +88,8 @@ export type Skin = {
   cape?: string;
   /** 一覧に出す小さな絵 */
   icon?: string;
+  /** ステージをクリアしてもらうもの。ガチャの玉には入らない */
+  reward?: true;
 };
 
 export const skins: Skin[] = [
@@ -127,6 +129,8 @@ export const skins: Skin[] = [
   { id: "archmage", name: "大魔法使い", rarity: "UR", tier: 2, coat: "#4a3b8f", head: "#f0cfae", hat: "wizard", hatColor: "#332a63", cape: "#6b5ac2", aura: "star", icon: "🪄" },
   { id: "explorer", name: "雪国の探検家", rarity: "UR", tier: 2, coat: "#d8e4ef", head: "#f0cfae", hat: "hood", hatColor: "#8a7a5a", cape: "#b9c9dc", icon: "🧭" },
   { id: "king", name: "王様", rarity: "UR", tier: 2, coat: "#8f2f4a", head: "#f0cfae", hat: "crown", hatColor: "#ffd166", cape: "#c2405f", aura: "gold", icon: "👑" },
+  /* ---- ステージのごほうび（ガチャには出ない） ---- */
+  { id: "haori", name: "湯けむり羽織", rarity: "UR", tier: 2, reward: true, coat: "#35577d", head: "#f0cfae", hat: "none", cape: "#e8eef5", aura: "star", icon: "♨️" },
   { id: "fox", name: "きつね", rarity: "UR", tier: 2, coat: "#e08a3c", head: "#f5c48a", hat: "none", face: "fox", faceColor: "#f4f1ea", icon: "🦊" },
   { id: "wolf", name: "おおかみ", rarity: "UR", tier: 2, coat: "#6b7684", head: "#8b96a4", hat: "none", face: "wolf", faceColor: "#3a424c", icon: "🐺" },
   { id: "redpanda", name: "レッサーパンダ", rarity: "UR", tier: 2, coat: "#c2603a", head: "#f4e3d2", hat: "none", face: "redpanda", faceColor: "#8a3f26", icon: "🦝" },
@@ -198,7 +202,9 @@ export const gachaTierById = new Map(gachaTiers.map((item) => [item.tier, item])
  * 初期スキン「見習い」は無料なので、1億円ガチャの分母に入れない
  */
 export const tierPool = (tier: Tier): Skin[] =>
-  skins.filter((skin) => skinTier(skin) === tier && skin.id !== "default");
+  skins.filter(
+    (skin) => skinTier(skin) === tier && skin.id !== "default" && !skin.reward,
+  );
 
 /** 次の段が開くのに要る種類数（端数は切り上げ。23種の70% → 17種） */
 export const tierNeed = (tier: Tier): number => {

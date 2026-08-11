@@ -40,6 +40,8 @@ export type OnsenState = {
   festivals: number;
   /** 大祭をやりきったか（クリア） */
   cleared: boolean;
+  /** クリアの演出が残っている秒数（保存はしない） */
+  finale: number;
 };
 
 export const createOnsen = (): OnsenState => ({
@@ -52,6 +54,7 @@ export const createOnsen = (): OnsenState => ({
   upset: 0,
   festivals: 0,
   cleared: false,
+  finale: 0,
 });
 
 export const toOnsen = (onsen: OnsenState) => ({
@@ -235,6 +238,189 @@ export const onsenWork = (
   return springRatio(state, seats);
 };
 
+/* ---------- 客の種類（仕様書 §13.1） ---------- */
+
+export type GuestKind =
+  | "day"
+  | "couple"
+  | "family"
+  | "solo"
+  | "group"
+  | "stay"
+  | "regular"
+  | "rich";
+
+/** 旅館の区画（宿泊客はここに泊まる） */
+export const INN_AREAS = new Set([17, 18, 28]);
+
+type GuestSpec = {
+  label: string;
+  /** まわる軒数の幅 */
+  stops: [number, number];
+  /** 単価の倍率 */
+  pay: number;
+  /** 待てる長さの倍率 */
+  patience: number;
+  /** 好きな区画（空なら好き嫌いなし） */
+  likes: number[];
+  /** 見た目の色（着ているもの） */
+  coat: string;
+};
+
+/**
+ * 客の種類。まわる軒数・単価・気の長さ・行きたい場所が変わる。
+ *
+ * 同じ町でも、来ている人によって「どこが混むか」「どれだけ落としていくか」が
+ * 変わるようにするためのもの（仕様書 §13）
+ */
+export const GUESTS: Record<GuestKind, GuestSpec> = {
+  day: {
+    label: "日帰り客",
+    stops: [1, 3],
+    pay: 1,
+    patience: 1,
+    likes: [0, 2, 4, 6, 10],
+    coat: "#6b8fb5",
+  },
+  couple: {
+    label: "カップル",
+    stops: [2, 4],
+    pay: 1.25,
+    patience: 1,
+    likes: [6, 13, 15, 22, 24, 26],
+    coat: "#d4649a",
+  },
+  family: {
+    label: "家族連れ",
+    stops: [3, 5],
+    pay: 1.35,
+    patience: 0.9,
+    likes: [7, 9, 11, 12, 20],
+    coat: "#e0a04a",
+  },
+  solo: {
+    label: "ひとり旅",
+    stops: [2, 4],
+    pay: 1.1,
+    patience: 1.4,
+    likes: [8, 14, 16, 21, 23],
+    coat: "#5aa08a",
+  },
+  group: {
+    label: "団体客",
+    stops: [1, 2],
+    pay: 2.6,
+    patience: 0.8,
+    likes: [7, 20, 25, 28, 29],
+    coat: "#8a5aa0",
+  },
+  stay: {
+    label: "宿泊客",
+    stops: [5, 9],
+    pay: 1.6,
+    patience: 1.2,
+    likes: [],
+    coat: "#35577d",
+  },
+  regular: {
+    label: "常連さん",
+    stops: [2, 5],
+    pay: 1.15,
+    patience: 1.6,
+    likes: [],
+    coat: "#7a6a52",
+  },
+  rich: {
+    label: "上客",
+    stops: [1, 3],
+    pay: 3,
+    patience: 0.5,
+    likes: [17, 18, 28, 29],
+    coat: "#c2a33b",
+  },
+};
+
+export const guestSpec = (kind: string | undefined): GuestSpec | null =>
+  kind && kind in GUESTS ? GUESTS[kind as GuestKind] : null;
+
+/** その席は旅館の客室か（宿泊客の泊まるところ） */
+export const isInnRoom = (seat: SeatSpec) =>
+  INN_AREAS.has(seat.area) && seat.mode === "table";
+
+/**
+ * 次に来る客の種類をくじで決める。
+ * 夜は宿泊とカップルが増え、昼は日帰りと家族連れが多い（仕様書 §15）
+ */
+export const pickGuestKind = (
+  state: ShopState,
+  canStay: boolean,
+): GuestKind => {
+  const phase = onsenLive(state) ? state.onsen.phase : "day";
+  const weights: [GuestKind, number][] =
+    phase === "night"
+      ? [
+          ["couple", 26],
+          ["stay", canStay ? 24 : 0],
+          ["solo", 14],
+          ["day", 10],
+          ["regular", 10],
+          ["group", 8],
+          ["rich", 8],
+          ["family", 6],
+        ]
+      : phase === "dusk"
+        ? [
+            ["stay", canStay ? 20 : 0],
+            ["day", 20],
+            ["couple", 18],
+            ["family", 14],
+            ["solo", 12],
+            ["group", 8],
+            ["regular", 8],
+            ["rich", 4],
+          ]
+        : [
+            ["day", 40],
+            ["family", 22],
+            ["solo", 14],
+            ["couple", 8],
+            ["group", 8],
+            ["regular", 6],
+            ["rich", 2],
+            ["stay", 0],
+          ];
+  const total = weights.reduce((sum, [, w]) => sum + w, 0);
+  let roll = Math.random() * total;
+  for (const [kind, w] of weights) {
+    roll -= w;
+    if (roll <= 0) return kind;
+  }
+  return "day";
+};
+
+/** その種類が今日まわる軒数 */
+export const guestStops = (kind: GuestKind, variety: number) => {
+  const [min, max] = GUESTS[kind].stops;
+  const want = min + Math.floor(Math.random() * (max - min + 1));
+  // 町が小さいうちは、まわれる軒数のほうが上限になる
+  return Math.max(1, Math.min(want, variety));
+};
+
+/**
+ * 行き先の好み。好きな区画が空いていれば、そちらを選びやすい。
+ * ぜんぶ埋まっていれば、ふつうに空いているところへ行く
+ */
+export const preferSeats = <T extends SeatSpec>(
+  kind: string | undefined,
+  free: T[],
+): T[] => {
+  const spec = guestSpec(kind);
+  if (!spec || spec.likes.length === 0 || free.length === 0) return free;
+  const liked = free.filter((seat) => spec.likes.includes(seat.area));
+  // 7割がた好きなところへ。残りは気まぐれ
+  return liked.length > 0 && Math.random() < 0.7 ? liked : free;
+};
+
 /* ---------- 評判（仕様書 §18.1） ---------- */
 
 export const reputation = (onsen: OnsenState) => {
@@ -280,6 +466,22 @@ export const festivalOn = (state: ShopState) =>
 /** クリアに要る評判 */
 export const FESTIVAL_FAME = 0.8;
 
+/** クリアの演出を出しておく長さ（秒） */
+export const FINALE_TIME = 9;
+
+/** クリアしたときにもらえる、共通のすがた */
+export const CLEAR_SKIN = "haori";
+
+/**
+ * クリアしたことを外へ知らせる差し込み口。
+ * ここから先（スキンを配る・保存する）は lib/shopStore.ts の仕事なので、
+ * シミュレーション側からは呼び出すだけにしておく
+ */
+let onCleared: ((skin: string) => void) | null = null;
+export const bindOnsenClear = (fn: (skin: string) => void) => {
+  onCleared = fn;
+};
+
 /* ---------- 時計を進める ---------- */
 
 const nextWeather = (state: ShopState): OnsenWeather => {
@@ -293,6 +495,7 @@ const nextWeather = (state: ShopState): OnsenWeather => {
 export const updateOnsen = (state: ShopState, dt: number) => {
   if (state.stageId !== "onsen") return;
   const onsen = state.onsen;
+  if (onsen.finale > 0) onsen.finale = Math.max(0, onsen.finale - dt);
   if (!onsenLive(state)) {
     onsen.phase = "day";
     onsen.clock = 0;
@@ -339,6 +542,8 @@ export const updateOnsen = (state: ShopState, dt: number) => {
       const fame = reputation(onsen);
       if (fame >= FESTIVAL_FAME && !onsen.cleared) {
         onsen.cleared = true;
+        onsen.finale = FINALE_TIME;
+        onCleared?.(CLEAR_SKIN);
         state.toast = {
           text: "一本道から、ひとつの温泉街が生まれた",
           at: Date.now(),
