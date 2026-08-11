@@ -19,13 +19,13 @@ jobs:
           ref: agent/aquarium-background-label-fix
           fetch-depth: 0
 
-      - name: Patch aquarium background and labels
-        run: python .github/scripts/run_aquarium_patch.py
+      - name: Final aquarium label cleanup
+        run: python .github/scripts/aquarium_cleanup.py
 
-      - name: Commit patched files
+      - name: Commit patched file
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add components/Shop.tsx lib/aquariumTheme.ts data/aquarium-visual-v3.ts
-          git commit -m "Fix aquarium backgrounds and label readability"
+          git add components/Shop.tsx
+          git commit -m "Polish aquarium exhibit labels"
           git push origin HEAD:agent/aquarium-background-label-fix
