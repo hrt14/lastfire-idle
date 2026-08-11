@@ -2,6 +2,7 @@
 
 import { drawAquariumExhibit } from "@/lib/aquariumArt";
 import { drawAquariumHall } from "@/lib/aquariumTheme";
+import { drawFireGraphicPass, drawTaigaGraphicPass } from "@/lib/worldGraphicPass";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -9453,6 +9454,15 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
+      if (isFire) {
+        drawFireGraphicPass(
+          ctx,
+          box,
+          openAreas(state),
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+        );
+      }
       /*
        * 大河。区画をまたいで、世界のはしからはしまで流れている。
        * 水くみ場や取水口はこの岸に立ち、運搬船はこの上を行き来する。
@@ -9489,6 +9499,17 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fillStyle = "rgba(150,128,92,0.5)";
           ctx.fillRect(box.x0, edge + 6, wide, -rise * 16);
         }
+      }
+      if (isTaiga) {
+        drawTaigaGraphicPass(
+          ctx,
+          box,
+          openAreas(state),
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+          RIVER_LANE,
+          riverRise(state),
+        );
       }
       // 冬が来ると、地面が少しずつ白くなる（第4区画）
       const snow = isFire ? snowDepth(state) : 0;
