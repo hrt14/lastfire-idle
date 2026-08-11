@@ -9680,7 +9680,7 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.stroke();
           // 展示名は水槽の絵に埋もれない独立プレートにする。
           // 長い名前は自動でフォントを縮めるが、最低8pxを確保してスマホでも読めるようにする。
-          const exhibitLabel = (stove.label ?? "AQUARIUM").replace(/水槽$/, "");
+          const exhibitLabel = stove.label ?? "AQUARIUM";
           ctx.save();
           const labelGrad = ctx.createLinearGradient(x - 49, 0, x + 49, 0);
           labelGrad.addColorStop(0, "rgba(2,14,20,0.94)");
@@ -10239,14 +10239,17 @@ export default function Shop({ onSample, paused }: Props) {
           );
           ctx.setLineDash([]);
         }
-        ctx.font = SMALL;
-        ctx.fillStyle = "rgba(246,231,207,0.4)";
-        ctx.fillText(
-          areaTitle(area.label),
-          (area.rect.x0 + area.rect.x1) / 2,
-          area.rect.y0 + 14,
-        );
-        ctx.font = FONT;
+        // 水族館はテーマ側に大きな地域ヘッダーがあるため、旧式の小さな区画名は重ねない。
+        if (!isAquarium) {
+          ctx.font = SMALL;
+          ctx.fillStyle = "rgba(246,231,207,0.4)";
+          ctx.fillText(
+            areaTitle(area.label),
+            (area.rect.x0 + area.rect.x1) / 2,
+            area.rect.y0 + 14,
+          );
+          ctx.font = FONT;
+        }
       }
 
       /* --- この先に広げられる柵 --- */
