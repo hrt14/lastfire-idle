@@ -1194,6 +1194,267 @@ const drawFireHeroScalePolish = (
   ctx.restore();
 };
 
+const drawFireCompletionContrast = (
+  ctx: CanvasRenderingContext2D,
+  areas: AreaView[],
+  unlocked: ReadonlySet<string>,
+  time: number,
+  effects: boolean,
+) => {
+  ctx.save();
+
+  // 最初の集落は、完成するほど中央へ視線が集まる。
+  if (areas.some((area) => area.id === "area-1")) {
+    if (unlocked.has("built-build-hearth")) {
+      const glow = ctx.createRadialGradient(1120, 590, 8, 1120, 590, 175);
+      glow.addColorStop(0, "rgba(242,160,77,0.16)");
+      glow.addColorStop(1, "rgba(242,160,77,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(1120, 590, 175, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (unlocked.has("built-build-hall")) {
+      ctx.strokeStyle = "rgba(156,118,67,0.22)";
+      ctx.lineWidth = 17;
+      for (const p of [[800, 610], [950, 650], [1120, 590], [1270, 650]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(p[0], p[1]);
+        ctx.quadraticCurveTo((p[0] + 1420) / 2, p[1] - 24, 1420, 590);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(102,68,39,0.82)";
+      ctx.lineWidth = 8;
+      for (const dx of [-96, 96]) {
+        ctx.beginPath();
+        ctx.moveTo(1420 + dx, 606);
+        ctx.lineTo(1420 + dx, 488);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(189,126,57,0.70)";
+      ctx.beginPath();
+      ctx.moveTo(1324, 488);
+      ctx.lineTo(1420, 448);
+      ctx.lineTo(1516, 488);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // マンモス討伐後は、巨大な牙と宴の旗が歴史として残る。
+  if (areas.some((area) => area.id === "area-2") && unlocked.has("mark-kills-1")) {
+    ctx.strokeStyle = "rgba(226,214,184,0.58)";
+    ctx.lineWidth = 10;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(2590, 610);
+    ctx.quadraticCurveTo(2645, 488, 2705, 610);
+    ctx.moveTo(2630, 610);
+    ctx.quadraticCurveTo(2670, 520, 2720, 612);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+  }
+  if (areas.some((area) => area.id === "area-2") && unlocked.has("built-build-feast")) {
+    ctx.strokeStyle = "rgba(112,70,36,0.90)";
+    ctx.lineWidth = 7;
+    for (const x of [2680, 2760, 2840]) {
+      ctx.beginPath();
+      ctx.moveTo(x, 630);
+      ctx.lineTo(x, 492);
+      ctx.stroke();
+      ctx.fillStyle = x === 2760 ? "rgba(202,117,55,0.82)" : "rgba(198,159,79,0.72)";
+      ctx.beginPath();
+      ctx.moveTo(x + 4, 500);
+      ctx.lineTo(x + 58, 520);
+      ctx.lineTo(x + 4, 545);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // 冬の投資は、寒い空間に暖色の生活軸を出す。
+  if (areas.some((area) => area.id === "area-3")) {
+    if (unlocked.has("built-build-hearth-2")) {
+      const warm = ctx.createRadialGradient(3120, 570, 12, 3120, 570, 230);
+      warm.addColorStop(0, "rgba(255,176,91,0.19)");
+      warm.addColorStop(0.45, "rgba(246,137,67,0.07)");
+      warm.addColorStop(1, "rgba(246,137,67,0)");
+      ctx.fillStyle = warm;
+      ctx.beginPath();
+      ctx.arc(3120, 570, 230, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (unlocked.has("built-build-lamp")) {
+      for (let i = 0; i < 7; i += 1) {
+        const x = 3020 + i * 74;
+        const y = 575 + (i % 2) * 18;
+        ctx.strokeStyle = "rgba(86,64,45,0.80)";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(x, y + 18);
+        ctx.lineTo(x, y - 28);
+        ctx.stroke();
+        const g = ctx.createRadialGradient(x, y - 32, 2, x, y - 32, 42);
+        g.addColorStop(0, "rgba(255,205,119,0.40)");
+        g.addColorStop(1, "rgba(255,205,119,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y - 32, 42, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // 村完成後は、門・柵・旗・中心建築がひとつの輪郭になる。
+  if (areas.some((area) => area.id === "area-4") && unlocked.has("built-build-hall2")) {
+    ctx.strokeStyle = "rgba(92,61,35,0.66)";
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(3890, 665);
+    ctx.quadraticCurveTo(4160, 735, 4485, 665);
+    ctx.stroke();
+    for (let x = 3940; x <= 4430; x += 70) {
+      ctx.beginPath();
+      ctx.moveTo(x, 682);
+      ctx.lineTo(x, 636 - ((x / 70) % 2) * 8);
+      ctx.stroke();
+    }
+    for (const x of [4388, 4472]) {
+      ctx.strokeStyle = "rgba(100,64,35,0.88)";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x, 586);
+      ctx.lineTo(x, 468);
+      ctx.stroke();
+      ctx.fillStyle = x < 4440 ? "rgba(173,91,49,0.76)" : "rgba(196,151,69,0.76)";
+      ctx.fillRect(x + 4, 474, 46, 24);
+    }
+  }
+
+  // 川辺は大型いかだ完成で、岸のシルエットそのものを物流拠点へ変える。
+  if (areas.some((area) => area.id === "area-5") && unlocked.has("built-build-raft-l")) {
+    ctx.fillStyle = "rgba(86,58,36,0.92)";
+    ctx.fillRect(5220, 198, 190, 28);
+    ctx.strokeStyle = "rgba(219,186,126,0.62)";
+    ctx.lineWidth = 4;
+    for (let x = 5240; x < 5400; x += 32) {
+      ctx.beginPath();
+      ctx.moveTo(x, 198);
+      ctx.lineTo(x + 12, 225);
+      ctx.stroke();
+    }
+    cargoPile(ctx, 5305, 192, 13, 0.92);
+  }
+
+  // 寄り道区画も、遠目で場所が判別できる一本の強いシルエットを持たせる。
+  const forest = areas.find((area) => area.id === "area-6");
+  if (forest) {
+    const r = forest.rect;
+    const x = r.x0 + (r.x1 - r.x0) * 0.22;
+    const y = r.y0 + (r.y1 - r.y0) * 0.60;
+    ctx.fillStyle = "rgba(13,30,23,0.82)";
+    ctx.fillRect(x - 18, y - 185, 36, 205);
+    ctx.beginPath();
+    ctx.arc(x, y - 198, 88, 0, Math.PI * 2);
+    ctx.arc(x - 58, y - 166, 56, 0, Math.PI * 2);
+    ctx.arc(x + 58, y - 168, 60, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const windy = areas.find((area) => area.id === "area-7");
+  if (windy) {
+    const r = windy.rect;
+    const x = r.x0 + (r.x1 - r.x0) * 0.64;
+    const y = r.y0 + (r.y1 - r.y0) * 0.42;
+    ctx.strokeStyle = "rgba(55,69,42,0.76)";
+    ctx.lineWidth = 17;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x, y + 84);
+    ctx.quadraticCurveTo(x - 26, y + 18, x + 44, y - 36);
+    ctx.stroke();
+    ctx.lineWidth = 8;
+    for (const dy of [-34, -4, 28]) {
+      ctx.beginPath();
+      ctx.moveTo(x + 22, y + dy);
+      ctx.lineTo(x + 88, y + dy - 28);
+      ctx.stroke();
+    }
+    ctx.lineCap = "butt";
+  }
+
+  const marsh = areas.find((area) => area.id === "area-8");
+  if (marsh) {
+    const r = marsh.rect;
+    const x = r.x0 + (r.x1 - r.x0) * 0.76;
+    const y = r.y0 + (r.y1 - r.y0) * 0.48;
+    ctx.strokeStyle = "rgba(39,61,52,0.76)";
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 112);
+    ctx.lineTo(x - 8, y - 64);
+    ctx.moveTo(x - 4, y - 12);
+    ctx.lineTo(x - 62, y - 68);
+    ctx.moveTo(x - 2, y - 28);
+    ctx.lineTo(x + 62, y - 86);
+    ctx.stroke();
+  }
+
+  const cave = areas.find((area) => area.id === "area-9");
+  if (cave) {
+    const r = cave.rect;
+    const x = (r.x0 + r.x1) / 2;
+    const y = r.y0 + (r.y1 - r.y0) * 0.35;
+    ctx.strokeStyle = "rgba(124,116,102,0.52)";
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.arc(x, y + 20, (r.x1 - r.x0) * 0.23, Math.PI, Math.PI * 2);
+    ctx.stroke();
+    if (effects) {
+      for (const dx of [-118, 118]) {
+        const g = ctx.createRadialGradient(x + dx, y + 70, 2, x + dx, y + 70, 48);
+        g.addColorStop(0, "rgba(255,181,84,0.28)");
+        g.addColorStop(1, "rgba(255,181,84,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x + dx, y + 70, 48, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  const stars = areas.find((area) => area.id === "area-10");
+  if (stars) {
+    const r = stars.rect;
+    const x = (r.x0 + r.x1) / 2;
+    const y = r.y0 + (r.y1 - r.y0) * 0.56;
+    ctx.fillStyle = "rgba(121,113,96,0.80)";
+    ctx.beginPath();
+    ctx.moveTo(x - 22, y + 80);
+    ctx.lineTo(x - 12, y - 115);
+    ctx.lineTo(x + 18, y - 115);
+    ctx.lineTo(x + 28, y + 80);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  const falls = areas.find((area) => area.id === "area-11");
+  if (falls && effects) {
+    const r = falls.rect;
+    const x = (r.x0 + r.x1) / 2 + (r.x1 - r.x0) * 0.08;
+    const y = r.y0 + 415;
+    for (let i = 0; i < 7; i += 1) {
+      const t = (time * 0.12 + i * 0.16) % 1;
+      ctx.fillStyle = "rgba(222,241,239," + (0.16 * (1 - t)) + ")";
+      ctx.beginPath();
+      ctx.ellipse(x - 150 + i * 50, y - t * 40, 58 + t * 22, 20 + t * 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+};
+
 export const drawFireGraphicPass = (
   ctx: CanvasRenderingContext2D,
   box: Rect,
@@ -1229,6 +1490,7 @@ export const drawFireGraphicPass = (
   drawFireLateInvestmentGrowth(ctx, areas, unlockedSet, time, effects);
   drawFireAmbientLife(ctx, areas, unlockedSet, time);
   drawFireHeroScalePolish(ctx, areas, unlockedSet, time, effects);
+  drawFireCompletionContrast(ctx, areas, unlockedSet, time, effects);
   const valley = areas.find((area) => area.id === "area-2");
   if (valley) drawValleyPresence(ctx, valley, beastPos, time, effects);
 
@@ -1861,6 +2123,179 @@ const drawTaigaHeroScalePolish = (
   ctx.restore();
 };
 
+const drawTaigaCompletionContrast = (
+  ctx: CanvasRenderingContext2D,
+  areas: AreaView[],
+  unlocked: ReadonlySet<string>,
+  time: number,
+  riverLane: number,
+) => {
+  ctx.save();
+
+  // 初期農耕は水路が増えるほど、川と畑が視覚的につながる。
+  const farm = areas.find((area) => area.id === "area-1");
+  if (farm) {
+    const canals = ["equip-canal-1", "equip-canal-2", "equip-canal-3"].filter((id) => unlocked.has(id)).length;
+    for (let i = 0; i < canals; i += 1) {
+      const x = farm.rect.x0 + 150 + i * 190;
+      ctx.strokeStyle = "rgba(54,119,134,0.44)";
+      ctx.lineWidth = 14;
+      ctx.beginPath();
+      ctx.moveTo(x, riverLane + 26);
+      ctx.bezierCurveTo(x + 22, riverLane + 130, x - 28, 470, x + 18, 660);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(201,231,226,0.16)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  // 船着き場完成で荷揚げ用の大きな門型クレーンが現れる。
+  if (areas.some((area) => area.id === "area-4") && unlocked.has("built-build-dock")) {
+    const x = 3650;
+    const y = riverLane + 120;
+    ctx.strokeStyle = "rgba(95,63,38,0.86)";
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.moveTo(x - 70, y + 30);
+    ctx.lineTo(x - 70, y - 112);
+    ctx.lineTo(x + 70, y - 112);
+    ctx.lineTo(x + 70, y + 30);
+    ctx.stroke();
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 108);
+    ctx.lineTo(x, y - 24);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(129,86,46,0.88)";
+    ctx.fillRect(x - 13, y - 28, 26, 24);
+  }
+  if (areas.some((area) => area.id === "area-4") && unlocked.has("built-build-market")) {
+    ctx.strokeStyle = "rgba(112,75,43,0.72)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(3760, 405);
+    ctx.quadraticCurveTo(3920, 360, 4080, 405);
+    ctx.stroke();
+    for (let i = 0; i < 7; i += 1) {
+      const x = 3780 + i * 48;
+      ctx.fillStyle = i % 2 ? "rgba(196,139,67,0.74)" : "rgba(152,86,52,0.72)";
+      ctx.beginPath();
+      ctx.moveTo(x, 390);
+      ctx.lineTo(x + 28, 402);
+      ctx.lineTo(x, 416);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // 川の町は大型交易船完成でマスト群が町の輪郭に加わる。
+  if (areas.some((area) => area.id === "area-5") && unlocked.has("built-build-ship")) {
+    for (const [x, h] of [[5000, 150], [5070, 190], [5145, 138]] as const) {
+      ctx.strokeStyle = "rgba(76,53,35,0.82)";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(x, riverLane + 86);
+      ctx.lineTo(x, riverLane + 86 - h);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(225,203,154,0.66)";
+      ctx.beginPath();
+      ctx.moveTo(x + 5, riverLane + 92 - h);
+      ctx.lineTo(x + 62, riverLane + 126 - h);
+      ctx.lineTo(x + 5, riverLane + 150 - h);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // 大穀倉完成後は、収穫物の列と運搬路で横方向に密度が増す。
+  if (areas.some((area) => area.id === "area-6") && unlocked.has("built-build-granary-2")) {
+    ctx.strokeStyle = "rgba(135,102,56,0.28)";
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.moveTo(5480, 610);
+    ctx.quadraticCurveTo(5750, 560, 6030, 615);
+    ctx.stroke();
+    for (const x of [5540, 5660, 6070, 6180]) cargoPile(ctx, x, 630, 8, 0.74);
+  }
+
+  // 三角州は交易小屋と船着き場がそろうと、水路の上に交易拠点の輪郭が立つ。
+  if (areas.some((area) => area.id === "area-7") && unlocked.has("built-build-delta-hall")) {
+    const x = 6510;
+    const y = 580;
+    ctx.fillStyle = "rgba(102,71,43,0.90)";
+    ctx.fillRect(x - 78, y - 55, 156, 66);
+    ctx.fillStyle = "rgba(164,110,55,0.86)";
+    ctx.beginPath();
+    ctx.moveTo(x - 98, y - 55);
+    ctx.lineTo(x, y - 108);
+    ctx.lineTo(x + 98, y - 55);
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (areas.some((area) => area.id === "area-7") && unlocked.has("built-build-delta-dock")) {
+    for (const x of [6710, 6780, 6850]) {
+      ctx.strokeStyle = "rgba(77,54,35,0.74)";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x, riverLane + 104);
+      ctx.lineTo(x, riverLane - 22);
+      ctx.stroke();
+    }
+  }
+
+  // 大治水は3投資が進むたび、人工物の高さと工事密度が段階的に上がる。
+  if (areas.some((area) => area.id === "area-8")) {
+    if (unlocked.has("built-build-reservoir")) {
+      for (const x of [7200, 7300, 7400]) {
+        ctx.strokeStyle = "rgba(114,78,47,0.55)";
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(x - 34, 616);
+        ctx.lineTo(x, 535);
+        ctx.lineTo(x + 34, 616);
+        ctx.stroke();
+      }
+    }
+    if (unlocked.has("built-build-great-levee")) {
+      for (const x of [7460, 7580, 7700]) {
+        ctx.fillStyle = "rgba(124,88,53,0.72)";
+        ctx.fillRect(x - 12, 505, 24, 116);
+        ctx.fillRect(x - 38, 505, 76, 14);
+      }
+    }
+    if (unlocked.has("built-build-great-weir")) {
+      ctx.strokeStyle = "rgba(93,63,39,0.82)";
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(7640, riverLane - 14);
+      ctx.quadraticCurveTo(7780, riverLane - 92, 7920, riverLane - 14);
+      ctx.stroke();
+      for (let i = 0; i < 5; i += 1) {
+        const x = 7665 + i * 56;
+        ctx.fillStyle = i % 2 ? "rgba(202,151,72,0.70)" : "rgba(162,91,49,0.72)";
+        ctx.fillRect(x, riverLane - 64, 38, 18);
+      }
+    }
+  }
+
+  // 水面の活動は、発展後だけ局所的に濃くする。
+  if (unlocked.has("built-build-market") || unlocked.has("built-build-ship")) {
+    ctx.strokeStyle = "rgba(226,241,239,0.14)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 14; i += 1) {
+      const x = 3500 + ((i * 283 + time * 24) % 1900);
+      const y = riverLane - 42 + (i % 4) * 18;
+      ctx.beginPath();
+      ctx.moveTo(x - 18, y);
+      ctx.lineTo(x + 18, y);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+};
+
 export const drawTaigaGraphicPass = (
   ctx: CanvasRenderingContext2D,
   box: Rect,
@@ -1890,6 +2325,7 @@ export const drawTaigaGraphicPass = (
   for (const area of areas) drawTaigaAreaLife(ctx, area, progress, time, riverLane, unlockedSet);
   drawTaigaAmbientLife(ctx, areas, unlockedSet, time, riverLane);
   drawTaigaHeroScalePolish(ctx, areas, unlockedSet, time, riverLane);
+  drawTaigaCompletionContrast(ctx, areas, unlockedSet, time, riverLane);
 
   // 船は人口・交易の成長を背景側で見せる。実働の船とは別の遠景なので当たり判定を持たない。
   const top = box.y0 + 26 - rise * 14;
@@ -1922,6 +2358,30 @@ export const drawFireForegroundPass = (
     const w = rect.x1 - rect.x0;
     const isSnow = area.palette?.prop === "snow";
     const count = area.id === "area-2" ? 8 : 5;
+    if (area.id === "area-6") {
+      ctx.fillStyle = "rgba(10,25,19,0.90)";
+      ctx.fillRect(rect.x0 - 10, rect.y1 - 150, 42, 170);
+      ctx.fillRect(rect.x1 - 30, rect.y1 - 132, 46, 152);
+    } else if (area.id === "area-7") {
+      for (let r = 0; r < 7; r += 1) grassTuft(ctx, rect.x0 + 20 + r * 42, rect.y1 - 3, 2.0, "rgba(75,104,57,0.88)");
+    } else if (area.id === "area-8") {
+      for (let r = 0; r < 6; r += 1) grassTuft(ctx, rect.x1 - 250 + r * 40, rect.y1 - 2, 2.05, "rgba(56,94,73,0.88)");
+    } else if (area.id === "area-9") {
+      ctx.fillStyle = "rgba(58,57,53,0.92)";
+      ctx.beginPath();
+      ctx.ellipse(rect.x0 + 62, rect.y1 - 8, 84, 42, -0.12, 0, Math.PI * 2);
+      ctx.ellipse(rect.x1 - 74, rect.y1 - 5, 98, 48, 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (area.id === "area-10") {
+      ctx.fillStyle = "rgba(102,98,87,0.86)";
+      for (const x of [rect.x0 + 72, rect.x1 - 90]) ctx.fillRect(x - 13, rect.y1 - 76, 26, 80);
+    } else if (area.id === "area-11") {
+      ctx.fillStyle = "rgba(42,70,71,0.86)";
+      ctx.beginPath();
+      ctx.ellipse(rect.x0 + 90, rect.y1 - 4, 120, 42, -0.08, 0, Math.PI * 2);
+      ctx.ellipse(rect.x1 - 110, rect.y1 - 2, 145, 48, 0.08, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (area.id === "area-2") {
       ctx.fillStyle = "rgba(48,40,34,0.88)";
       ctx.beginPath();
@@ -1984,6 +2444,17 @@ export const drawTaigaForegroundPass = (
       ctx.ellipse(rect.x0 + 85, rect.y1 + 2, 120, 32, -0.06, 0, Math.PI * 2);
       ctx.ellipse(rect.x1 - 105, rect.y1 + 4, 145, 38, 0.08, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (area.id === "area-7") {
+      for (let r = 0; r < 7; r += 1) grassTuft(ctx, rect.x0 + 28 + r * 45, rect.y1 - 2, 1.9, "rgba(61,99,70,0.88)");
+    }
+    if (area.id === "area-8") {
+      ctx.fillStyle = "rgba(103,76,50,0.84)";
+      for (const x of [rect.x0 + 82, rect.x1 - 96]) {
+        ctx.beginPath();
+        ctx.ellipse(x, rect.y1 - 5, 86, 33, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     // 川辺は葦を手前に被せる。畑側は背の高い作物でプレイ層を挟む。
     for (let i = 0; i < 6; i += 1) {
