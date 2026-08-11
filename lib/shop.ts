@@ -38,6 +38,11 @@ import {
   drawBonus,
   festivalOn,
   fromOnsen,
+  guestSpec,
+  guestStops,
+  isInnRoom,
+  pickGuestKind,
+  preferSeats,
   moveBonus,
   notePleased,
   noteUpset,
@@ -799,6 +804,10 @@ export type Customer = {
   visits: number;
   /** 行列にならんでいるときの位置（0 が先頭） */
   lane?: number;
+  /** 客の種類（温泉街だけ。日帰り・カップル・宿泊…） */
+  kind?: string;
+  /** 宿泊客が泊まっている客室（最後にここへ戻って朝を迎える） */
+  room?: string;
   /** 戸口や渡り廊下をたどる経由地（壁のあるステージだけ） */
   path?: Vec[];
   pathTo?: Vec;
@@ -2511,6 +2520,28 @@ const spawnCustomers = (state: ShopState, dt: number) => {
 
   // 遊べる場所が多いほど、ひとりが何か所もまわる
   const variety = Math.min(9, Math.floor(openSeats(state).length * 0.8));
+
+  if (state.stageId === "onsen") {
+    /*
+     * 温泉街は、来る人によってまわりかたが変わる（仕様書 §13）。
+     * 宿泊客は空いている客室から始めて、町を長くまわり、最後にまた宿へ戻る
+     */
+    const rooms = freeCandidates.filter(isInnRoom);
+    const kind = pickGuestKind(state, rooms.length > 0);
+    const pool = kind === "stay" ? rooms : preferSeats(kind, freeCandidates);
+    const seat = pool[Math.floor(Math.random() * pool.length)] ?? free;
+    state.customers.push(
+      newGuest({
+        seatId: seat.id,
+        state: "walking",
+        kind,
+        room: kind === "stay" ? seat.id : undefined,
+        budget: guestStops(kind, Math.max(1, variety)),
+      }),
+    );
+    return;
+  }
+
   state.customers.push(
     newGuest({
       seatId: free.id,
@@ -2849,11 +2880,17 @@ const liveTrees = (state: ShopState, stoveId?: string) =>
       forestHasRoom(state, tree.stoveId),
   );
 
-const payOut = (state: ShopState, seat: SeatSpec, at: Vec) => {
+const payOut = (
+  state: ShopState,
+  seat: SeatSpec,
+  at: Vec,
+  guest?: Customer,
+) => {
   const value =
     coinValue(state.levels.price) *
     (seat.value ?? 1) *
-    payBonus(state, seat, festivalOn(state));
+    payBonus(state, seat, festivalOn(state)) *
+    (guestSpec(guest?.kind)?.pay ?? 1);
   notePleased(state);
   if (hasEquip(state, "ticket")) {
     // 券売機／自動改札があるとお金は自動でサイフに入る
@@ -2931,7 +2968,16 @@ const nextStop = (state: ShopState, customer: Customer) => {
     customer.timer = ROAM_TIME;
     return;
   }
-  const seat = free[Math.floor(Math.random() * free.length)];
+  /*
+   * 宿泊客は、最後の一軒を泊まっている宿へ戻す（朝を迎えてから帰る）。
+   * それ以外は、その人の好きな区画を選びやすくする
+   */
+  const back =
+    customer.kind === "stay" && customer.visits >= customer.budget - 1
+      ? free.filter((item) => item.id === customer.room)
+      : [];
+  const pool = back.length > 0 ? back : preferSeats(customer.kind, free);
+  const seat = pool[Math.floor(Math.random() * pool.length)];
   customer.seatId = seat.id;
   customer.state = "walking";
   customer.timer = 0;
@@ -2975,7 +3021,7 @@ const updateCustomers = (state: ShopState, dt: number) => {
     } else if (customer.state === "waiting" && mode !== "shelf") {
       // 待ちくたびれたら帰る。止まった工程の前で、席が永久に埋まらないように
       customer.timer += dt;
-      if (customer.timer > PATIENCE) {
+      if (customer.timer > PATIENCE * (guestSpec(customer.kind)?.patience ?? 1)) {
         customer.state = "leaving";
         noteUpset(state);
         pop(state, { x: customer.pos.x, y: customer.pos.y - 30 }, "また来ます…");
@@ -2990,14 +3036,14 @@ const updateCustomers = (state: ShopState, dt: number) => {
     } else if (customer.state === "paying") {
       const till = payPos(seat);
       if (walkTo(state, customer, till, 100, dt)) {
-        payOut(state, seat, till);
+        payOut(state, seat, till, customer);
         state.sfx.push("serve");
         nextStop(state, customer);
       }
     } else if (customer.state === "eating") {
       customer.timer -= dt;
       if (customer.timer <= 0) {
-        payOut(state, seat, { x: seat.serve.x, y: seat.serve.y });
+        payOut(state, seat, { x: seat.serve.x, y: seat.serve.y }, customer);
         // レストランは皿が残る。片づけるまで次の客が来ない
         if (mode === "table") state.dirty[seat.id] = state.playTime;
         nextStop(state, customer);

@@ -80,8 +80,10 @@ import {
   type UpgradeId,
 } from "@/lib/shop";
 import {
+  FINALE_TIME,
   darkness as onsenDark,
   festivalOn,
+  guestSpec,
   onsenLive,
   phaseLabel as onsenPhaseLabel,
   phaseLeft as onsenPhaseLeft,
@@ -10645,11 +10647,14 @@ export default function Shop({ onSample, paused }: Props) {
           y: customer.pos.y,
           render: () => {
             const palette = ["#5b7fbc", "#7a6bb5", "#4f9e83", "#c07a4a", "#a35b7a"];
+            // 温泉街は、来ている人の種類で着ているものの色が違う（仕様書 §13.1）
+            const coat =
+              guestSpec(customer.kind)?.coat ?? palette[customer.id % palette.length];
             person(
               ctx,
               customer.pos.x,
               customer.pos.y,
-              palette[customer.id % palette.length],
+              coat,
               "#f0cfae",
               customer.state === "walking" ? performance.now() / 90 : 0,
             );
@@ -11373,6 +11378,60 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fillStyle = "rgba(120,130,140,0.10)";
           ctx.fillRect(camX, camY, view, viewH0);
         }
+        /*
+         * 町ができあがった夜の演出（仕様書 §24）。
+         * 花火ではなく、灯籠と湯けむりが下から上へのぼっていく
+         */
+        if (onsen.finale > 0) {
+          const t = 1 - onsen.finale / FINALE_TIME;
+          ctx.fillStyle = `rgba(255,190,120,${0.12 + Math.sin(t * Math.PI) * 0.14})`;
+          ctx.fillRect(camX, camY, view, viewH0);
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          for (let i = 0; i < 40; i += 1) {
+            const seed = i * 97;
+            const lx = camX + ((seed * 13) % view);
+            // 下から湧いて、ゆっくりのぼる
+            const rise = ((t * 1.4 + (i % 10) / 10) % 1) * (viewH0 + 60);
+            const ly = camY + viewH0 + 20 - rise;
+            const sway = Math.sin(time * 1.2 + i) * 10;
+            ctx.fillStyle = "rgba(255,170,90,0.75)";
+            ctx.beginPath();
+            ctx.ellipse(lx + sway, ly, 5, 7, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,225,180,0.9)";
+            ctx.fillRect(lx + sway - 3.5, ly - 1, 7, 2);
+          }
+          ctx.restore();
+          for (let i = 0; i < 5; i += 1) {
+            steam(ctx, camX + (view * (i + 0.5)) / 5, camY + viewH0 * 0.6, 140, time, 1.6);
+          }
+          // 一言だけ出す
+          const fade = Math.min(1, Math.min(t * 4, (1 - t) * 4));
+          if (fade > 0.02) {
+            ctx.font = `800 20px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+            const text = "一本道から、ひとつの温泉街が生まれた";
+            const w = ctx.measureText(text).width + 40;
+            const bx = camX + view / 2;
+            const by = camY + viewH0 * 0.32;
+            ctx.globalAlpha = fade;
+            ctx.fillStyle = "rgba(16,20,28,0.72)";
+            roundRect(ctx, bx - w / 2, by - 22, w, 40, 12);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(255,190,110,0.7)";
+            ctx.lineWidth = 1.5;
+            roundRect(ctx, bx - w / 2, by - 22, w, 40, 12);
+            ctx.stroke();
+            ctx.fillStyle = "#ffe9b8";
+            ctx.fillText(text, bx, by);
+            ctx.font = SMALL;
+            ctx.fillStyle = "#d9c9a8";
+            ctx.fillText("「湯けむり羽織」を手に入れた", bx, by + 16);
+            ctx.globalAlpha = 1;
+            ctx.font = FONT;
+          }
+        }
+
         // 大祭の夜は、灯籠が流れる
         if (matsuri) {
           ctx.save();
