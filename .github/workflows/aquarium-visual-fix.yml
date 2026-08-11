@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
 
       - name: Patch aquarium background and labels
-        run: python .github/scripts/aquarium_patch.py
+        run: python .github/scripts/run_aquarium_patch.py
 
       - name: Commit patched files
         run: |
