@@ -1,0 +1,39 @@
+name: Apply late-area graphic refresh
+
+on:
+  push:
+    branches:
+      - agent/graphic-refresh-late-areas
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/graphic-refresh-late-areas
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply late-area graphics
+        run: node scripts/apply-graphic-refresh-round4.mjs
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint touched graphic file
+        run: npx eslint lib/worldGraphicPass.ts
+      - name: Full production build
+        run: npm run build
+      - name: Commit validated fourth pass
+        run: |
+          rm scripts/apply-graphic-refresh-round4.mjs
+          rm .github/workflows/agent-graphic-refresh-round4.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/worldGraphicPass.ts scripts/apply-graphic-refresh-round4.mjs .github/workflows/agent-graphic-refresh-round4.yml
+          git commit -m "Extend graphic identity through late areas"
+          git push origin HEAD:agent/graphic-refresh-late-areas
