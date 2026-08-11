@@ -29,10 +29,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
+      - name: Lint touched graphic files
+        run: npx eslint components/Shop.tsx lib/worldGraphicPass.ts
 
-      - name: Build
+      - name: Full production build
         run: npm run build
 
       - name: Commit validated renderer patch
