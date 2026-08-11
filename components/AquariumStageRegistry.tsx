@@ -2,9 +2,10 @@
 
 import type { ReactNode } from "react";
 import "@/data/aquarium-balance-v2";
+import "@/data/aquarium-visual-v3";
 
 /**
- * 水族館の登録とバランス調整を、Pageより外側で先に適用する。
+ * 水族館の登録・バランス・ビジュアル調整を、Pageより外側で先に適用する。
  * サーバー描画とクライアント操作で同じステージ定義を使うためのwrapper。
  */
 export default function AquariumStageRegistry({ children }: { children: ReactNode }) {
