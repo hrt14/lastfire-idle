@@ -1,0 +1,37 @@
+name: Aquarium display pass
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/apply-aquarium-display-pass.py"
+      - ".github/workflows/aquarium-display-pass.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply aquarium visual patch
+        run: python3 scripts/apply-aquarium-display-pass.py
+      - name: Validate build
+        run: |
+          npm ci
+          npm run build
+      - name: Commit patched aquarium display
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/aquariumArt.ts lib/aquariumDisplay.ts scripts/apply-aquarium-display-pass.py .github/workflows/aquarium-display-pass.yml
+          git commit -m "Differentiate aquarium tanks and improve fish visibility"
+          git push origin HEAD:main
