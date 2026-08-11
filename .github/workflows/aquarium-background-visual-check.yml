@@ -1,0 +1,43 @@
+name: Aquarium background visual check
+
+on:
+  push:
+    branches:
+      - agent/aquarium-square-background-v5
+    paths:
+      - app/aquarium-debug/page.tsx
+      - lib/aquariumTheme.ts
+      - components/Shop.tsx
+      - .github/workflows/aquarium-background-visual-check.yml
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aquarium-square-background-v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install Chromium
+        run: npx -y playwright@1.55.0 install chromium
+      - name: Start app
+        run: |
+          npm run start > /tmp/aquarium-next.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/aquarium-debug >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/aquarium-next.log
+          exit 1
+      - name: Capture mobile-width visual review
+        run: |
+          npx -y playwright@1.55.0 screenshot --viewport-size="390,1200" --full-page http://127.0.0.1:3000/aquarium-debug /tmp/aquarium-review.jpeg
+          echo "SCREENSHOT_BASE64_BEGIN"
+          base64 -w0 /tmp/aquarium-review.jpeg
+          echo
+          echo "SCREENSHOT_BASE64_END"
