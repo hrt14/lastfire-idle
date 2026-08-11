@@ -1,0 +1,47 @@
+name: Apply graphic refresh round 2
+
+on:
+  push:
+    branches:
+      - agent/graphic-refresh-fire-taiga
+    paths:
+      - .github/workflows/agent-graphic-refresh-round2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/graphic-refresh-fire-taiga
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply second graphic pass
+        run: python scripts/agent_graphic_refresh_round2.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint touched files
+        run: npx eslint components/Shop.tsx lib/worldGraphicPass.ts
+
+      - name: Full production build
+        run: npm run build
+
+      - name: Commit validated second pass
+        shell: bash
+        run: |
+          rm .github/workflows/agent-graphic-refresh-round2.yml scripts/agent_graphic_refresh_round2.py
+          git config user.name "openai-agent"
+          git config user.email "openai-agent@users.noreply.github.com"
+          git add components/Shop.tsx lib/worldGraphicPass.ts .github/workflows/agent-graphic-refresh-round2.yml scripts/agent_graphic_refresh_round2.py
+          git diff --cached --quiet && exit 0
+          git commit -m "strengthen fire mammoth and river landmarks"
+          git push origin HEAD:agent/graphic-refresh-fire-taiga
