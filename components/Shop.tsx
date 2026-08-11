@@ -10044,19 +10044,34 @@ export default function Shop({ onSample, paused }: Props) {
             drawRide(ctx, seat.art ?? "bench", x, y, time);
           }
 
-          // 乗り物の名前を出す小さな看板
-          ctx.fillStyle = "rgba(0,0,0,0.45)";
-          roundRect(ctx, x - 34, y + 18, 68, 14, 7);
-          ctx.fill();
-          ctx.strokeStyle = "rgba(255,209,102,0.5)";
-          ctx.lineWidth = 1;
-          roundRect(ctx, x - 34, y + 18, 68, 14, 7);
-          ctx.stroke();
-          ctx.font = SMALL;
-          ctx.fillStyle = "#ffe6a8";
           const cost = seatCost(seat);
-          ctx.fillText(cost > 1 ? `${seat.label}（${cost}枚）` : seat.label, x, y + 25);
-          ctx.font = FONT;
+          if (isAquarium) {
+            // 展示名は水槽本体に一度だけ。観覧位置は必要券数だけ小さく表示する。
+            ctx.fillStyle = "rgba(3,17,24,0.84)";
+            roundRect(ctx, x - 18, y + 18, 36, 14, 7);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(112,226,235,0.46)";
+            ctx.lineWidth = 1;
+            roundRect(ctx, x - 18, y + 18, 36, 14, 7);
+            ctx.stroke();
+            ctx.font = `800 8px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+            ctx.fillStyle = "#d9fbff";
+            ctx.fillText(`券×${cost}`, x, y + 25);
+            ctx.font = FONT;
+          } else {
+            // 乗り物の名前を出す小さな看板
+            ctx.fillStyle = "rgba(0,0,0,0.45)";
+            roundRect(ctx, x - 34, y + 18, 68, 14, 7);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(255,209,102,0.5)";
+            ctx.lineWidth = 1;
+            roundRect(ctx, x - 34, y + 18, 68, 14, 7);
+            ctx.stroke();
+            ctx.font = SMALL;
+            ctx.fillStyle = "#ffe6a8";
+            ctx.fillText(cost > 1 ? `${seat.label}（${cost}枚）` : seat.label, x, y + 25);
+            ctx.font = FONT;
+          }
         } else if (wild) {
           // 丸太のベンチ
           const bx = seat.pos.x;
