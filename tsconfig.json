@@ -23,6 +23,9 @@
       }
     ],
     "paths": {
+      "@/lib/fire": [
+        "./lib/fire-priority.ts"
+      ],
       "@/*": [
         "./*"
       ]
