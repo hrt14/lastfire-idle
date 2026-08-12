@@ -21,7 +21,7 @@
 import { getCtx } from "@/lib/sfx";
 
 export type Scene = {
-  stage: "ramen" | "park" | "fire" | "taiga";
+  stage: "ramen" | "park" | "fire" | "taiga" | "moji";
   /** いまプレイヤーが立っている区画（0始まり）。ラーメン・パークでは使わない */
   area: number;
   phase: "day" | "dusk" | "night";
@@ -293,14 +293,20 @@ export const updateBgm = (scene: Scene, dt: number) => {
   const now = ctx.currentTime;
   const RAMP = 1.4;
 
-  // 原始の2ステージ（火のはじまり・大河の文明）は、同じ「外の音」を土台にする
-  const isFire = scene.stage === "fire" || scene.stage === "taiga";
+  // 原始の3ステージ（火のはじまり・大河の文明・文字のはじまり）は、
+  // 同じ「外の音」を土台にする
+  const isFire =
+    scene.stage === "fire" || scene.stage === "taiga" || scene.stage === "moji";
   const area = scene.area;
   const isDay = scene.phase === "day";
   const isNight = scene.phase === "night";
   const winter = scene.stage === "fire" && area === 3;
-  // 大河の文明は、はじめから川のそば。水の音はどの区画でも鳴らす
-  const river = scene.stage === "taiga" || (scene.stage === "fire" && area === 5);
+  // 大河の文明と文字のはじまりは、はじめから川のそば。
+  // 水の音はどの区画でも鳴らす
+  const river =
+    scene.stage === "taiga" ||
+    scene.stage === "moji" ||
+    (scene.stage === "fire" && area === 5);
   const valley = scene.stage === "fire" && area === 2;
   const blizzard = winter && scene.weather === "blizzard";
 

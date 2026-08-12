@@ -15,7 +15,13 @@ import type {
   Upgrade,
 } from "@/lib/shop";
 
-export type StageId = "ramen" | "park" | "onsen" | "fire" | "taiga";
+export type StageId =
+  | "ramen"
+  | "park"
+  | "onsen"
+  | "fire"
+  | "taiga"
+  | "moji";
 
 export type StageLabels = {
   /** 運ぶもの */
@@ -1880,6 +1886,45 @@ const benchRow = (
   }));
 
 /**
+ * 文字のはじまりの受け渡し場。
+ *
+ * ござ・屋台・帳場・記録席と、渡す相手ごとに見た目を変える
+ * （仕様書 §2「名前が違えば見た目も違わせる」）。
+ * ベンチと違って一列に並べないので、x と y を1つずつ持たせる。
+ */
+const cityRow = (
+  area: number,
+  needs: string,
+  value: number,
+  label: string,
+  art: string,
+  spots: {
+    x: number;
+    y: number;
+    price: number;
+    unlockAfter?: string;
+    reveal?: number;
+  }[],
+  tag = "",
+): SeatSpec[] =>
+  spots.map((spot, i) => ({
+    id: `seat-${area}-${tag}${i + 1}`,
+    pos: { x: spot.x, y: spot.y + 60 },
+    serve: { x: spot.x, y: spot.y },
+    tray: { x: spot.x, y: spot.y + 24 },
+    price: spot.price,
+    area,
+    label,
+    art,
+    needs,
+    value,
+    reveal: spot.reveal,
+    unlockAfter:
+      spot.unlockAfter ??
+      (i >= AHEAD ? `seat-${area}-${tag}${i + 1 - AHEAD}` : undefined),
+  }));
+
+/**
  * 火のはじまりの区画。
  *
  * 1区画目は、草原と森をそれぞれ別の場所として認識できる広さ（720 × 520）を取る。
@@ -3083,6 +3128,512 @@ const taigaUpgrades: Upgrade[] = [
   { id: "price", name: "実りの選別", detail: (n) => `ひとつ ${Math.round(8 * Math.pow(1.4, n))}粒`, pos: { x: 60, y: 520 }, basePrice: 600, growth: 1.75, max: 20, unlockAfter: "robot-1", reveal: 11.5 },
 ];
 
+/* ==================== 文字のはじまり ==================== */
+
+/*
+ * 6区画。川 → 農地 → 倉庫街 → 粘土板工房 → 書記学校 → 商人の広場 →
+ * 記録の館 → 行政地区 → 法の広場、と川下へ向かって街が伸びる。
+ *
+ * 一本道にしないため、区画ごとに縦の使いかたを変える（仕様書 §7）。
+ *   後景 y<130   川・神殿・住宅・船
+ *   プレイ層     y150〜520（作業場と広場）
+ *   前景 y>560   葦・壺・荷・柱（描画側の drawProps）
+ * 高低差は川岸→堤防→市街地→行政の高台の順で、区画が進むほど手前が高くなる。
+ */
+const mojiAreas: AreaSpec[] = [
+  {
+    id: "area-0",
+    label: "あふれる倉",
+    price: 0,
+    rect: { x0: 0, y0: 0, x1: 760, y1: 560 },
+    padPos: { x: 0, y: 0 },
+    // 麦の実る畑地。日なたの土と草の色
+    palette: { floor: "#9a8b52", deep: "#6b6136", prop: "none" },
+  },
+  {
+    id: "area-1",
+    label: "粘土板の工房をひらく",
+    price: 1800,
+    rect: { x0: 760, y0: 0, x1: 1660, y1: 800 },
+    padPos: { x: 730, y: 300 },
+    // 粘土をこねる川べり。赤みのある土
+    palette: { floor: "#a8794c", deep: "#6f4e30", prop: "none" },
+    // 数え場が回りだして、札だけでは足りなくなったころ
+    unlockAfter: "mark-records-30",
+    reveal: 20,
+  },
+  {
+    id: "area-2",
+    label: "書記の学校をひらく",
+    price: 24000,
+    rect: { x0: 1660, y0: 0, x1: 2560, y1: 800 },
+    padPos: { x: 1630, y: 300 },
+    // 学校のある工房通り。日に焼けた砂の色
+    palette: { floor: "#b0a271", deep: "#776c48", prop: "none" },
+    // 書記をひとり置いて、板がさばけないと分かってから
+    unlockAfter: "scribe-h1",
+    reveal: 45,
+  },
+  {
+    id: "area-3",
+    label: "商人の広場へ出る",
+    price: 220000,
+    rect: { x0: 2560, y0: 0, x1: 3460, y1: 800 },
+    padPos: { x: 2530, y: 300 },
+    // 天幕のならぶ広場。市のにぎわいを色で出す
+    palette: { floor: "#a8804f", deep: "#6f5433", prop: "market" },
+    unlockAfter: "built-build-school",
+    reveal: 75,
+  },
+  {
+    id: "area-4",
+    label: "記録の館を建てる",
+    price: 1600000,
+    rect: { x0: 3460, y0: 0, x1: 4360, y1: 800 },
+    padPos: { x: 3430, y: 300 },
+    // 行政地区。石を敷いた灰みの地面
+    palette: { floor: "#98937c", deep: "#635f4f", prop: "market" },
+    unlockAfter: "built-build-bazaar",
+    reveal: 105,
+  },
+  {
+    id: "area-5",
+    label: "法の広場をひらく",
+    price: 14000000,
+    rect: { x0: 4360, y0: 0, x1: 5260, y1: 800 },
+    padPos: { x: 4330, y: 300 },
+    // 法の広場。白っぽい石畳
+    palette: { floor: "#aca78d", deep: "#74705f", prop: "none" },
+    unlockAfter: "built-build-admin",
+    reveal: 136,
+  },
+];
+
+const mojiStoves: StoveSpec[] = [
+  /* --- area-0「あふれる倉」-------------------------------------------
+   *
+   * 生産はもう足りている。足りないのは「いくつあるか分かること」。
+   * だから最初の買い物は畑ではなく、数え場（ござ＋粘土）になる。
+   *
+   *   麦畑 ─(麦)─┬▶ 倉（あふれている）
+   *               ├▶ 住民の食卓
+   *               └▶ 数え場 ─(数量札)─▶ 倉の帳場
+   */
+  {
+    id: "field-1",
+    pos: { x: 300, y: 250 },
+    price: 0,
+    area: 0,
+    item: "wheat",
+    art: "wheatfield",
+    label: "麦畑",
+    work: 1.0,
+    hold: 8,
+  },
+  {
+    id: "barn-1",
+    pos: { x: 560, y: 170 },
+    price: 0,
+    area: 0,
+    item: "wheat",
+    art: "granary",
+    label: "あふれる倉",
+    /*
+     * 倉そのものも麦を出す（前の時代からの蓄え）。
+     * ただし積みかたが乱雑なので、出てくるのは遅い ―― 数えられていないから
+     */
+    work: 1.9,
+    hold: 10,
+  },
+  {
+    id: "count-1",
+    pos: { x: 430, y: 380 },
+    price: 80,
+    area: 0,
+    item: "tally",
+    takes: "wheat",
+    art: "countmat",
+    label: "数え場",
+    // 人の手が要る。倉庫係を雇うまでは、自分がそばに立って数える
+    manual: true,
+    work: 0.5,
+    hold: 8,
+    reveal: 4,
+  },
+  {
+    id: "field-2",
+    pos: { x: 170, y: 330 },
+    price: 150,
+    area: 0,
+    item: "wheat",
+    art: "wheatfield",
+    label: "2枚目の麦畑",
+    work: 1.0,
+    hold: 8,
+    reveal: 5,
+  },
+  {
+    id: "reed-1",
+    pos: { x: 90, y: 170 },
+    price: 900,
+    area: 0,
+    item: "reed",
+    art: "reeds",
+    label: "葦の茂み",
+    zone: { x0: 30, y0: 90, x1: 250, y1: 230 },
+    hold: 8,
+    reveal: 12,
+  },
+  {
+    id: "field-3",
+    pos: { x: 640, y: 330 },
+    price: 2200,
+    area: 0,
+    item: "wheat",
+    art: "wheatfield",
+    label: "堤の上の麦畑",
+    work: 1.0,
+    hold: 8,
+    reveal: 16,
+  },
+
+  /* --- area-1「粘土板の工房」------------------------------------------
+   *
+   * 工場ではなく、古代の手工業の区域に見せる（仕様書 §5 AREA2）。
+   *
+   *   川辺の粘土 ─(粘土)─▶ 練り場 ─(生板)─▶ 乾燥棚 ─(乾板)─▶ 書記小屋
+   *   数え場 ────(数量札)──────────────────────────────────┘
+   *                                            ↓
+   *                                        記録板 ─▶ 記録庫・倉庫係
+   */
+  { id: "clay-1", pos: { x: 830, y: 300 }, price: 1800, area: 1, item: "clay", art: "claypit", label: "川辺の粘土穴", manual: true, work: 0.8, hold: 8, reveal: 21 },
+  { id: "knead-1", pos: { x: 1000, y: 220 }, price: 3000, area: 1, item: "rawtab", takes: "clay", art: "knead", label: "練り場", manual: true, work: 0.7, reveal: 23 },
+  { id: "dryrack-1", pos: { x: 1180, y: 300 }, price: 4200, area: 1, item: "drytab", takes: "rawtab", art: "dryrack", label: "乾燥棚", work: 1.0, reveal: 25 },
+  {
+    id: "scribe-1",
+    pos: { x: 1380, y: 220 },
+    price: 6000,
+    area: 1,
+    item: "tablet",
+    takes: "drytab",
+    fuel: "tally",
+    art: "scribehut",
+    label: "書記小屋",
+    // このステージの主役。板を取り、見て、書いて、運ぶ
+    work: 1.1,
+    reveal: 27,
+  },
+  { id: "forest-1", pos: { x: 1560, y: 400 }, price: 2600, area: 1, item: "log", art: "forest", label: "川辺の木立", zone: { x0: 1440, y0: 330, x1: 1640, y1: 520 }, hold: 6, reveal: 22 },
+  { id: "split-1", pos: { x: 1440, y: 480 }, price: 3200, area: 1, item: "wood", takes: "log", art: "split", label: "材木場", manual: true, work: 0.5, reveal: 24 },
+  {
+    id: "build-archive", pos: { x: 920, y: 620 }, price: 9000, area: 1,
+    art: "archive", label: "記録庫", needs: { clay: 8, wood: 6 },
+    gives: { note: "記録庫ができた。書いた板を積んでおける ―― 覚えておかなくてよくなった" },
+    reveal: 31,
+  },
+
+  /* --- area-2「書記の学校」--------------------------------------------
+   *
+   * 書記の数が、そのまま街の処理能力になる（仕様書 §5 AREA3）。
+   * 師匠と弟子、机、校舎、中庭と、買うたびに学校の規模が変わる。
+   */
+  { id: "reed-2", pos: { x: 1740, y: 170 }, price: 20000, area: 2, item: "reed", art: "reeds", label: "筆の葦原", zone: { x0: 1680, y0: 100, x1: 1880, y1: 240 }, hold: 10, reveal: 46 },
+  { id: "school-1", pos: { x: 1980, y: 280 }, price: 34000, area: 2, item: "tablet", takes: "drytab", fuel: "reed", art: "school", label: "書記の学校", work: 0.85, hold: 8, reveal: 48 },
+  { id: "scribe-2", pos: { x: 2220, y: 200 }, price: 26000, area: 2, item: "tablet", takes: "drytab", fuel: "tally", art: "scribehut", label: "二人目の書記小屋", work: 1.1, reveal: 44 },
+  { id: "knead-2", pos: { x: 1780, y: 400 }, price: 30000, area: 2, item: "rawtab", takes: "clay", art: "knead", label: "工房通りの練り場", manual: true, work: 0.65, reveal: 50 },
+  { id: "dryrack-2", pos: { x: 1960, y: 460 }, price: 38000, area: 2, item: "drytab", takes: "rawtab", art: "dryrack", label: "大乾燥棚", work: 0.9, reveal: 52 },
+  { id: "scribe-3", pos: { x: 2400, y: 300 }, price: 60000, area: 2, item: "tablet", takes: "drytab", fuel: "reed", art: "scribehut", label: "三人目の書記小屋", work: 1.0, reveal: 56 },
+  {
+    id: "build-school", pos: { x: 2100, y: 640 }, price: 90000, area: 2,
+    art: "schoolhouse", label: "屋根付きの校舎", needs: { wood: 10, clay: 8 },
+    gives: { note: "校舎が建った。雨の日も弟子が机に向かえる" },
+    reveal: 58,
+  },
+  {
+    id: "build-yard", pos: { x: 2340, y: 640 }, price: 260000, area: 2,
+    art: "bigschool", label: "中庭の大校舎", needs: { wood: 14, clay: 12, drytab: 10 },
+    gives: { note: "中庭の大校舎ができた。壁いちめんに文字が並んでいる" },
+    unlockAfter: "built-build-school", reveal: 66,
+  },
+
+  /* --- area-3「商人の広場」--------------------------------------------
+   *
+   * ござの口頭取引 → 屋台 → 秤と商品札 → 契約板、と広場が高度になる。
+   *
+   *   羊の囲い ─(羊毛)─▶ 織り場 ─(布)─┐
+   *   記録板 ───────────────────────┴▶ 市場の記録所 ─(契約板)─▶ 遠方商人
+   */
+  { id: "pen-1", pos: { x: 2640, y: 200 }, price: 120000, area: 3, item: "wool", takes: "wheat", art: "pen", label: "羊の囲い", work: 1.3, reveal: 76 },
+  { id: "loom-1", pos: { x: 2840, y: 300 }, price: 180000, area: 3, item: "cloth", takes: "wool", art: "loom", label: "織り場", manual: true, work: 0.8, reveal: 78 },
+  { id: "grove-1", pos: { x: 3340, y: 220 }, price: 150000, area: 3, item: "oil", art: "grove", label: "油の木立", zone: { x0: 3240, y0: 130, x1: 3440, y1: 300 }, hold: 8, reveal: 80 },
+  {
+    id: "desk-1", pos: { x: 3060, y: 380 }, price: 300000, area: 3,
+    item: "deed", takes: "tablet", fuel: "cloth", art: "tradedesk", label: "市場の記録席",
+    // 商品・数量・相手を書いて、はじめて遠くの相手と取引できる
+    work: 1.2, reveal: 84,
+  },
+  {
+    id: "build-bazaar", pos: { x: 2900, y: 660 }, price: 900000, area: 3,
+    art: "bazaar", label: "大型市場", needs: { wood: 16, cloth: 10, tablet: 8 },
+    gives: { note: "大型市場が開いた。遠方の商隊が広場まで入ってくる" },
+    reveal: 92,
+  },
+
+  /* --- area-4「記録の館」----------------------------------------------
+   *
+   * 情報物流の中継点。ここから先は、街のなかを物資と記録が同時に流れる。
+   */
+  { id: "survey-1", pos: { x: 3560, y: 250 }, price: 1800000, area: 4, item: "landtab", takes: "tablet", fuel: "deed", art: "survey", label: "測量所", work: 1.2, reveal: 106 },
+  { id: "tax-1", pos: { x: 3800, y: 330 }, price: 3000000, area: 4, item: "taxtab", takes: "tablet", fuel: "deed", art: "taxhouse", label: "徴税所", work: 1.3, reveal: 110 },
+  { id: "clay-2", pos: { x: 4180, y: 230 }, price: 2200000, area: 4, item: "clay", art: "claypit", label: "館の粘土場", manual: true, work: 0.7, hold: 12, reveal: 108 },
+  { id: "scribe-4", pos: { x: 4020, y: 300 }, price: 2600000, area: 4, item: "tablet", takes: "drytab", fuel: "reed", art: "scribehut", label: "館づきの書記", work: 0.95, reveal: 112 },
+  { id: "dryrack-3", pos: { x: 4180, y: 400 }, price: 3400000, area: 4, item: "drytab", takes: "rawtab", art: "dryrack", label: "館の乾燥棚", work: 0.85, reveal: 114 },
+  { id: "knead-3", pos: { x: 4020, y: 460 }, price: 3000000, area: 4, item: "rawtab", takes: "clay", art: "knead", label: "館の練り場", manual: true, work: 0.6, reveal: 113 },
+  {
+    id: "build-archive2", pos: { x: 3600, y: 660 }, price: 6000000, area: 4,
+    art: "bigarchive", label: "大文書庫", needs: { clay: 20, wood: 18, tablet: 14 },
+    gives: { note: "大文書庫が建った。柱の間に棚がならび、街ぜんたいの記録が収まった" },
+    reveal: 118,
+  },
+  {
+    id: "build-admin", pos: { x: 3900, y: 660 }, price: 16000000, area: 4,
+    art: "adminhall", label: "行政所", needs: { wood: 20, clay: 18, deed: 10 },
+    gives: { note: "行政所ができた。土地と税が、人の記憶ではなく板で動きはじめた" },
+    unlockAfter: "built-build-archive2", reveal: 126,
+  },
+
+  /* --- area-5「法の広場」----------------------------------------------
+   *
+   * 道を広く、建築を高く。大法典碑だけは、ほかの何倍もの大きさで立てる。
+   *
+   *   採石場 ─(石)─▶ 石工場 ─(石板)─┐
+   *   記録板・契約板・徴税記録 ───────┴▶ 大法典碑
+   */
+  { id: "quarry-1", pos: { x: 5060, y: 260 }, price: 20000000, area: 5, item: "stone", art: "quarry", label: "巨石の採石場", manual: true, work: 0.9, hold: 12, reveal: 137 },
+  { id: "mason-1", pos: { x: 4860, y: 340 }, price: 30000000, area: 5, item: "slab", takes: "stone", art: "masonry", label: "石工の作業場", manual: true, work: 0.8, reveal: 139 },
+  { id: "scribe-5", pos: { x: 4600, y: 240 }, price: 36000000, area: 5, item: "tablet", takes: "drytab", fuel: "reed", art: "scribehut", label: "法文をつくる書記", work: 0.9, reveal: 141 },
+  { id: "dryrack-4", pos: { x: 4760, y: 190 }, price: 40000000, area: 5, item: "drytab", takes: "rawtab", art: "dryrack", label: "広場の乾燥棚", work: 0.8, reveal: 142 },
+  {
+    id: "build-court", pos: { x: 4520, y: 620 }, price: 60000000, area: 5,
+    art: "court", label: "石畳の広場", needs: { slab: 12, wood: 12 },
+    gives: { note: "広場に石畳が敷かれた。道が広く、まっすぐになった" },
+    reveal: 146,
+  },
+  {
+    id: "build-code", pos: { x: 4900, y: 640 }, price: 400000000, area: 5,
+    art: "lawstone", label: "大法典碑",
+    /*
+     * 巨石 → 大型運搬 → 石工整形 → 書記が法文をつくる → 彫刻師が刻む → 建立。
+     * 石だけでも文字だけでも建たない ―― 両方の物流がそろってはじめて立つ
+     */
+    needs: { slab: 24, tablet: 20, deed: 12, taxtab: 8 },
+    gives: { sail: true, note: "大法典碑が立った。だれが読んでも同じ決まりが、街の真ん中にある" },
+    unlockAfter: "built-build-court", reveal: 160,
+  },
+];
+
+const mojiSeats: SeatSpec[] = [
+  /* 第1区画: 住民の食卓（麦）と、倉の帳場（数量札） */
+  ...cityRow(0, "wheat", 1, "住民の食卓", "mat", [
+    { x: 300, y: 460, price: 0 },
+    { x: 420, y: 470, price: 0 },
+    { x: 540, y: 460, price: 180, reveal: 3 },
+    { x: 200, y: 480, price: 700, reveal: 8 },
+  ]),
+  // 数えた札を持っていくと、倉庫係がまとめて引き取ってくれる
+  ...cityRow(0, "tally", 3.2, "倉の帳場", "tallydesk", [
+    { x: 640, y: 250, price: 300, unlockAfter: "count-1", reveal: 6 },
+    { x: 700, y: 380, price: 900, reveal: 9 },
+  ], "t"),
+
+  /* 第2区画: 板の市（乾板）と、記録を待つ倉庫係（記録板） */
+  ...cityRow(1, "drytab", 4.5, "板の市", "mat", [
+    { x: 1080, y: 470, price: 6000, reveal: 28 },
+    { x: 1200, y: 480, price: 14000, reveal: 32 },
+  ]),
+  ...cityRow(1, "tablet", 9, "記録を待つ倉庫係", "tallydesk", [
+    { x: 1300, y: 380, price: 20000, unlockAfter: "scribe-1", reveal: 29 },
+    { x: 1460, y: 300, price: 44000, reveal: 34 },
+  ], "t"),
+
+  /* 第3区画: 学びの食事場と、名簿の席 */
+  ...cityRow(2, "wheat", 6, "学びの食事場", "mat", [
+    { x: 1860, y: 540, price: 60000, reveal: 49 },
+    { x: 1980, y: 560, price: 130000, reveal: 53 },
+  ]),
+  ...cityRow(2, "tablet", 16, "名簿の席", "tallydesk", [
+    { x: 2200, y: 460, price: 180000, reveal: 55 },
+    { x: 2340, y: 440, price: 340000, reveal: 60 },
+  ], "t"),
+
+  /* 第4区画: 布と油の屋台、そして契約の席 */
+  ...cityRow(3, "cloth", 26, "布の屋台", "stall", [
+    { x: 2700, y: 480, price: 500000, reveal: 79 },
+    { x: 2820, y: 500, price: 900000, reveal: 83 },
+  ]),
+  ...cityRow(3, "oil", 30, "油の屋台", "stall", [
+    { x: 3220, y: 400, price: 1300000, reveal: 82 },
+    { x: 3340, y: 420, price: 2000000, reveal: 86 },
+  ], "t"),
+  ...cityRow(3, "deed", 60, "遠方商人の契約席", "deeddesk", [
+    { x: 3140, y: 520, price: 3000000, unlockAfter: "desk-1", reveal: 88 },
+    { x: 3280, y: 540, price: 5200000, reveal: 94 },
+  ], "d"),
+
+  /* 第5区画: 台帳と徴税。記録そのものが街を動かす */
+  ...cityRow(4, "landtab", 120, "土地台帳の席", "deeddesk", [
+    { x: 3560, y: 440, price: 9000000, reveal: 107 },
+    { x: 3700, y: 460, price: 15000000, reveal: 111 },
+  ]),
+  ...cityRow(4, "taxtab", 150, "徴税の窓口", "deeddesk", [
+    { x: 3860, y: 500, price: 24000000, reveal: 115 },
+    { x: 4000, y: 520, price: 40000000, reveal: 120 },
+  ], "t"),
+  ...cityRow(4, "wheat", 40, "館前の食事場", "mat", [
+    { x: 4200, y: 560, price: 12000000, reveal: 116 },
+  ], "m"),
+
+  /* 第6区画: 石の市と、法の広場に集まる人々 */
+  ...cityRow(5, "slab", 260, "石工の市", "stall", [
+    { x: 4700, y: 460, price: 70000000, reveal: 143 },
+    { x: 4840, y: 480, price: 110000000, reveal: 147 },
+  ]),
+  ...cityRow(5, "tablet", 300, "法を読みに来た人", "deeddesk", [
+    { x: 5040, y: 460, price: 160000000, reveal: 150 },
+    { x: 5160, y: 440, price: 260000000, reveal: 155 },
+  ], "t"),
+  ...cityRow(5, "wheat", 90, "広場の食事場", "mat", [
+    { x: 4460, y: 500, price: 90000000, reveal: 148 },
+  ], "m"),
+];
+
+/**
+ * 雇う順。
+ * 数える → 運ぶ → こねる → 書く、と、いま覚えた仕事の次だけを出す。
+ * 書記は「板を取る → 見る → 書く → 運ぶ → 棚へ置く」を回す、このステージの主役。
+ */
+const mojiHires: HireSpec[] = [
+  /* --- area-0 --- */
+  { id: "farmer-1", kind: "cook", pos: { x: 300, y: 316 }, price: 48, label: "農民", stoveId: "field-1", area: 0, reveal: 2 },
+  { id: "waiter-1", kind: "waiter", pos: { x: 200, y: 420 }, price: 64, label: "運搬人", area: 0, reveal: 3 },
+  { id: "keeper-1", kind: "cook", pos: { x: 430, y: 446 }, price: 180, label: "倉庫係", stoveId: "count-1", area: 0, reveal: 4.5 },
+  { id: "collector-1", kind: "collector", pos: { x: 620, y: 440 }, price: 300, label: "拾い手", area: 0, reveal: 7 },
+  { id: "waiter-2", kind: "waiter", pos: { x: 260, y: 420 }, price: 480, label: "運搬人", area: 0, unlockAfter: "collector-1", reveal: 10 },
+  { id: "farmer-2", kind: "cook", pos: { x: 170, y: 396 }, price: 700, label: "農民", stoveId: "field-2", area: 0, unlockAfter: "field-2", reveal: 11 },
+  { id: "robot-1", kind: "robot", pos: { x: 680, y: 440 }, price: 1600, label: "荷車", area: 0, reveal: 15 },
+  { id: "farmer-3", kind: "cook", pos: { x: 640, y: 396 }, price: 3000, label: "堤の農民", stoveId: "field-3", area: 0, unlockAfter: "field-3", reveal: 17 },
+
+  /* --- area-1 粘土板の工房 --- */
+  { id: "potter-1", kind: "splitter", pos: { x: 830, y: 370 }, price: 3600, label: "粘土職人", stoveId: "clay-1", area: 1, reveal: 21.5 },
+  { id: "logger-1", kind: "logger", pos: { x: 1600, y: 460 }, price: 4000, label: "木こり", stoveId: "forest-1", area: 1, reveal: 22.5 },
+  { id: "kneader-1", kind: "splitter", pos: { x: 1000, y: 290 }, price: 5000, label: "練り手", stoveId: "knead-1", area: 1, reveal: 23.5 },
+  { id: "sawyer-1", kind: "splitter", pos: { x: 1440, y: 540 }, price: 4800, label: "材木の係", stoveId: "split-1", area: 1, reveal: 24.5 },
+  { id: "drier-1", kind: "cook", pos: { x: 1180, y: 370 }, price: 6400, label: "乾かし手", stoveId: "dryrack-1", area: 1, reveal: 25.5 },
+  // 書記。ここからこのステージの中心になる
+  { id: "scribe-h1", kind: "scribe", pos: { x: 1380, y: 290 }, price: 9000, label: "書記", stoveId: "scribe-1", area: 1, reveal: 27.5 },
+  { id: "waiter-3", kind: "waiter", pos: { x: 880, y: 520 }, price: 8000, label: "運搬人", area: 1, reveal: 30 },
+  { id: "builder-1", kind: "builder", pos: { x: 980, y: 560 }, price: 12000, label: "建築係", area: 1, reveal: 31.5 },
+  { id: "robot-2", kind: "robot", pos: { x: 950, y: 520 }, price: 26000, label: "荷車", area: 1, reveal: 36 },
+
+  /* --- area-2 書記の学校 --- */
+  { id: "scribe-h2", kind: "scribe", pos: { x: 2220, y: 270 }, price: 34000, label: "二人目の書記", stoveId: "scribe-2", area: 2, reveal: 44.5 },
+  { id: "teacher-1", kind: "scribe", pos: { x: 1980, y: 350 }, price: 48000, label: "書記の師匠", stoveId: "school-1", area: 2, reveal: 48.5 },
+  { id: "kneader-2", kind: "splitter", pos: { x: 1780, y: 470 }, price: 40000, label: "練り手", stoveId: "knead-2", area: 2, reveal: 50.5 },
+  { id: "drier-2", kind: "cook", pos: { x: 1960, y: 530 }, price: 50000, label: "乾かし手", stoveId: "dryrack-2", area: 2, reveal: 52.5 },
+  { id: "pupil-1", kind: "scribe", pos: { x: 2060, y: 350 }, price: 70000, label: "弟子", area: 2, unlockAfter: "teacher-1", reveal: 57 },
+  { id: "scribe-h3", kind: "scribe", pos: { x: 2400, y: 370 }, price: 90000, label: "三人目の書記", stoveId: "scribe-3", area: 2, reveal: 56.5 },
+  { id: "waiter-4", kind: "waiter", pos: { x: 1720, y: 600 }, price: 80000, label: "運搬人", area: 2, reveal: 54 },
+  { id: "pupil-2", kind: "scribe", pos: { x: 2140, y: 350 }, price: 160000, label: "弟子", area: 2, unlockAfter: "pupil-1", reveal: 62 },
+  { id: "builder-2", kind: "builder", pos: { x: 2180, y: 600 }, price: 140000, label: "建築係", area: 2, reveal: 59 },
+  { id: "robot-3", kind: "robot", pos: { x: 1800, y: 600 }, price: 220000, label: "荷車", area: 2, reveal: 64 },
+  { id: "pupil-3", kind: "scribe", pos: { x: 2220, y: 350 }, price: 320000, label: "弟子", area: 2, unlockAfter: "pupil-2", reveal: 68 },
+
+  /* --- area-3 商人の広場 --- */
+  { id: "herder-1", kind: "cook", pos: { x: 2640, y: 270 }, price: 180000, label: "羊飼い", stoveId: "pen-1", area: 3, reveal: 76.5 },
+  { id: "weaver-1", kind: "splitter", pos: { x: 2840, y: 370 }, price: 240000, label: "織り手", stoveId: "loom-1", area: 3, reveal: 78.5 },
+  { id: "picker-1", kind: "logger", pos: { x: 3380, y: 290 }, price: 220000, label: "油の摘み手", stoveId: "grove-1", area: 3, reveal: 80.5 },
+  // 市場の記録席につく書記。ここで取引が板になる
+  { id: "clerk-1", kind: "scribe", pos: { x: 3060, y: 450 }, price: 420000, label: "市場の書記", stoveId: "desk-1", area: 3, reveal: 84.5 },
+  { id: "trader-1", kind: "master", pos: { x: 2960, y: 560 }, price: 1400000, label: "商人", area: 3, unlockAfter: "built-build-bazaar", reveal: 93 },
+  { id: "waiter-5", kind: "waiter", pos: { x: 2620, y: 600 }, price: 600000, label: "運搬人", area: 3, reveal: 85 },
+  { id: "builder-3", kind: "builder", pos: { x: 2980, y: 600 }, price: 900000, label: "建築係", area: 3, reveal: 90 },
+  { id: "robot-4", kind: "robot", pos: { x: 2700, y: 600 }, price: 1600000, label: "荷車", area: 3, reveal: 96 },
+
+  /* --- area-4 記録の館 --- */
+  { id: "surveyor-1", kind: "officer", pos: { x: 3560, y: 320 }, price: 2600000, label: "測量係", stoveId: "survey-1", area: 4, reveal: 106.5 },
+  { id: "potter-2", kind: "splitter", pos: { x: 4180, y: 300 }, price: 3000000, label: "粘土職人", stoveId: "clay-2", area: 4, reveal: 108.5 },
+  { id: "officer-1", kind: "officer", pos: { x: 3800, y: 400 }, price: 4200000, label: "役人", stoveId: "tax-1", area: 4, reveal: 110.5 },
+  { id: "scribe-h4", kind: "scribe", pos: { x: 4020, y: 370 }, price: 3600000, label: "館づきの書記", stoveId: "scribe-4", area: 4, reveal: 112.5 },
+  { id: "kneader-3", kind: "splitter", pos: { x: 4020, y: 530 }, price: 4000000, label: "練り手", stoveId: "knead-3", area: 4, reveal: 113.5 },
+  { id: "drier-3", kind: "cook", pos: { x: 4180, y: 470 }, price: 4600000, label: "乾かし手", stoveId: "dryrack-3", area: 4, reveal: 114.5 },
+  { id: "builder-4", kind: "builder", pos: { x: 3660, y: 600 }, price: 8000000, label: "館の建築係", area: 4, reveal: 119 },
+  { id: "waiter-6", kind: "waiter", pos: { x: 3740, y: 600 }, price: 7000000, label: "運搬人", area: 4, reveal: 117 },
+  { id: "guard-1", kind: "officer", pos: { x: 3620, y: 560 }, price: 20000000, label: "文書庫の衛兵", area: 4, unlockAfter: "built-build-archive2", reveal: 124 },
+  { id: "robot-5", kind: "robot", pos: { x: 3820, y: 600 }, price: 14000000, label: "荷車", area: 4, reveal: 122 },
+  { id: "elder-1", kind: "master", pos: { x: 3960, y: 560 }, price: 60000000, label: "行政長", area: 4, unlockAfter: "built-build-admin", reveal: 130 },
+
+  /* --- area-5 法の広場 --- */
+  { id: "mason-h1", kind: "carver", pos: { x: 5060, y: 330 }, price: 30000000, label: "石工", stoveId: "quarry-1", area: 5, reveal: 137.5 },
+  { id: "carver-1", kind: "carver", pos: { x: 4860, y: 410 }, price: 44000000, label: "彫刻師", stoveId: "mason-1", area: 5, reveal: 139.5 },
+  { id: "scribe-h5", kind: "scribe", pos: { x: 4600, y: 310 }, price: 50000000, label: "法文の書記", stoveId: "scribe-5", area: 5, reveal: 141.5 },
+  { id: "drier-4", kind: "cook", pos: { x: 4760, y: 260 }, price: 54000000, label: "乾かし手", stoveId: "dryrack-4", area: 5, reveal: 142.5 },
+  { id: "builder-5", kind: "builder", pos: { x: 4580, y: 580 }, price: 80000000, label: "広場の建築係", area: 5, reveal: 144 },
+  { id: "waiter-7", kind: "waiter", pos: { x: 4660, y: 580 }, price: 70000000, label: "運搬人", area: 5, reveal: 145 },
+  { id: "builder-6", kind: "builder", pos: { x: 4960, y: 580 }, price: 180000000, label: "建立の建築係", area: 5, unlockAfter: "built-build-court", reveal: 152 },
+  { id: "robot-6", kind: "robot", pos: { x: 4740, y: 580 }, price: 140000000, label: "荷車", area: 5, reveal: 149 },
+];
+
+const mojiEquipment: EquipSpec[] = [
+  /* --- 第1区画: 数えることを楽にする --- */
+  { id: "tally-way", name: "麦の運び道", detail: "麦を、数え場へ直接おくる", pos: { x: 370, y: 320 }, price: 1400, area: 0, link: { from: "field-1", to: "count-1" }, unlockAfter: "keeper-1", reveal: 13 },
+  { id: "fridge", name: "編みかごの棚", detail: "受け口・出し口に積める数 +4", pos: { x: 700, y: 200 }, price: 9000, area: 0, unlockAfter: "count-1", reveal: 18 },
+  { id: "noodle", name: "土の作業台", detail: "すべての作業場が +30%速くなる", pos: { x: 720, y: 300 }, price: 16000, area: 0, unlockAfter: "equip-fridge", reveal: 19 },
+  { id: "ticket", name: "受け取りの壺", detail: "代金が自動でサイフに入る・拾い手は運びへ", pos: { x: 250, y: 0 }, price: 24000, area: 0, outside: true, unlockAfter: "equip-noodle", reveal: 19.5 },
+  { id: "flag", name: "市の立て札", detail: "人が集まる。集まりが 1.25倍", pos: { x: 120, y: 0 }, price: 1200, area: 0, outside: true, row: 1, draw: 1.25, unlockAfter: "collector-1", reveal: 12.5 },
+
+  /* --- 第2区画: 粘土板の流れをつなぐ --- */
+  { id: "chute-clay", name: "粘土のとい", detail: "粘土を、練り場へ直接おくる", pos: { x: 920, y: 260 }, price: 6000, area: 1, link: { from: "clay-1", to: "knead-1" }, unlockAfter: "kneader-1", reveal: 26 },
+  { id: "board-way", name: "生板の板道", detail: "生の粘土板を、乾燥棚へ直接おくる", pos: { x: 1090, y: 260 }, price: 10000, area: 1, link: { from: "knead-1", to: "dryrack-1" }, unlockAfter: "drier-1", reveal: 26.5 },
+  { id: "chute-log", name: "丸太ころがし", detail: "丸太を、材木場へ直接おくる", pos: { x: 1500, y: 460 }, price: 8000, area: 1, link: { from: "forest-1", to: "split-1" }, unlockAfter: "sawyer-1", reveal: 33 },
+  { id: "dry-rack-plus", name: "日よけの葦すだれ", detail: "乾燥棚に積める数 +5", pos: { x: 1260, y: 360 }, price: 22000, area: 1, capacity: { stove: "dryrack-1", plus: 5 }, unlockAfter: "equip-board-way", reveal: 35 },
+  { id: "tally-way-2", name: "数量札の道", detail: "数量札を、書記小屋へ直接おくる", pos: { x: 1300, y: 200 }, price: 30000, area: 1, link: { from: "count-1", to: "scribe-1" }, unlockAfter: "scribe-h1", reveal: 37 },
+  { id: "lantern", name: "広場のかがり火", detail: "夜も市が立つ。集まりが 1.4倍", pos: { x: 380, y: 0 }, price: 60000, area: 0, outside: true, row: 1, draw: 1.4, unlockAfter: "area-1", reveal: 38 },
+
+  /* --- 第3区画: 学校まわり --- */
+  { id: "board-way-2", name: "工房通りの板道", detail: "生の粘土板を、大乾燥棚へおくる", pos: { x: 1870, y: 430 }, price: 60000, area: 2, link: { from: "knead-2", to: "dryrack-2" }, unlockAfter: "drier-2", reveal: 51 },
+  { id: "reed-way", name: "葦の道", detail: "葦を、書記の学校へ直接おくる", pos: { x: 1860, y: 220 }, price: 80000, area: 2, link: { from: "reed-2", to: "school-1" }, unlockAfter: "teacher-1", reveal: 61 },
+  { id: "school-desk", name: "弟子の机", detail: "書記の学校に積める板 +6", pos: { x: 2080, y: 240 }, price: 120000, area: 2, capacity: { stove: "school-1", plus: 6 }, unlockAfter: "equip-reed-way", reveal: 63 },
+  { id: "board-way-3", name: "校舎への板道", detail: "大乾燥棚の板を、学校へ直接おくる", pos: { x: 1980, y: 380 }, price: 200000, area: 2, link: { from: "dryrack-2", to: "school-1" }, unlockAfter: "equip-school-desk", reveal: 67 },
+  { id: "alley-road", name: "工房通りの石敷き", detail: "工房と学校のあいだの足が速くなる", pos: { x: 2100, y: 520 }, price: 300000, area: 2, road: { from: { x: 1700, y: 520 }, to: { x: 2500, y: 520 } }, reveal: 70 },
+
+  /* --- 第4区画: 広場と市場 --- */
+  { id: "wool-way", name: "羊毛の道", detail: "羊毛を、織り場へ直接おくる", pos: { x: 2740, y: 250 }, price: 400000, area: 3, link: { from: "pen-1", to: "loom-1" }, unlockAfter: "weaver-1", reveal: 81 },
+  { id: "cloth-way", name: "布の運び道", detail: "布を、市場の記録席へ直接おくる", pos: { x: 2960, y: 340 }, price: 700000, area: 3, link: { from: "loom-1", to: "desk-1" }, unlockAfter: "clerk-1", reveal: 87 },
+  { id: "scale", name: "秤と商品札", detail: "広場に品ぞろえの札が並ぶ。集まりが 1.5倍", pos: { x: 3040, y: 300 }, price: 1200000, area: 3, draw: 1.5, unlockAfter: "desk-1", reveal: 89 },
+  { id: "market-road", name: "広場の大通り", detail: "広場を横切る道。荷と人の足が速くなる", pos: { x: 3000, y: 460 }, price: 2000000, area: 3, road: { from: { x: 2600, y: 460 }, to: { x: 3420, y: 460 } }, unlockAfter: "equip-alley-road", reveal: 95 },
+
+  /* --- 第5区画: 記録の館 --- */
+  { id: "tablet-way", name: "記録板の道", detail: "館づきの書記の板を、測量所へおくる", pos: { x: 3780, y: 260 }, price: 5000000, area: 4, link: { from: "scribe-4", to: "survey-1" }, unlockAfter: "surveyor-1", reveal: 121 },
+  { id: "deed-way", name: "契約板の道", detail: "市場の契約板を、徴税所へおくる", pos: { x: 3660, y: 380 }, price: 8000000, area: 4, link: { from: "desk-1", to: "tax-1" }, unlockAfter: "officer-1", reveal: 123 },
+  { id: "chute-clay-2", name: "館の粘土とい", detail: "粘土を、館の練り場へ直接おくる", pos: { x: 4100, y: 340 }, price: 9000000, area: 4, link: { from: "clay-2", to: "knead-3" }, unlockAfter: "kneader-3", reveal: 125 },
+  { id: "archive-shelf", name: "文書庫の棚", detail: "館の乾燥棚に積める板 +10", pos: { x: 4260, y: 440 }, price: 16000000, area: 4, capacity: { stove: "dryrack-3", plus: 10 }, unlockAfter: "built-build-archive2", reveal: 128 },
+  { id: "admin-road", name: "行政地区の広い道", detail: "館と広場をつなぐ。街ぜんたいの足が速くなる", pos: { x: 3900, y: 470 }, price: 30000000, area: 4, road: { from: { x: 3480, y: 470 }, to: { x: 4340, y: 470 } }, unlockAfter: "equip-market-road", reveal: 132 },
+
+  /* --- 第6区画: 法の広場 --- */
+  { id: "stone-road", name: "巨石の引き道", detail: "採石場から広場まで、石を引く道", pos: { x: 4900, y: 400 }, price: 60000000, area: 5, road: { from: { x: 4400, y: 400 }, to: { x: 5220, y: 400 } }, reveal: 151 },
+  { id: "stone-way", name: "石の落とし道", detail: "石を、石工の作業場へ直接おくる", pos: { x: 4960, y: 300 }, price: 80000000, area: 5, link: { from: "quarry-1", to: "mason-1" }, unlockAfter: "carver-1", reveal: 153 },
+  { id: "quarry-cap", name: "石置き場", detail: "採石場に積める石 +12", pos: { x: 5140, y: 330 }, price: 120000000, area: 5, capacity: { stove: "quarry-1", plus: 12 }, unlockAfter: "mason-h1", reveal: 156 },
+  { id: "sign", name: "広場の高札", detail: "決まりが遠くまで知れわたる。集まりが 1.6倍", pos: { x: 470, y: 0 }, price: 200000000, area: 0, outside: true, row: 1, draw: 1.6, unlockAfter: "area-5", reveal: 158 },
+];
+
+const mojiUpgrades: Upgrade[] = [
+  // 編みかごは、遊びはじめの「いちばん近い目標」。3往復ぶんで買える
+  { id: "carry", name: "編みかご", detail: (n) => `${3 + n}こまで持てる・運搬人も 品種ごとに ${3 + Math.floor(n / 2)}こ`, pos: { x: 60, y: 300 }, basePrice: 24, growth: 1.7, max: 9, reveal: 1 },
+  { id: "cook", name: "石の道具", detail: (n) => `作る速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: 60, y: 360 }, basePrice: 150, growth: 1.7, max: 14, unlockAfter: "farmer-1", reveal: 7.5 },
+  { id: "speed", name: "革のはきもの", detail: (n) => `足の速さ +${n * 10}%・みんなも +${n * 5}%`, pos: { x: 60, y: 420 }, basePrice: 110, growth: 1.65, max: 12, unlockAfter: "collector-1", reveal: 9.5 },
+  { id: "price", name: "品定め", detail: (n) => `ひとつ ${Math.round(7 * Math.pow(1.4, n))}印`, pos: { x: 60, y: 480 }, basePrice: 600, growth: 1.75, max: 20, unlockAfter: "count-1", reveal: 11.5 },
+];
+
 /* ==================== 登録 ==================== */
 
 export const stageDefs: Record<StageId, StageDef> = {
@@ -3130,6 +3681,9 @@ export const stageDefs: Record<StageId, StageDef> = {
         explorer: "探索者",
         runner: "仕込み係",
         boat: "運搬船",
+        scribe: "書記",
+        officer: "役人",
+        carver: "石工",
       },
       objective: {
         pickup: "厨房で丼を受け取ろう",
@@ -3186,6 +3740,9 @@ export const stageDefs: Record<StageId, StageDef> = {
         explorer: "探索者",
         runner: "仕込み係",
         boat: "運搬船",
+        scribe: "書記",
+        officer: "役人",
+        carver: "石工",
       },
       objective: {
         pickup: "券売所でチケットを受け取ろう",
@@ -3260,6 +3817,9 @@ export const stageDefs: Record<StageId, StageDef> = {
         explorer: "案内人",
         runner: "仕込み係",
         boat: "運搬船",
+        scribe: "書記",
+        officer: "役人",
+        carver: "石工",
       },
       objective: {
         pickup: "置き場で手ぬぐいを受け取ろう",
@@ -3350,6 +3910,9 @@ export const stageDefs: Record<StageId, StageDef> = {
         explorer: "探索者",
         runner: "仕込み係",
         boat: "運搬船",
+        scribe: "書記",
+        officer: "役人",
+        carver: "石工",
       },
       objective: {
         pickup: "出し口でしなものを受け取ろう",
@@ -3438,6 +4001,9 @@ export const stageDefs: Record<StageId, StageDef> = {
         explorer: "船頭",
         boat: "運搬船",
         runner: "仕込み係",
+        scribe: "書記",
+        officer: "役人",
+        carver: "石工",
       },
       objective: {
         pickup: "出し口でしなものを受け取ろう",
@@ -3451,6 +4017,88 @@ export const stageDefs: Record<StageId, StageDef> = {
       outsideDetail: "のろし・たいこはこの外に置く",
     },
   },
+  moji: {
+    id: "moji",
+    name: "文字のはじまり",
+    subtitle: "数えられない倉からはじめる",
+    icon: "📖",
+    itemIcon: "🪨",
+    frontRoom: { top: 38, bottom: 300 },
+    areas: mojiAreas,
+    stoves: mojiStoves,
+    seats: mojiSeats,
+    hires: mojiHires,
+    equipment: mojiEquipment,
+    upgrades: mojiUpgrades,
+    baseValue: 7,
+    requiresAreas: 0,
+    chain: true,
+    queue: true,
+    currency: "印",
+    view: 420,
+    entranceX: 340,
+    startPos: { x: 380, y: 300 },
+    cookTime: 3.4,
+    cookBoost: 2.1,
+    // 情報も物資と同じように、運搬人・荷車・建築係が運ぶ
+    haulers: true,
+    revealLimit: 5,
+    revealBurst: 3,
+    revealLimitBy: {
+      "area-1": 7,
+      "area-2": 8,
+      "area-3": 8,
+      "area-4": 9,
+      "area-5": 9,
+    },
+    /*
+     * 麦は採れている。倉もある。足りないのは「いくつあるか分かること」。
+     * だから開始画面には、畑・倉・食卓しか無い（仕様書 §5 AREA1）
+     */
+    start: ["field-1", "barn-1", "seat-0-1", "seat-0-2"],
+    labels: {
+      item: "しなもの",
+      producer: "作業場",
+      tray: "受け渡し",
+      guest: "市民",
+      using: "受け取っている",
+      staff: {
+        waiter: "運搬人",
+        robot: "荷車",
+        collector: "拾い手",
+        cook: "担当の人",
+        master: "行政長",
+        busser: "片づけ手",
+        stocker: "並べ手",
+        server: "運搬人",
+        seller: "受付",
+        gatekeeper: "門番",
+        hunter: "狩人",
+        logger: "採り手",
+        splitter: "職人",
+        butcher: "解体係",
+        builder: "建築係",
+        keeper: "倉庫係",
+        nightman: "夜番",
+        explorer: "使者",
+        boat: "川舟",
+        runner: "仕込み係",
+        scribe: "書記",
+        officer: "役人",
+        carver: "石工",
+      },
+      objective: {
+        pickup: "出し口でしなものを受け取ろう",
+        serve: "次の作業場か、市民まで運ぼう",
+        coin: "落ちた印を拾おう",
+        waitItem: "できあがるまで待とう",
+        waitGuest: "市民を待っています",
+      },
+      auto: "自動送り",
+      outside: "川岸",
+      outsideDetail: "立て札・かがり火はこの外に置く",
+    },
+  },
 };
 
 
@@ -3461,4 +4109,8 @@ export const stageList: StageDef[] = [
 ];
 
 /** ワーキングプラネットの並び（トップページで別のかたまりに出す） */
-export const planetStages: StageDef[] = [stageDefs.fire, stageDefs.taiga];
+export const planetStages: StageDef[] = [
+  stageDefs.fire,
+  stageDefs.taiga,
+  stageDefs.moji,
+];
