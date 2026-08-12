@@ -2,6 +2,16 @@
 
 import { drawAquariumExhibit } from "@/lib/aquariumArt";
 import { drawAquariumHall } from "@/lib/aquariumTheme";
+import {
+  drawFireForegroundPass,
+  drawFireGraphicPass,
+  drawTaigaForegroundPass,
+  drawTaigaGraphicPass,
+} from "@/lib/worldGraphicPass";
+import {
+  drawClassicStageForegroundPass,
+  drawClassicStageGraphicPass,
+} from "@/lib/stageVisualOverhaul";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -3558,7 +3568,7 @@ const drawBeast = (
   ctx.save();
   ctx.translate(pos.x, pos.y);
   ctx.rotate(tilt * 0.9);
-  ctx.scale(face, 1);
+  ctx.scale(face * 1.18, 1.18);
 
   ctx.fillStyle = "rgba(0,0,0,0.3)";
   ctx.beginPath();
@@ -11031,14 +11041,36 @@ export default function Shop({ onSample, paused }: Props) {
             ? "rgba(20,24,28,0)"
             : "#191512";
       ctx.fillRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
-      for (const area of openAreas(state)) {
+      // 水族館は「次の地域」が視界に入るレイアウトなので、未開放区画も館内背景だけ先に描く。
+      // 後段の半透明ゲートで閉鎖中と分かるようにし、水槽だけ暗闇に浮く状態を防ぐ。
+      const openedAreasForBackground = openAreas(state);
+      const openedAreaIdsForBackground = isAquarium
+        ? new Set(openedAreasForBackground.map((area) => area.id))
+        : null;
+      const backgroundAreas = isAquarium
+        ? areas.filter(
+            (area) =>
+              area.rect.x1 > box.x0 &&
+              area.rect.x0 < box.x1 &&
+              area.rect.y1 > box.y0 &&
+              area.rect.y0 < box.y1,
+          )
+        : openedAreasForBackground;
+      for (const area of backgroundAreas) {
         const { rect, palette } = area;
         const grad = ctx.createLinearGradient(0, rect.y0, 0, rect.y1);
         grad.addColorStop(0, palette.floor);
         grad.addColorStop(1, palette.deep);
         ctx.fillStyle = grad;
         ctx.fillRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
-        drawProps(ctx, area, effectsRef.current ? time : 0);
+        if (isAquarium && !openedAreaIdsForBackground?.has(area.id)) {
+          ctx.save();
+          ctx.globalAlpha = 0.72;
+          drawProps(ctx, area, effectsRef.current ? time : 0);
+          ctx.restore();
+        } else {
+          drawProps(ctx, area, effectsRef.current ? time : 0);
+        }
         if (isFire) {
           drawFireGroundTexture(ctx, area, time, effectsRef.current);
           drawFireEarlyLife(ctx, area, time, effectsRef.current);
@@ -11358,6 +11390,28 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
+      if (stage().id === "ramen" || isPark || isOnsen) {
+        drawClassicStageGraphicPass(
+          ctx,
+          stage().id,
+          openAreas(state),
+          state.unlocked,
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+        );
+      }
+
+      if (isFire) {
+        drawFireGraphicPass(
+          ctx,
+          box,
+          openAreas(state),
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+          state.fire.beast?.pos ?? null,
+          state.unlocked,
+        );
+      }
       /*
        * 大河。区画をまたいで、世界のはしからはしまで流れている。
        * 水くみ場や取水口はこの岸に立ち、運搬船はこの上を行き来する。
@@ -11394,6 +11448,18 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.fillStyle = "rgba(150,128,92,0.5)";
           ctx.fillRect(box.x0, edge + 6, wide, -rise * 16);
         }
+      }
+      if (isTaiga) {
+        drawTaigaGraphicPass(
+          ctx,
+          box,
+          openAreas(state),
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+          RIVER_LANE,
+          riverRise(state),
+          state.unlocked,
+        );
       }
       // 冬が来ると、地面が少しずつ白くなる（第4区画）
       const snow = isFire ? snowDepth(state) : 0;
@@ -11532,12 +11598,36 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.moveTo(x - 38, y - 38);
           ctx.lineTo(x - 18, y + 6);
           ctx.stroke();
-          ctx.fillStyle = "rgba(5,16,22,0.88)";
-          roundRect(ctx, x - 46, y + 12, 92, 14, 6);
+          // 展示名は水槽の絵に埋もれない独立プレートにする。
+          // 長い名前は自動でフォントを縮めるが、最低8pxを確保してスマホでも読めるようにする。
+          const exhibitLabel = stove.label ?? "AQUARIUM";
+          ctx.save();
+          const labelGrad = ctx.createLinearGradient(x - 49, 0, x + 49, 0);
+          labelGrad.addColorStop(0, "rgba(2,14,20,0.94)");
+          labelGrad.addColorStop(0.5, "rgba(8,35,45,0.96)");
+          labelGrad.addColorStop(1, "rgba(2,14,20,0.94)");
+          ctx.fillStyle = labelGrad;
+          roundRect(ctx, x - 49, y + 7, 98, 22, 8);
           ctx.fill();
-          ctx.fillStyle = "#d6fbff";
-          ctx.font = SMALL;
-          ctx.fillText(stove.label ?? "AQUARIUM", x, y + 19);
+          ctx.strokeStyle = "rgba(126,235,242,0.76)";
+          ctx.lineWidth = 1.2;
+          roundRect(ctx, x - 49, y + 7, 98, 22, 8);
+          ctx.stroke();
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          let labelSize = 10.5;
+          do {
+            ctx.font = `900 ${labelSize}px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+            if (ctx.measureText(exhibitLabel).width <= 86 || labelSize <= 8) break;
+            labelSize -= 0.5;
+          } while (labelSize > 8);
+          ctx.lineJoin = "round";
+          ctx.strokeStyle = "rgba(0,8,12,0.96)";
+          ctx.lineWidth = 3;
+          ctx.strokeText(exhibitLabel, x, y + 18.5);
+          ctx.fillStyle = "#f2fdff";
+          ctx.fillText(exhibitLabel, x, y + 18.5);
+          ctx.restore();
           ctx.font = FONT;
           continue;
         }
@@ -11874,19 +11964,34 @@ export default function Shop({ onSample, paused }: Props) {
             drawRide(ctx, seat.art ?? "bench", x, y, time);
           }
 
-          // 乗り物の名前を出す小さな看板
-          ctx.fillStyle = "rgba(0,0,0,0.45)";
-          roundRect(ctx, x - 34, y + 18, 68, 14, 7);
-          ctx.fill();
-          ctx.strokeStyle = "rgba(255,209,102,0.5)";
-          ctx.lineWidth = 1;
-          roundRect(ctx, x - 34, y + 18, 68, 14, 7);
-          ctx.stroke();
-          ctx.font = SMALL;
-          ctx.fillStyle = "#ffe6a8";
           const cost = seatCost(seat);
-          ctx.fillText(cost > 1 ? `${seat.label}（${cost}枚）` : seat.label, x, y + 25);
-          ctx.font = FONT;
+          if (isAquarium) {
+            // 展示名は水槽本体に一度だけ。観覧位置は必要券数だけ小さく表示する。
+            ctx.fillStyle = "rgba(3,17,24,0.84)";
+            roundRect(ctx, x - 18, y + 18, 36, 14, 7);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(112,226,235,0.46)";
+            ctx.lineWidth = 1;
+            roundRect(ctx, x - 18, y + 18, 36, 14, 7);
+            ctx.stroke();
+            ctx.font = `800 8px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+            ctx.fillStyle = "#d9fbff";
+            ctx.fillText(`券×${cost}`, x, y + 25);
+            ctx.font = FONT;
+          } else {
+            // 乗り物の名前を出す小さな看板
+            ctx.fillStyle = "rgba(0,0,0,0.45)";
+            roundRect(ctx, x - 34, y + 18, 68, 14, 7);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(255,209,102,0.5)";
+            ctx.lineWidth = 1;
+            roundRect(ctx, x - 34, y + 18, 68, 14, 7);
+            ctx.stroke();
+            ctx.font = SMALL;
+            ctx.fillStyle = "#ffe6a8";
+            ctx.fillText(cost > 1 ? `${seat.label}（${cost}枚）` : seat.label, x, y + 25);
+            ctx.font = FONT;
+          }
         } else if (isMoji) {
           // 受け渡しの場所。ござ・帳場・屋台・契約席で、形も色も変える
           drawCitySeat(ctx, seat.art ?? "mat", seat.pos.x, seat.pos.y + 4, time);
@@ -12072,14 +12177,17 @@ export default function Shop({ onSample, paused }: Props) {
           );
           ctx.setLineDash([]);
         }
-        ctx.font = SMALL;
-        ctx.fillStyle = "rgba(246,231,207,0.4)";
-        ctx.fillText(
-          areaTitle(area.label),
-          (area.rect.x0 + area.rect.x1) / 2,
-          area.rect.y0 + 14,
-        );
-        ctx.font = FONT;
+        // 水族館はテーマ側に大きな地域ヘッダーがあるため、旧式の小さな区画名は重ねない。
+        if (!isAquarium) {
+          ctx.font = SMALL;
+          ctx.fillStyle = "rgba(246,231,207,0.4)";
+          ctx.fillText(
+            areaTitle(area.label),
+            (area.rect.x0 + area.rect.x1) / 2,
+            area.rect.y0 + 14,
+          );
+          ctx.font = FONT;
+        }
       }
 
       /* --- この先に広げられる柵 --- */
@@ -12096,22 +12204,61 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.beginPath();
           ctx.rect(ix0, iy0, ix1 - ix0, iy1 - iy0);
           ctx.clip();
-          ctx.fillStyle = "#150f0c";
-          ctx.fillRect(ix0, iy0, ix1 - ix0, iy1 - iy0);
-          ctx.fillStyle = "rgba(255,209,102,0.07)";
-          for (let x = ix0 - 40; x < ix1 + 40; x += 30) {
-            ctx.beginPath();
-            ctx.moveTo(x, iy0);
-            ctx.lineTo(x + 15, iy0);
-            ctx.lineTo(x + 15 - (iy1 - iy0), iy1);
-            ctx.lineTo(x - (iy1 - iy0), iy1);
-            ctx.closePath();
-            ctx.fill();
+          if (isAquarium) {
+            // 次の展示室は真っ黒に潰さず、背景を残したままガラスゲート越しに予告する。
+            ctx.fillStyle = "rgba(2,13,20,0.48)";
+            ctx.fillRect(ix0, iy0, ix1 - ix0, iy1 - iy0);
+            ctx.strokeStyle = "rgba(127,226,238,0.18)";
+            ctx.lineWidth = 2;
+            for (let x = ix0 + 18; x < ix1; x += 34) {
+              ctx.beginPath();
+              ctx.moveTo(x, iy0);
+              ctx.lineTo(x, iy1);
+              ctx.stroke();
+            }
+            ctx.fillStyle = "rgba(110,226,238,0.06)";
+            for (let y = iy0 + 22; y < iy1; y += 38) {
+              ctx.fillRect(ix0, y, ix1 - ix0, 1);
+            }
+          } else {
+            ctx.fillStyle = "#150f0c";
+            ctx.fillRect(ix0, iy0, ix1 - ix0, iy1 - iy0);
+            ctx.fillStyle = "rgba(255,209,102,0.07)";
+            for (let x = ix0 - 40; x < ix1 + 40; x += 30) {
+              ctx.beginPath();
+              ctx.moveTo(x, iy0);
+              ctx.lineTo(x + 15, iy0);
+              ctx.lineTo(x + 15 - (iy1 - iy0), iy1);
+              ctx.lineTo(x - (iy1 - iy0), iy1);
+              ctx.closePath();
+              ctx.fill();
+            }
           }
           ctx.restore();
-          ctx.fillStyle = "rgba(246,231,207,0.5)";
-          ctx.font = SMALL;
-          ctx.fillText("工事中", (ix0 + ix1) / 2, (iy0 + iy1) / 2);
+          const gateX = (ix0 + ix1) / 2;
+          const gateY = (iy0 + iy1) / 2;
+          if (isAquarium) {
+            const nextTitle = areaTitle(area.label);
+            const plateW = Math.min(ix1 - ix0 - 24, 190);
+            ctx.fillStyle = "rgba(3,17,25,0.88)";
+            roundRect(ctx, gateX - plateW / 2, gateY - 23, plateW, 46, 14);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(118,233,242,0.66)";
+            ctx.lineWidth = 1.5;
+            roundRect(ctx, gateX - plateW / 2, gateY - 23, plateW, 46, 14);
+            ctx.stroke();
+            ctx.textAlign = "center";
+            ctx.fillStyle = "rgba(162,239,245,0.82)";
+            ctx.font = `800 7px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+            ctx.fillText("NEXT GALLERY", gateX, gateY - 8);
+            ctx.fillStyle = "#f2fdff";
+            ctx.font = `900 12px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+            ctx.fillText(nextTitle, gateX, gateY + 9);
+          } else {
+            ctx.fillStyle = "rgba(246,231,207,0.5)";
+            ctx.font = SMALL;
+            ctx.fillText("工事中", gateX, gateY);
+          }
           ctx.font = FONT;
           continue;
         }
@@ -12885,18 +13032,78 @@ export default function Shop({ onSample, paused }: Props) {
                 ctx.fill();
               }
               if (worker.kind === "explorer") {
-                // 探索者・追跡者: つばの広い日よけと、遠くを指す手
-                ctx.fillStyle = "#3f5a5f";
-                roundRect(ctx, wx - 11, wy - 26, 22, 4, 2);
-                ctx.fill();
-                roundRect(ctx, wx - 7, wy - 32, 14, 7, 3);
-                ctx.fill();
-                ctx.strokeStyle = "#e0d6bd";
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(wx + 6 * face, wy - 10);
-                ctx.lineTo(wx + 17 * face, wy - 16);
-                ctx.stroke();
+                if (isAquarium) {
+                  // 水族館の発見・調査スタッフ。
+                  // 白服＋大きな帽子のコックと混同しないよう、色・帽子・道具・発見マークをすべて分ける。
+                  // 青緑のフィールドベスト
+                  ctx.fillStyle = "#247d7b";
+                  roundRect(ctx, wx - 9, wy - 16, 18, 19, 6);
+                  ctx.fill();
+                  ctx.fillStyle = "#164b58";
+                  roundRect(ctx, wx - 7, wy - 13, 14, 4, 2);
+                  ctx.fill();
+                  // 胸のスタッフID
+                  ctx.fillStyle = "#d8f4ef";
+                  roundRect(ctx, wx + 1, wy - 12, 5, 3.5, 1);
+                  ctx.fill();
+
+                  // 低いカーキのフィールドキャップ。コック帽のように上へ膨らませない。
+                  ctx.fillStyle = "#b5a26e";
+                  roundRect(ctx, wx - 7, wy - 30, 14, 5.5, 2.5);
+                  ctx.fill();
+                  ctx.fillStyle = "#8f7d50";
+                  roundRect(ctx, wx - 9 * face, wy - 26, 14, 2.8, 1.4);
+                  ctx.fill();
+
+                  // 片手のクリップボード。『料理を運ぶ人』ではなく『調査する人』と読める形にする。
+                  ctx.save();
+                  ctx.translate(wx + 11 * face, wy - 7);
+                  ctx.rotate(0.13 * face);
+                  ctx.fillStyle = "#d8c898";
+                  roundRect(ctx, -5, -7, 10, 13, 2);
+                  ctx.fill();
+                  ctx.fillStyle = "#6d6041";
+                  roundRect(ctx, -2.5, -8, 5, 2.5, 1);
+                  ctx.fill();
+                  ctx.strokeStyle = "rgba(55,73,68,0.75)";
+                  ctx.lineWidth = 1;
+                  for (const yy of [-3, 0, 3]) {
+                    ctx.beginPath();
+                    ctx.moveTo(-2.5, yy);
+                    ctx.lineTo(2.5, yy);
+                    ctx.stroke();
+                  }
+                  ctx.restore();
+
+                  // 発見のキラッ。小さくても役割が一目で分かる。
+                  const sparkle = 0.65 + Math.abs(Math.sin(time * 4 + worker.id)) * 0.35;
+                  ctx.save();
+                  ctx.globalAlpha = sparkle;
+                  ctx.strokeStyle = "#7ee7d5";
+                  ctx.lineWidth = 1.6;
+                  const sx = wx - 13 * face;
+                  const sy = wy - 27;
+                  ctx.beginPath();
+                  ctx.moveTo(sx - 4, sy);
+                  ctx.lineTo(sx + 4, sy);
+                  ctx.moveTo(sx, sy - 4);
+                  ctx.lineTo(sx, sy + 4);
+                  ctx.stroke();
+                  ctx.restore();
+                } else {
+                  // 探索者・追跡者: つばの広い日よけと、遠くを指す手
+                  ctx.fillStyle = "#3f5a5f";
+                  roundRect(ctx, wx - 11, wy - 26, 22, 4, 2);
+                  ctx.fill();
+                  roundRect(ctx, wx - 7, wy - 32, 14, 7, 3);
+                  ctx.fill();
+                  ctx.strokeStyle = "#e0d6bd";
+                  ctx.lineWidth = 2;
+                  ctx.beginPath();
+                  ctx.moveTo(wx + 6 * face, wy - 10);
+                  ctx.lineTo(wx + 17 * face, wy - 16);
+                  ctx.stroke();
+                }
               }
               if (worker.kind === "master") {
                 // 鉢巻きと腕組み
@@ -13143,6 +13350,19 @@ export default function Shop({ onSample, paused }: Props) {
 
       actors.sort((a, b) => a.y - b.y);
       for (const actor of actors) actor.render();
+
+      // 前景をキャラクターより手前に被せ、背景→プレイ層→前景の3層にする。
+      if (stage().id === "ramen" || isPark || isOnsen) {
+        drawClassicStageForegroundPass(
+          ctx,
+          stage().id,
+          openAreas(state),
+          effectsRef.current ? time : 0,
+          effectsRef.current,
+        );
+      }
+      if (isFire) drawFireForegroundPass(ctx, openAreas(state));
+      if (isTaiga) drawTaigaForegroundPass(ctx, openAreas(state), RIVER_LANE);
 
       /* --- 演出 --- */
       for (const item of state.pops) {

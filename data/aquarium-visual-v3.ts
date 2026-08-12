@@ -110,7 +110,7 @@ rename(1, 3, "清流大水槽", "FRESH WATER · JAPAN｜冷たい山の水、岩
 // 以降も各地域の3番展示を必ず「この地域の顔」にする。
 const landmarks: Array<[number, string, string]> = [
   [2, "東アジア大河水槽", "FRESH WATER · EAST ASIA｜大型ナマズが現れ、小魚中心だった展示から一段スケールが上がる大河の見せ場。"],
-  [3, "メコン巨大魚水槽", "FRESH WATER · MEKONG｜メコンの巨大ナマズが悠々と横切る、東南アジア淡水の主役展示。"],
+  [3, "巨大ナマズ", "FRESH WATER · MEKONG｜メコンの巨大ナマズが悠々と横切る、東南アジア淡水の主役展示。"],
   [4, "水没森林アロワナ大水槽", "FRESH WATER · FLOODED FOREST｜沈んだ巨木の根の間をアジアアロワナが泳ぐ、水没森林の象徴展示。"],
   [5, "アフリカ大湖水槽", "FRESH WATER · AFRICA｜岩場と色鮮やかな魚群の奥を大型魚が通る、アフリカ淡水のランドマーク。"],
   [6, "アマゾン熱帯雨林大水槽", "FRESH WATER · AMAZON｜密生する水草と流木の間を色鮮やかな魚が満たす熱帯雨林の大展示。"],
@@ -134,3 +134,4 @@ aquariumRuntimeDef.startPos = { x: 176, y: 274 };
 aquariumRuntimeDef.view = 400;
 aquariumCardDef.startPos = aquariumRuntimeDef.startPos;
 aquariumCardDef.view = aquariumRuntimeDef.view;
+
