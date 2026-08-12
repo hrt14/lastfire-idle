@@ -45,6 +45,7 @@ import {
   seatById,
   stoveById,
   type ItemKind,
+  type AreaSpec,
   type StoveSpec,
   OUTSIDE_DEPTH,
   areas,
@@ -113,6 +114,17 @@ import {
   nightLights,
 } from "@/lib/fire";
 import {
+  TROUBLES,
+  capacity,
+  confusion,
+  confusionLabel,
+  load as cityLoad,
+  nextTech as mojiNextTech,
+  scribeCount,
+  tech as mojiTech,
+  techProgress,
+} from "@/lib/moji";
+import {
   SEASON_TIME,
   fertile,
   flooding as taigaFlooding,
@@ -179,6 +191,24 @@ export type Sample = {
     left: number;
     pop: number;
     jobs: Record<Job, number>;
+  } | null;
+  /**
+   * 文字のはじまりの、記録のようす（それ以外のステージでは null）。
+   * 段階は数字ではなく、何ができるようになったかで見せる（仕様書 §13）
+   */
+  writing: {
+    records: number;
+    level: number;
+    name: string;
+    means: string;
+    nextName: string | null;
+    nextAt: number;
+    progress: number;
+    scribes: number;
+    spare: number;
+    confusion: number;
+    confusionText: string;
+    engraved: boolean;
   } | null;
 };
 
@@ -1103,6 +1133,10 @@ const FIRE_ROLE_COATS: Partial<Record<StaffKind, string>> = {
   explorer: "#5b6257",
   runner: "#705842",
   boat: "#625849",
+  // 文字のはじまり: 書記は生成りの亜麻、役人は藍、石工は石の粉をかぶった灰
+  scribe: "#d8cfae",
+  officer: "#42527a",
+  carver: "#7f7b70",
 };
 
 const fireRoleCoat = (kind: StaffKind, id: number) =>
@@ -1174,6 +1208,71 @@ const drawFireRoleMark = (
     ctx.lineTo(x + 14, y - 11);
     ctx.lineTo(x + 12, y - 1);
     ctx.closePath();
+    ctx.fill();
+  } else if (kind === "scribe") {
+    /*
+     * 書記。歩いていても書記だと分かるように、
+     * 胸に抱えた粘土板と、耳もとの尖筆をいつも持たせる（仕様書 §17-6）
+     */
+    ctx.fillStyle = "#cbb488";
+    roundRect(ctx, x - 7, y - 9, 14, 15, 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(46,32,18,0.85)";
+    ctx.lineWidth = 1.1;
+    for (const ly of [-5.5, -1.5, 2.5]) {
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y + ly);
+      ctx.lineTo(x + 5, y + ly);
+      ctx.stroke();
+    }
+    // 抱えている腕
+    ctx.strokeStyle = "rgba(200,168,120,0.95)";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(x - 8, y - 4);
+    ctx.lineTo(x + 8, y - 4);
+    ctx.stroke();
+    // 耳にはさんだ尖筆
+    ctx.strokeStyle = "rgba(90,70,48,0.9)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x + 6, y - 20);
+    ctx.lineTo(x + 12, y - 26);
+    ctx.stroke();
+  } else if (kind === "officer") {
+    // 役人: 肩から下げた巻いた板と、長い杖
+    ctx.strokeStyle = "rgba(70,58,40,0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 11, y - 30);
+    ctx.lineTo(x + 11, y + 6);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(201,169,96,0.9)";
+    ctx.beginPath();
+    ctx.arc(x + 11, y - 32, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(203,180,136,0.95)";
+    roundRect(ctx, x - 12, y - 8, 8, 12, 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(60,79,122,0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 8, y - 12);
+    ctx.lineTo(x + 4, y - 10);
+    ctx.stroke();
+  } else if (kind === "carver") {
+    // 石工・彫刻師: のみと槌。石の粉をかぶった前かけ
+    ctx.fillStyle = "rgba(150,146,132,0.85)";
+    roundRect(ctx, x - 7, y - 6, 14, 13, 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(80,74,62,0.9)";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(x + 7, y - 14);
+    ctx.lineTo(x + 12, y - 6);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(110,104,90,0.95)";
+    roundRect(ctx, x + 8, y - 22, 9, 7, 1.5);
     ctx.fill();
   }
 };
@@ -2751,6 +2850,308 @@ const chainItem = (
     return;
   }
 
+  /* ==================== 文字のはじまり ====================
+   *
+   * 情報の品（札・板）は、物資よりひとまわり大きく描く。
+   * 手に持っていても、棚に積んであっても「粘土板だ」と分かることが、
+   * このステージの成立条件そのものになる（仕様書 §17-7）。
+   */
+
+  if (item === "wheat") {
+    // 麦: 穂先の長い黄金の束。穀物より穂が立っている
+    ctx.strokeStyle = "#b9954e";
+    ctx.lineWidth = 1.5;
+    for (const dx of [-4, 0, 4]) {
+      ctx.beginPath();
+      ctx.moveTo(dx * 0.5, 8);
+      ctx.lineTo(dx, -5);
+      ctx.stroke();
+      // 穂。粒を左右にふりわけて麦らしくする
+      for (let i = 0; i < 4; i += 1) {
+        const py = -5 - i * 2.4;
+        ctx.fillStyle = i % 2 ? "#f0d778" : "#e0c05c";
+        ctx.beginPath();
+        ctx.ellipse(dx - 1.6, py, 1.5, 1.1, -0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(dx + 1.6, py, 1.5, 1.1, 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // のぎ
+      ctx.strokeStyle = "rgba(240,215,120,0.7)";
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(dx, -14);
+      ctx.lineTo(dx + 1.5, -18);
+      ctx.stroke();
+      ctx.strokeStyle = "#b9954e";
+      ctx.lineWidth = 1.5;
+    }
+    ctx.strokeStyle = "#8a6a44";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(-5, 3);
+    ctx.lineTo(5, 3);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "reed") {
+    // 葦: 川辺の細い葉。先が穂になっている（筆と籠のもと）
+    for (const [i, dx] of [-3.5, 0, 3.5].entries()) {
+      ctx.strokeStyle = i === 1 ? "#7f9a55" : "#63834a";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(dx * 0.4, 8);
+      ctx.quadraticCurveTo(dx, 0, dx * 1.5, -9);
+      ctx.stroke();
+      ctx.fillStyle = "#b8a874";
+      ctx.beginPath();
+      ctx.ellipse(dx * 1.5, -10.5, 1.4, 3.2, dx * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "tally") {
+    // 数量札: 手のひらの粘土に、刻みだけを入れた小さな札
+    ctx.fillStyle = "#a89272";
+    roundRect(ctx, -6, -7.5, 12, 15, 2);
+    ctx.fill();
+    ctx.fillStyle = "#c0a986";
+    roundRect(ctx, -5, -6.5, 10, 13, 2);
+    ctx.fill();
+    // 刻み。数をそのまま線にしただけの、いちばん古い記録
+    ctx.strokeStyle = "rgba(58,42,26,0.85)";
+    ctx.lineWidth = 1.1;
+    for (const ly of [-3.4, 0, 3.4]) {
+      for (const lx of [-2.6, 0, 2.6]) {
+        ctx.beginPath();
+        ctx.moveTo(lx, ly - 1.6);
+        ctx.lineTo(lx, ly + 1.6);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "rawtab" || item === "drytab") {
+    // 生の粘土板 / 乾いた粘土板。まだ何も書かれていない「白紙」
+    const wet = item === "rawtab";
+    ctx.fillStyle = wet ? "#6a5233" : "#a08a68";
+    roundRect(ctx, -8.5, -10, 17, 20, 3);
+    ctx.fill();
+    ctx.fillStyle = wet ? "#836841" : "#c4ad86";
+    roundRect(ctx, -7, -8.5, 14, 17, 2.5);
+    ctx.fill();
+    if (wet) {
+      // 濡れている粘土は、てかりで見分ける
+      ctx.fillStyle = "rgba(255,240,210,0.32)";
+      roundRect(ctx, -5, -6.5, 6, 10, 2);
+      ctx.fill();
+    } else {
+      // 乾いた板はひび。焼いていないので白っぽい
+      ctx.strokeStyle = "rgba(120,100,72,0.5)";
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(-3, -6);
+      ctx.lineTo(-1, -1);
+      ctx.lineTo(-3.5, 3);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "tablet" || item === "landtab" || item === "taxtab") {
+    /*
+     * 記録板。このステージの主役なので、いちばん大きく描く。
+     * 記号は2〜5個だけを大きく並べる ―― 細かい模様にすると、
+     * 縮小したときにただの板になってしまう（仕様書 §5 AREA2）
+     */
+    ctx.fillStyle = "#8a7048";
+    roundRect(ctx, -9.5, -11, 19, 22, 3);
+    ctx.fill();
+    ctx.fillStyle = "#cbb488";
+    roundRect(ctx, -8, -9.5, 16, 19, 2.5);
+    ctx.fill();
+
+    const ink = "rgba(46,32,18,0.9)";
+    ctx.strokeStyle = ink;
+    ctx.fillStyle = ink;
+    ctx.lineWidth = 1.4;
+
+    if (item === "landtab") {
+      // 土地台帳: 境目の線。畑の割りつけがそのまま絵になっている
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-6, -1.5);
+      ctx.lineTo(6, -1.5);
+      ctx.moveTo(0, -8);
+      ctx.lineTo(0, 7);
+      ctx.moveTo(-6, 3.5);
+      ctx.lineTo(6, 3.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(-3, -4.6, 1.3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (item === "taxtab") {
+      // 徴税記録: 集計の刻みと、納めた壺の印
+      ctx.lineWidth = 1.1;
+      for (const ly of [-6, -2, 2]) {
+        for (let i = 0; i < 4; i += 1) {
+          ctx.beginPath();
+          ctx.moveTo(-5.5 + i * 2.6, ly - 1.4);
+          ctx.lineTo(-5.5 + i * 2.6, ly + 1.4);
+          ctx.stroke();
+        }
+      }
+      ctx.beginPath();
+      ctx.ellipse(0, 6.4, 3, 2.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // 記録板: くさび形の記号を3つ。大きく、はっきりと
+      for (const [i, gy] of [-6, -0.5, 5].entries()) {
+        ctx.beginPath();
+        ctx.moveTo(-5, gy);
+        ctx.lineTo(-1.5, gy - 2.2);
+        ctx.lineTo(-1.5, gy + 2.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.moveTo(-1, gy);
+        ctx.lineTo(4.5, gy);
+        ctx.stroke();
+        if (i !== 1) {
+          ctx.beginPath();
+          ctx.moveTo(3, gy - 2.4);
+          ctx.lineTo(5.5, gy + 2.4);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "deed") {
+    // 契約板: 封をした二枚重ね。ひもと粘土の封印つき
+    ctx.fillStyle = "#7a6242";
+    roundRect(ctx, -6, -11, 17, 22, 3);
+    ctx.fill();
+    ctx.fillStyle = "#9c855f";
+    roundRect(ctx, -9.5, -10, 17, 20, 3);
+    ctx.fill();
+    ctx.fillStyle = "#cdb98f";
+    roundRect(ctx, -8, -8.5, 14, 17, 2.5);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(46,32,18,0.85)";
+    ctx.lineWidth = 1.2;
+    for (const ly of [-5, -1, 3]) {
+      ctx.beginPath();
+      ctx.moveTo(-5.5, ly);
+      ctx.lineTo(3.5, ly);
+      ctx.stroke();
+    }
+    // 封のひもと、押した印
+    ctx.strokeStyle = "#8a4a30";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-10, 6.5);
+    ctx.lineTo(8, 6.5);
+    ctx.stroke();
+    ctx.fillStyle = "#c0453c";
+    ctx.beginPath();
+    ctx.arc(-1, 6.5, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "oil") {
+    // 油: 首の細い壺と、口もとの照り
+    ctx.fillStyle = "#8a6a3c";
+    ctx.beginPath();
+    ctx.ellipse(0, 2.5, 6.5, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#a8814a";
+    roundRect(ctx, -2.4, -9, 4.8, 6, 1.6);
+    ctx.fill();
+    ctx.fillStyle = "#e0b45c";
+    ctx.beginPath();
+    ctx.ellipse(0, -9.5, 3.4, 1.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,236,180,0.45)";
+    ctx.beginPath();
+    ctx.ellipse(-2.4, 1, 1.8, 3.4, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "cloth") {
+    // 布: たたんだ織り布。縞で織物と分かるようにする
+    ctx.fillStyle = "#8a5a4a";
+    roundRect(ctx, -9, -6, 18, 12, 2);
+    ctx.fill();
+    ctx.fillStyle = "#c47a5c";
+    roundRect(ctx, -9, -6, 18, 5.5, 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(245,225,200,0.75)";
+    ctx.lineWidth = 1;
+    for (const ly of [-2.4, 0.6, 3.6]) {
+      ctx.beginPath();
+      ctx.moveTo(-8, ly);
+      ctx.lineTo(8, ly);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "stone" || item === "slab") {
+    if (item === "slab") {
+      // 石板: 平たく整えた一枚。碑にするための素材
+      ctx.fillStyle = "#6f6b60";
+      roundRect(ctx, -10, -7, 20, 14, 1.5);
+      ctx.fill();
+      ctx.fillStyle = "#8f8a7c";
+      roundRect(ctx, -9, -6, 18, 11, 1.5);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(60,56,48,0.5)";
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(-6, -3);
+      ctx.lineTo(6, -3);
+      ctx.stroke();
+    } else {
+      // 石: 割ったばかりの角ばったかたまり
+      ctx.fillStyle = "#6b675d";
+      ctx.beginPath();
+      ctx.moveTo(-8, 3);
+      ctx.lineTo(-5, -5);
+      ctx.lineTo(3, -7);
+      ctx.lineTo(8, -1);
+      ctx.lineTo(5, 6);
+      ctx.lineTo(-4, 6.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "rgba(190,186,172,0.5)";
+      ctx.beginPath();
+      ctx.moveTo(-5, -5);
+      ctx.lineTo(3, -7);
+      ctx.lineTo(1, -1);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
   if (item === "grain") {
     // 穀物: 刈り取った穂の束。縄でしばってある
     ctx.strokeStyle = "#c9a95e";
@@ -3338,6 +3739,1490 @@ const pileOf = (
   }
 };
 
+/* ==================== 文字のはじまり: 街の絵 ==================== */
+
+/** 日干しレンガの壁（この街の基本の素材）。目地を入れて土壁と見分ける */
+const mudBrick = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  tone = "#a88a5e",
+  dark = "#8a6f48",
+) => {
+  ctx.fillStyle = tone;
+  roundRect(ctx, x - w / 2, y - h, w, h, 2);
+  ctx.fill();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 0.8;
+  for (let row = 1; row * 7 < h; row += 1) {
+    const ly = y - row * 7;
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, ly);
+    ctx.lineTo(x + w / 2, ly);
+    ctx.stroke();
+    // 目地をずらして積む
+    const offset = row % 2 ? 0 : w / 6;
+    for (let bx = -w / 2 + offset; bx < w / 2; bx += w / 3) {
+      ctx.beginPath();
+      ctx.moveTo(x + bx, ly);
+      ctx.lineTo(x + bx, ly + 7);
+      ctx.stroke();
+    }
+  }
+};
+
+/** 記録板を1枚。棚や机の上に置くときに使う（小さくても板と分かる濃さで） */
+const tabletMark = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  written: boolean,
+) => {
+  ctx.fillStyle = written ? "#cbb488" : "#b3a184";
+  roundRect(ctx, x - w / 2, y - h, w, h, 1.5);
+  ctx.fill();
+  if (!written) return;
+  ctx.strokeStyle = "rgba(46,32,18,0.8)";
+  ctx.lineWidth = Math.max(0.6, w / 12);
+  const rows = Math.max(2, Math.floor(h / 4));
+  for (let i = 0; i < rows; i += 1) {
+    const ly = y - h + 2.5 + i * (h / rows);
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2 + 1.5, ly);
+    ctx.lineTo(x + w / 2 - 1.5, ly);
+    ctx.stroke();
+  }
+};
+
+/** 葦の束（前景と屋根に何度も出てくる） */
+const reedTuft = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  h: number,
+  time: number,
+  seed = 0,
+) => {
+  for (let i = 0; i < 4; i += 1) {
+    const sway = Math.sin(time * 1.1 + seed + i) * (h * 0.08);
+    ctx.strokeStyle = i % 2 ? "#6f8a4c" : "#5b7440";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x - 4 + i * 2.6, y);
+    ctx.quadraticCurveTo(x - 3 + i * 2.6, y - h * 0.6, x - 2 + i * 2.6 + sway, y - h);
+    ctx.stroke();
+    ctx.fillStyle = "#b7a878";
+    ctx.beginPath();
+    ctx.ellipse(x - 2 + i * 2.6 + sway, y - h - 1.5, 1.2, 2.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
+/** 書いている人（机に向かって尖筆を動かす）。書記が「書いている」ことを見せる要 */
+const writingFigure = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  time: number,
+  seed = 0,
+  scale = 1,
+) => {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  // 前かがみの体（座って板を抱えている姿勢）
+  ctx.fillStyle = "#e8dfc4";
+  ctx.beginPath();
+  ctx.ellipse(0, -6, 5.5, 7.5, 0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#c8a878";
+  ctx.beginPath();
+  ctx.arc(1.5, -15, 4, 0, Math.PI * 2);
+  ctx.fill();
+  // ひざの上の粘土板。ここは必ず大きく
+  tabletMark(ctx, -1, -3.5, 11, 9, true);
+  // 尖筆を持つ腕。刻む動きで小刻みに往復する
+  const stroke = Math.sin(time * 6 + seed) * 2.2;
+  ctx.strokeStyle = "#c8a878";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(4, -9);
+  ctx.lineTo(6 + stroke, -6);
+  ctx.stroke();
+  ctx.strokeStyle = "#5a4630";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(6 + stroke, -6);
+  ctx.lineTo(9 + stroke, -9);
+  ctx.stroke();
+  ctx.restore();
+};
+
+/** ちらばりを毎フレーム同じにするための、位置から決まる擬似乱数 */
+const scatter = (seed: number) => {
+  const value = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return value - Math.floor(value);
+};
+
+/**
+ * 文字のはじまりの地面と、前景・後景。
+ *
+ * 仕様書 §7 の3層を、区画ごとにこの順で敷く。
+ *   後景  川・対岸の家・神殿・船・煙・遠くの人
+ *   地面  曲がった道・小広場・路地（完全グリッドにしない）
+ *   前景  葦・壺・積み荷・柱
+ *
+ * そして §2 の「最大の成長軸は、街中の文字の総量が増えること」を、
+ * 文字の段階に応じて壁と地面に刻みを増やすことで受ける。
+ */
+const drawCityGround = (
+  ctx: CanvasRenderingContext2D,
+  area: AreaSpec,
+  time: number,
+  state: ShopState,
+  effects: boolean,
+) => {
+  const { x0, y0, x1, y1 } = area.rect;
+  const w = x1 - x0;
+  const t = effects ? time : 0;
+  const level = state.moji.tech;
+  const index = Number(area.id.replace("area-", "")) || 0;
+
+  /* ---------- 後景: 川 ---------- */
+  const river = y0 + 78;
+  const grad = ctx.createLinearGradient(0, y0, 0, river);
+  grad.addColorStop(0, "#3c5a63");
+  grad.addColorStop(1, "#547a7d");
+  ctx.fillStyle = grad;
+  ctx.fillRect(x0, y0, w, river - y0);
+  // 流れ。ゆっくり右へ運ばれていく
+  ctx.strokeStyle = "rgba(210,235,235,0.22)";
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 7; i += 1) {
+    const ly = y0 + 12 + i * 9;
+    const drift = ((t * 14 + i * 60) % (w + 120)) - 60;
+    ctx.beginPath();
+    ctx.moveTo(x0 + drift, ly);
+    ctx.quadraticCurveTo(x0 + drift + 26, ly - 3, x0 + drift + 52, ly);
+    ctx.stroke();
+  }
+  // 対岸（後景の街）。区画が進むほど家が増え、密になる
+  ctx.fillStyle = "#3f4a44";
+  ctx.fillRect(x0, y0, w, 22);
+  const houses = 5 + index * 2;
+  for (let i = 0; i < houses; i += 1) {
+    const hx = x0 + 20 + (w / houses) * i + scatter(i + index * 7) * 18;
+    const hh = 10 + scatter(i * 3 + index) * 12;
+    ctx.fillStyle = i % 3 === 0 ? "#5b5546" : "#4e4a3d";
+    ctx.fillRect(hx, y0 + 22 - hh, 18 + scatter(i) * 10, hh);
+  }
+  // 神殿。段のある大きな影を、区画ひとつおきに置く
+  if (index % 2 === 0) {
+    const tx = x0 + w * 0.68;
+    ctx.fillStyle = "#585141";
+    ctx.fillRect(tx - 34, y0 + 4, 68, 18);
+    ctx.fillRect(tx - 24, y0 - 4, 48, 10);
+    ctx.fillRect(tx - 14, y0 - 10, 28, 8);
+  }
+  // 煙（暮らしの気配）
+  if (effects) {
+    for (let i = 0; i < 3; i += 1) {
+      const sx = x0 + w * (0.2 + i * 0.3);
+      const rise = (t * 8 + i * 30) % 40;
+      ctx.fillStyle = `rgba(210,205,190,${0.16 - rise / 300})`;
+      ctx.beginPath();
+      ctx.arc(sx + Math.sin(rise / 8 + i) * 4, y0 + 18 - rise, 3 + rise / 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // 川の舟。荷を積んで下っていく
+  for (let i = 0; i < 2; i += 1) {
+    const bx = x0 + (((t * 20 + i * 420 + index * 130) % (w + 200)) - 100);
+    const by = y0 + 40 + i * 20;
+    ctx.fillStyle = "#5a4530";
+    ctx.beginPath();
+    ctx.moveTo(bx - 16, by);
+    ctx.quadraticCurveTo(bx, by + 7, bx + 16, by);
+    ctx.quadraticCurveTo(bx, by + 2, bx - 16, by);
+    ctx.fill();
+    ctx.fillStyle = "#8a7048";
+    ctx.fillRect(bx - 5, by - 7, 10, 7);
+  }
+  // 岸辺の葦（後景と地面の境目）
+  for (let i = 0; i < 14; i += 1) {
+    const rx = x0 + 14 + (w / 14) * i + scatter(i * 5 + index) * 20;
+    reedTuft(ctx, rx, river + 4, 12 + scatter(i * 2) * 8, t, i + index);
+  }
+
+  /* ---------- 堤防（川岸から市街地への一段） ---------- */
+  ctx.fillStyle = "#6f5c3e";
+  ctx.fillRect(x0, river, w, 16);
+  ctx.fillStyle = "rgba(40,30,18,0.35)";
+  ctx.fillRect(x0, river + 14, w, 4);
+
+  /* ---------- 地面: 曲がった道と小広場 ---------- */
+  // 大通りは、まっすぐではなくゆるく蛇行させる
+  const roadY = y0 + (y1 - y0) * 0.72;
+  ctx.strokeStyle = "rgba(150,132,96,0.5)";
+  ctx.lineWidth = 34;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x0 - 10, roadY + 14);
+  ctx.quadraticCurveTo(x0 + w * 0.3, roadY - 26, x0 + w * 0.55, roadY - 2);
+  ctx.quadraticCurveTo(x0 + w * 0.8, roadY + 22, x1 + 10, roadY - 6);
+  ctx.stroke();
+  // 路地。大通りから北へ2本ぶら下げる
+  ctx.lineWidth = 13;
+  ctx.strokeStyle = "rgba(150,132,96,0.34)";
+  for (const at of [0.24, 0.62]) {
+    ctx.beginPath();
+    ctx.moveTo(x0 + w * at, roadY);
+    ctx.quadraticCurveTo(x0 + w * (at + 0.04), roadY - 90, x0 + w * (at - 0.02), river + 22);
+    ctx.stroke();
+  }
+  ctx.lineCap = "butt";
+  // 小広場（道の途中のふくらみ）
+  ctx.fillStyle = "rgba(150,132,96,0.32)";
+  ctx.beginPath();
+  ctx.ellipse(x0 + w * 0.45, roadY - 6, 60, 26, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* ---------- 街じゅうの文字 ----------
+   *
+   * ここがこのステージの成長そのもの。段階が上がるほど、
+   * 壁の刻み・立て札・境界石が増え、街の見た目が文字で埋まっていく
+   */
+  const marks = level * (3 + index);
+  for (let i = 0; i < marks; i += 1) {
+    const mx = x0 + 40 + scatter(i * 9 + index * 31) * (w - 80);
+    const my = river + 30 + scatter(i * 13 + index * 17) * (y1 - river - 90);
+    const kind = i % 3;
+    if (kind === 0) {
+      // 壁の刻み
+      ctx.strokeStyle = "rgba(70,54,34,0.6)";
+      ctx.lineWidth = 1;
+      for (let g = 0; g < 3; g += 1) {
+        ctx.beginPath();
+        ctx.moveTo(mx + g * 5, my);
+        ctx.lineTo(mx + g * 5 + 3.5, my);
+        ctx.moveTo(mx + g * 5 + 1, my - 2);
+        ctx.lineTo(mx + g * 5 + 1, my + 2);
+        ctx.stroke();
+      }
+    } else if (kind === 1) {
+      // 立て札
+      ctx.fillStyle = "rgba(90,69,38,0.8)";
+      ctx.fillRect(mx - 1, my - 8, 2, 10);
+      tabletMark(ctx, mx, my - 8, 9, 11, true);
+    } else {
+      // 境界石
+      ctx.fillStyle = "rgba(125,119,103,0.85)";
+      ctx.beginPath();
+      ctx.moveTo(mx - 4, my + 3);
+      ctx.lineTo(mx - 3, my - 7);
+      ctx.lineTo(mx + 3, my - 7);
+      ctx.lineTo(mx + 4, my + 3);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  /* ---------- 前景: 葦・壺・積み荷・柱 ---------- */
+  const front = y1 - 34;
+  for (let i = 0; i < 9; i += 1) {
+    const fx = x0 + 30 + (w / 9) * i + scatter(i * 11 + index) * 30;
+    const pick = Math.floor(scatter(i * 3 + index * 5) * 4);
+    if (pick === 0) {
+      reedTuft(ctx, fx, front + 26, 30, t, i * 2 + index);
+    } else if (pick === 1) {
+      // 壺（口の広いものと細いものを混ぜる）
+      ctx.fillStyle = "#7d4f34";
+      ctx.beginPath();
+      ctx.ellipse(fx, front + 14, 11, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#96613f";
+      roundRect(ctx, fx - 4, front - 4, 8, 9, 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(40,26,16,0.4)";
+      ctx.beginPath();
+      ctx.ellipse(fx, front - 3, 5, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (pick === 2) {
+      // 積み荷（麦袋と籠）
+      for (let s = 0; s < 3; s += 1) {
+        ctx.fillStyle = s % 2 ? "#b09a66" : "#9c8657";
+        roundRect(ctx, fx - 12 + s * 10, front + 4 - (s % 2) * 8, 13, 12, 4);
+        ctx.fill();
+      }
+    } else {
+      // 柱（軒を支える。手前に立つと奥行きが出る）
+      ctx.fillStyle = "#c0a978";
+      roundRect(ctx, fx - 5, front - 30, 10, 46, 2);
+      ctx.fill();
+      ctx.fillStyle = "#a08a5e";
+      roundRect(ctx, fx - 8, front - 34, 16, 6, 1);
+      ctx.fill();
+    }
+  }
+};
+
+/**
+ * 文字のはじまりの受け渡し場。
+ * ござ（地面）→ 帳場（机）→ 屋台（天幕）→ 契約席（封と印）と、
+ * 渡すものが情報になるほど、しつらえが重くなっていく。
+ */
+const drawCitySeat = (
+  ctx: CanvasRenderingContext2D,
+  art: string,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 8, 26, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (art === "tallydesk") {
+    // 帳場: 低い机に板を広げ、脇に札を積む
+    ctx.fillStyle = "#7a5a34";
+    roundRect(ctx, x - 24, y - 8, 48, 6, 2);
+    ctx.fill();
+    ctx.fillStyle = "#5f4526";
+    ctx.fillRect(x - 20, y - 2, 4, 11);
+    ctx.fillRect(x + 16, y - 2, 4, 11);
+    tabletMark(ctx, x - 6, y - 8, 14, 10, true);
+    for (let i = 0; i < 3; i += 1) {
+      tabletMark(ctx, x + 15, y - 8 - i * 4, 8, 5, true);
+    }
+    return;
+  }
+
+  if (art === "stall") {
+    // 屋台: 天幕と台。市場のにぎわいの単位
+    ctx.strokeStyle = "#6b4f2e";
+    ctx.lineWidth = 2.5;
+    for (const px of [x - 22, x + 22]) {
+      ctx.beginPath();
+      ctx.moveTo(px, y + 6);
+      ctx.lineTo(px, y - 26);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#b5654a";
+    ctx.beginPath();
+    ctx.moveTo(x - 28, y - 26);
+    ctx.quadraticCurveTo(x, y - 36, x + 28, y - 26);
+    ctx.lineTo(x + 28, y - 22);
+    ctx.quadraticCurveTo(x, y - 32, x - 28, y - 22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#7a5a34";
+    roundRect(ctx, x - 24, y - 8, 48, 6, 2);
+    ctx.fill();
+    // 商品札
+    tabletMark(ctx, x + 16, y - 8, 8, 10, true);
+    return;
+  }
+
+  if (art === "deeddesk") {
+    // 契約席: 石の台に、封をした板。遠方の相手と交わす場所
+    ctx.fillStyle = "#7d7767";
+    roundRect(ctx, x - 26, y - 10, 52, 9, 2);
+    ctx.fill();
+    ctx.fillStyle = "#8f8a7c";
+    roundRect(ctx, x - 26, y - 12, 52, 4, 2);
+    ctx.fill();
+    ctx.fillStyle = "#5e5a50";
+    ctx.fillRect(x - 21, y - 1, 5, 10);
+    ctx.fillRect(x + 16, y - 1, 5, 10);
+    tabletMark(ctx, x - 8, y - 12, 15, 11, true);
+    // 封印の粘土玉
+    ctx.fillStyle = "#c0453c";
+    ctx.beginPath();
+    ctx.arc(x + 13, y - 15, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    // ゆれる帳のふさ
+    ctx.strokeStyle = "rgba(200,170,110,0.7)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x + 22, y - 12);
+    ctx.lineTo(x + 24 + Math.sin(time * 1.6) * 1.5, y - 4);
+    ctx.stroke();
+    return;
+  }
+
+  // ござ: 地面に敷いた葦の敷物。いちばん素朴な受け渡し
+  ctx.fillStyle = "#b7a173";
+  roundRect(ctx, x - 26, y - 6, 52, 18, 3);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(120,102,68,0.55)";
+  ctx.lineWidth = 0.9;
+  for (let i = -2; i <= 2; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(x + i * 10, y - 6);
+    ctx.lineTo(x + i * 10, y + 12);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(150,132,92,0.8)";
+  ctx.beginPath();
+  ctx.moveTo(x - 26, y + 3);
+  ctx.lineTo(x + 26, y + 3);
+  ctx.stroke();
+};
+
+/**
+ * 文字のはじまりの作業場・建物。
+ * 描けたら true。名前が違えば見た目も違わせる（仕様書 §2）ので、
+ * 一つずつ別の形を持たせている。
+ */
+const drawCity = (
+  ctx: CanvasRenderingContext2D,
+  stove: StoveSpec,
+  x: number,
+  y: number,
+  time: number,
+  state: ShopState,
+): boolean => {
+  const art = stove.art ?? "";
+  const ready = state.ready[stove.id] ?? 0;
+  const held = heldAt(state, stove.id);
+  const level = state.moji.tech;
+
+  /* --- 麦畑: 前の時代からの実り。刈っても刈っても余っている --- */
+  if (art === "wheatfield") {
+    const grow = Math.max(0, Math.min(1, state.cooking[stove.id] ?? 0));
+    ctx.fillStyle = "#5c4a2c";
+    roundRect(ctx, x - 44, y - 24, 88, 42, 6);
+    ctx.fill();
+    // うね
+    ctx.strokeStyle = "rgba(0,0,0,0.22)";
+    ctx.lineWidth = 2;
+    for (const oy of [-14, -2, 10]) {
+      ctx.beginPath();
+      ctx.moveTo(x - 40, y + oy);
+      ctx.lineTo(x + 40, y + oy);
+      ctx.stroke();
+    }
+    // 実った麦。刈った側（左）は切り株だけが残る
+    for (let i = 0; i < 9; i += 1) {
+      const sx = x - 36 + i * 9;
+      const base = y + 12 - (i % 3) * 12;
+      const cut = i < Math.floor(grow * 3);
+      if (cut) {
+        ctx.strokeStyle = "#9a8452";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(sx, base);
+        ctx.lineTo(sx, base - 4);
+        ctx.stroke();
+        continue;
+      }
+      const sway = Math.sin(time * 1.5 + i) * 2.2;
+      ctx.strokeStyle = "#bfa055";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(sx, base);
+      ctx.quadraticCurveTo(sx + sway * 0.5, base - 12, sx + sway, base - 22);
+      ctx.stroke();
+      ctx.fillStyle = "#e8c86a";
+      ctx.beginPath();
+      ctx.ellipse(sx + sway, base - 24, 2, 4.5, sway * 0.04, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 刈り取った麦袋。出し口にたまっているぶん
+    for (let i = 0; i < Math.min(4, ready); i += 1) {
+      const bx = x + 22 + (i % 2) * 12;
+      const by = y + 14 - Math.floor(i / 2) * 10;
+      ctx.fillStyle = "#b8a06a";
+      roundRect(ctx, bx - 5, by - 8, 10, 9, 3);
+      ctx.fill();
+      ctx.strokeStyle = "#7a6640";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(bx - 4, by - 5);
+      ctx.lineTo(bx + 4, by - 5);
+      ctx.stroke();
+    }
+    return true;
+  }
+
+  /* --- あふれる倉: この街の最初の問題そのもの --------------------
+   *
+   * 文字がないうちは、麦袋が戸口の外まで転がっている。
+   * 数える印（Lv1）で袋に札がつき、物の記号（Lv2）で種類ごとに整列し、
+   * 人の名前（Lv3）で戸口に担当の名札がかかる。
+   * 「投資したら画面が変わる」を、いちばん大きな建物でやる
+   */
+  if (art === "granary") {
+    const tidy = Math.min(3, level);
+    // 本体（丸屋根の穀物庫）
+    mudBrick(ctx, x, y, 62, 40);
+    ctx.fillStyle = "#8a6f48";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 40, 34, 14, 0, Math.PI, 0);
+    ctx.fill();
+    // 葦の屋根の筋
+    ctx.strokeStyle = "rgba(90,72,44,0.55)";
+    ctx.lineWidth = 1;
+    for (let i = -3; i <= 3; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * 9, y - 40);
+      ctx.quadraticCurveTo(x + i * 5, y - 48, x, y - 53);
+      ctx.stroke();
+    }
+    // 戸口
+    ctx.fillStyle = "#3a2c1c";
+    roundRect(ctx, x - 9, y - 22, 18, 22, 2);
+    ctx.fill();
+    // 麦袋。乱雑 → 整列へ
+    const sacks = 9;
+    for (let i = 0; i < sacks; i += 1) {
+      let bx: number;
+      let by: number;
+      let tilt: number;
+      if (tidy === 0) {
+        // 転がっている。向きも高さもばらばら
+        const seed = i * 2.7;
+        bx = x - 40 + ((i * 37) % 80);
+        by = y + 6 + ((i * 23) % 14);
+        tilt = Math.sin(seed) * 0.8;
+      } else {
+        // 数えられた袋は、列になって積まれる
+        const col = i % 5;
+        const row = Math.floor(i / 5);
+        bx = x - 34 + col * 17;
+        by = y + 10 - row * 11;
+        tilt = 0;
+      }
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(tilt);
+      ctx.fillStyle = tidy >= 2 && i % 3 === 0 ? "#c2b078" : "#b09a66";
+      roundRect(ctx, -7, -11, 14, 12, 4);
+      ctx.fill();
+      ctx.strokeStyle = "#7a6640";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-5.5, -7);
+      ctx.lineTo(5.5, -7);
+      ctx.stroke();
+      // Lv1: 袋に数量札が下がる
+      if (tidy >= 1) {
+        tabletMark(ctx, 4.5, -1.5, 5, 6, true);
+      }
+      ctx.restore();
+    }
+    // Lv3: 戸口に担当の名札
+    if (tidy >= 3) {
+      tabletMark(ctx, x + 16, y - 24, 10, 13, true);
+    }
+    return true;
+  }
+
+  /* --- 数え場: ござ → 木机 → 屋根付きの作業所 ------------------- */
+  if (art === "countmat") {
+    const step = level >= 3 ? 2 : level >= 1 ? 1 : 0;
+    // 地面のござ（どの段階でも敷いてある）
+    ctx.fillStyle = "#b7a173";
+    roundRect(ctx, x - 30, y - 8, 60, 26, 3);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(120,102,68,0.6)";
+    ctx.lineWidth = 0.9;
+    for (let i = -2; i <= 2; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * 11, y - 8);
+      ctx.lineTo(x + i * 11, y + 18);
+      ctx.stroke();
+    }
+    if (step >= 2) {
+      // 屋根付きの作業所。柱と日よけ
+      ctx.strokeStyle = "#6b4f2e";
+      ctx.lineWidth = 3;
+      for (const px of [x - 28, x + 28]) {
+        ctx.beginPath();
+        ctx.moveTo(px, y - 8);
+        ctx.lineTo(px, y - 40);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#8a7448";
+      ctx.beginPath();
+      ctx.moveTo(x - 34, y - 40);
+      ctx.lineTo(x + 34, y - 40);
+      ctx.lineTo(x + 28, y - 48);
+      ctx.lineTo(x - 28, y - 48);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (step >= 1) {
+      // 木の机。ござに直接置いていた粘土が、机の上へ上がる
+      ctx.fillStyle = "#7a5a34";
+      roundRect(ctx, x - 20, y - 20, 40, 6, 2);
+      ctx.fill();
+      ctx.fillStyle = "#5f4526";
+      ctx.fillRect(x - 17, y - 14, 3, 12);
+      ctx.fillRect(x + 14, y - 14, 3, 12);
+      for (let i = 0; i < 3; i += 1) {
+        tabletMark(ctx, x - 12 + i * 12, y - 20, 9, 11, true);
+      }
+    } else {
+      // まだ机がない。ござの上に粘土のかたまりと、数えかけの札
+      ctx.fillStyle = "#7a6142";
+      ctx.beginPath();
+      ctx.ellipse(x - 12, y + 6, 8, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      for (let i = 0; i < 3; i += 1) {
+        tabletMark(ctx, x + 2 + i * 10, y + 10, 8, 10, false);
+      }
+    }
+    // 受け口に積まれた麦
+    for (let i = 0; i < Math.min(3, held); i += 1) {
+      chainItem(ctx, "wheat", x - 34 + i * 10, y + 22, 0.55, time);
+    }
+    return true;
+  }
+
+  /* --- 葦の茂み: 川辺の群落。筆と籠のもと --- */
+  if (art === "reeds") {
+    ctx.fillStyle = "rgba(58,74,52,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 10, 40, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < 6; i += 1) {
+      reedTuft(ctx, x - 32 + i * 13, y + 12 - (i % 2) * 4, 26 + (i % 3) * 8, time, i);
+    }
+    // 刈った葦の束
+    for (let i = 0; i < Math.min(3, ready); i += 1) {
+      chainItem(ctx, "reed", x + 26 + i * 9, y + 12, 0.7, time);
+    }
+    return true;
+  }
+
+  /* --- 粘土穴: 川べりの掘り跡。段になった土 --- */
+  if (art === "claypit") {
+    ctx.fillStyle = "#5a452c";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 4, 34, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#6f5636";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 1, 26, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#43331f";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 2, 17, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 掘り出した粘土の山と、運ぶかご
+    ctx.fillStyle = "#7c6240";
+    ctx.beginPath();
+    ctx.moveTo(x + 20, y + 6);
+    ctx.quadraticCurveTo(x + 28, y - 10, x + 38, y + 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#8a7048";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x - 28, y + 6, 9, 6, 0, Math.PI, 0);
+    ctx.stroke();
+    ctx.fillStyle = "#6a5233";
+    ctx.beginPath();
+    ctx.ellipse(x - 28, y + 3, 7, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < Math.min(3, ready); i += 1) {
+      chainItem(ctx, "clay", x - 34 + i * 11, y + 18, 0.6, time);
+    }
+    return true;
+  }
+
+  /* --- 練り場: 足で踏む練り桶。水がめと、こねた板 --- */
+  if (art === "knead") {
+    // 練り桶（低い石囲い）
+    ctx.fillStyle = "#7d7466";
+    ctx.beginPath();
+    ctx.ellipse(x, y, 28, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#5b4a30";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 2, 23, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // ねっとりした表面のうねり
+    ctx.strokeStyle = "rgba(160,132,90,0.55)";
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < 3; i += 1) {
+      const t = (time * 0.5 + i * 0.33) % 1;
+      ctx.beginPath();
+      ctx.ellipse(x, y - 2, 4 + t * 16, 2 + t * 8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // 水がめ
+    ctx.fillStyle = "#8a5a3c";
+    ctx.beginPath();
+    ctx.ellipse(x - 32, y - 6, 8, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#a06e48";
+    roundRect(ctx, x - 35, y - 20, 6, 6, 2);
+    ctx.fill();
+    // 成形した生板を、板置き台へ
+    ctx.fillStyle = "#6b4f2e";
+    roundRect(ctx, x + 22, y - 10, 26, 4, 2);
+    ctx.fill();
+    for (let i = 0; i < Math.min(3, ready); i += 1) {
+      tabletMark(ctx, x + 27 + i * 8, y - 10, 7, 9, false);
+    }
+    return true;
+  }
+
+  /* --- 乾燥棚: 板がずらりと立てかけてある。積むほど棚が埋まる --- */
+  if (art === "dryrack") {
+    const cap = Math.max(1, holdCap(state, stove));
+    // 棚（3段）
+    ctx.fillStyle = "#6b4f2e";
+    for (const sy of [0, -14, -28]) {
+      roundRect(ctx, x - 32, y + sy - 3, 64, 4, 1.5);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#57401f";
+    ctx.fillRect(x - 33, y - 32, 4, 34);
+    ctx.fillRect(x + 29, y - 32, 4, 34);
+    // 日よけの葦すだれ（買うと付く）
+    if (state.unlocked.includes("equip-dry-rack-plus")) {
+      ctx.fillStyle = "rgba(150,132,86,0.85)";
+      roundRect(ctx, x - 36, y - 44, 72, 8, 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(90,76,48,0.6)";
+      ctx.lineWidth = 0.8;
+      for (let i = -5; i <= 5; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(x + i * 6, y - 44);
+        ctx.lineTo(x + i * 6, y - 36);
+        ctx.stroke();
+      }
+    }
+    // 乾かしている板。受け口のぶんは生板、出し口のぶんは乾いた板
+    const slots = 12;
+    const wetCount = Math.min(6, held);
+    const dryCount = Math.min(6, ready);
+    for (let i = 0; i < slots; i += 1) {
+      const col = i % 6;
+      const row = Math.floor(i / 6);
+      const bx = x - 26 + col * 10.5;
+      const by = y - row * 14 - 3;
+      if (row === 0 && col < wetCount) tabletMark(ctx, bx, by, 8, 10, false);
+      else if (row === 1 && col < dryCount) tabletMark(ctx, bx, by, 8, 10, false);
+    }
+    // どのくらい詰まっているか（棚は保存能力そのもの）
+    ctx.font = SMALL;
+    ctx.fillStyle = "rgba(240,226,196,0.75)";
+    ctx.fillText(`${held + ready}/${cap}`, x, y + 12);
+    ctx.font = FONT;
+    return true;
+  }
+
+  /* --- 書記小屋: このステージの主役 ------------------------------
+   *
+   * 日よけの下に机がひとつ。書記が板を膝に載せて刻んでいる。
+   * まわりに乾いた板と、書き終えた板が分かれて積んである
+   */
+  if (art === "scribehut") {
+    // 日よけ（葦の軒）と柱
+    ctx.strokeStyle = "#6b4f2e";
+    ctx.lineWidth = 3;
+    for (const px of [x - 26, x + 26]) {
+      ctx.beginPath();
+      ctx.moveTo(px, y + 4);
+      ctx.lineTo(px, y - 34);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#93794a";
+    ctx.beginPath();
+    ctx.moveTo(x - 34, y - 34);
+    ctx.lineTo(x + 34, y - 34);
+    ctx.lineTo(x + 27, y - 44);
+    ctx.lineTo(x - 27, y - 44);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(80,64,40,0.5)";
+    ctx.lineWidth = 0.9;
+    for (let i = -4; i <= 4; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * 7, y - 34);
+      ctx.lineTo(x + i * 6, y - 44);
+      ctx.stroke();
+    }
+    // 低い机
+    ctx.fillStyle = "#7a5a34";
+    roundRect(ctx, x - 20, y - 14, 40, 5, 2);
+    ctx.fill();
+    ctx.fillStyle = "#5f4526";
+    ctx.fillRect(x - 16, y - 9, 3, 11);
+    ctx.fillRect(x + 13, y - 9, 3, 11);
+    // 書いている人。書記が「書く動作」をしていること自体が受け入れ条件
+    writingFigure(ctx, x - 2, y - 14, time, stove.id.length, 1);
+    // 左に乾いた板（白紙）、右に書き終えた板
+    for (let i = 0; i < Math.min(3, held); i += 1) {
+      tabletMark(ctx, x - 30, y - 4 - i * 5, 12, 14, false);
+    }
+    for (let i = 0; i < Math.min(3, ready); i += 1) {
+      tabletMark(ctx, x + 30, y - 4 - i * 5, 12, 14, true);
+    }
+    // 筆記具の壺
+    ctx.fillStyle = "#8a5a3c";
+    roundRect(ctx, x + 12, y - 22, 7, 9, 2);
+    ctx.fill();
+    ctx.strokeStyle = "#c9b389";
+    ctx.lineWidth = 1;
+    for (const px of [-1.5, 0.5, 2.5]) {
+      ctx.beginPath();
+      ctx.moveTo(x + 15 + px, y - 22);
+      ctx.lineTo(x + 15 + px * 1.6, y - 29);
+      ctx.stroke();
+    }
+    return true;
+  }
+
+  /* --- 書記の学校: 机がならび、弟子が座る -----------------------
+   *
+   * 買った弟子の数だけ人が増える（仕様書 §5 AREA3 の LV1〜LV5）
+   */
+  if (art === "school") {
+    const pupils = ["pupil-1", "pupil-2", "pupil-3"].filter((id) =>
+      state.unlocked.includes(id),
+    ).length;
+    const roofed = isDone(state, "build-school") || isDone(state, "build-yard");
+    // 土間
+    ctx.fillStyle = "#8d7a54";
+    roundRect(ctx, x - 46, y - 12, 92, 34, 4);
+    ctx.fill();
+    if (roofed) {
+      // 校舎の柱と屋根（建てると屋根がかかる）
+      ctx.strokeStyle = "#6b4f2e";
+      ctx.lineWidth = 3.5;
+      for (const px of [x - 44, x - 15, x + 15, x + 44]) {
+        ctx.beginPath();
+        ctx.moveTo(px, y - 12);
+        ctx.lineTo(px, y - 50);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#9c8252";
+      ctx.beginPath();
+      ctx.moveTo(x - 52, y - 50);
+      ctx.lineTo(x + 52, y - 50);
+      ctx.lineTo(x + 42, y - 62);
+      ctx.lineTo(x - 42, y - 62);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // 師匠の壁板（大きな見本の板）
+    tabletMark(ctx, x - 36, y - 16, 18, 24, true);
+    // 机と弟子。1 + 買った弟子ぶん
+    const seats = 1 + pupils;
+    for (let i = 0; i < seats; i += 1) {
+      const dx = x - 16 + i * 17;
+      ctx.fillStyle = "#7a5a34";
+      roundRect(ctx, dx - 7, y - 6, 15, 4, 1.5);
+      ctx.fill();
+      writingFigure(ctx, dx, y - 6, time, i * 1.7, 0.72);
+    }
+    // 練習板の棚
+    for (let i = 0; i < 4; i += 1) {
+      tabletMark(ctx, x + 34 + (i % 2) * 9, y + 4 - Math.floor(i / 2) * 8, 8, 10, i % 2 === 0);
+    }
+    return true;
+  }
+
+  /* --- 屋根付きの校舎（建物） --- */
+  if (art === "schoolhouse") {
+    mudBrick(ctx, x, y, 76, 34);
+    ctx.fillStyle = "#9c8252";
+    ctx.beginPath();
+    ctx.moveTo(x - 46, y - 34);
+    ctx.lineTo(x + 46, y - 34);
+    ctx.lineTo(x + 34, y - 52);
+    ctx.lineTo(x - 34, y - 52);
+    ctx.closePath();
+    ctx.fill();
+    // 戸口と、両脇の窓
+    ctx.fillStyle = "#3a2c1c";
+    roundRect(ctx, x - 10, y - 22, 20, 22, 2);
+    ctx.fill();
+    for (const wx of [x - 27, x + 27]) {
+      ctx.fillStyle = "#4a3a24";
+      roundRect(ctx, wx - 7, y - 26, 14, 11, 2);
+      ctx.fill();
+    }
+    // 壁にかかった見本の板
+    tabletMark(ctx, x - 27, y - 27, 11, 14, true);
+    tabletMark(ctx, x + 27, y - 27, 11, 14, true);
+    return true;
+  }
+
+  /* --- 中庭の大校舎（建物）: 壁いちめんの文字と棚 --- */
+  if (art === "bigschool") {
+    // 左右の棟と、あいだの中庭
+    mudBrick(ctx, x - 40, y, 48, 44);
+    mudBrick(ctx, x + 40, y, 48, 44);
+    ctx.fillStyle = "#8d7a54";
+    roundRect(ctx, x - 18, y - 14, 36, 16, 2);
+    ctx.fill();
+    for (const sx of [x - 40, x + 40]) {
+      ctx.fillStyle = "#9c8252";
+      ctx.beginPath();
+      ctx.moveTo(sx - 30, y - 44);
+      ctx.lineTo(sx + 30, y - 44);
+      ctx.lineTo(sx + 22, y - 58);
+      ctx.lineTo(sx - 22, y - 58);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#3a2c1c";
+      roundRect(ctx, sx - 8, y - 20, 16, 20, 2);
+      ctx.fill();
+    }
+    // 壁面の文字（この街でいちばん文字が密なところ）
+    ctx.strokeStyle = "rgba(60,44,26,0.8)";
+    ctx.lineWidth = 1;
+    for (let row = 0; row < 4; row += 1) {
+      for (let col = 0; col < 5; col += 1) {
+        const gx = x - 58 + col * 7;
+        const gy = y - 40 + row * 7;
+        ctx.beginPath();
+        ctx.moveTo(gx, gy);
+        ctx.lineTo(gx + 4, gy);
+        ctx.moveTo(gx + 1, gy - 2);
+        ctx.lineTo(gx + 1, gy + 2);
+        ctx.stroke();
+      }
+    }
+    // 中庭で練習する弟子
+    writingFigure(ctx, x - 8, y - 12, time, 2, 0.7);
+    writingFigure(ctx, x + 8, y - 12, time, 5, 0.7);
+    return true;
+  }
+
+  /* --- 記録庫: 棚に板が積まれた小屋 --- */
+  if (art === "archive") {
+    mudBrick(ctx, x, y, 58, 34);
+    ctx.fillStyle = "#8a7448";
+    ctx.beginPath();
+    ctx.moveTo(x - 36, y - 34);
+    ctx.lineTo(x + 36, y - 34);
+    ctx.lineTo(x + 28, y - 46);
+    ctx.lineTo(x - 28, y - 46);
+    ctx.closePath();
+    ctx.fill();
+    // 中が見える戸口。棚に板がぎっしり
+    ctx.fillStyle = "#2e2415";
+    roundRect(ctx, x - 18, y - 26, 36, 26, 2);
+    ctx.fill();
+    for (let row = 0; row < 3; row += 1) {
+      ctx.fillStyle = "#6b4f2e";
+      ctx.fillRect(x - 17, y - 9 - row * 8, 34, 2);
+      for (let col = 0; col < 4; col += 1) {
+        tabletMark(ctx, x - 13 + col * 8.5, y - 9 - row * 8, 7, 7, true);
+      }
+    }
+    return true;
+  }
+
+  /* --- 大文書庫: 柱・階段・衛兵つきの大きな建物 --- */
+  if (art === "bigarchive") {
+    // 基壇（高台に建つ）
+    ctx.fillStyle = "#6f6a5a";
+    roundRect(ctx, x - 66, y - 10, 132, 14, 2);
+    ctx.fill();
+    ctx.fillStyle = "#7d7767";
+    roundRect(ctx, x - 58, y - 18, 116, 10, 2);
+    ctx.fill();
+    mudBrick(ctx, x, y - 18, 104, 52, "#b09069", "#8d7150");
+    // 柱がならぶ正面
+    for (let i = 0; i < 6; i += 1) {
+      const px = x - 44 + i * 17.6;
+      ctx.fillStyle = "#c9b189";
+      roundRect(ctx, px - 4, y - 70, 8, 52, 2);
+      ctx.fill();
+      ctx.fillStyle = "#a89272";
+      roundRect(ctx, px - 6, y - 72, 12, 4, 1);
+      ctx.fill();
+    }
+    // 陸屋根と飾り
+    ctx.fillStyle = "#8d7150";
+    roundRect(ctx, x - 60, y - 80, 120, 10, 2);
+    ctx.fill();
+    ctx.fillStyle = "#c0a978";
+    for (let i = 0; i < 9; i += 1) {
+      roundRect(ctx, x - 56 + i * 13, y - 88, 8, 8, 1);
+      ctx.fill();
+    }
+    // 入口の奥に、棚いっぱいの板
+    ctx.fillStyle = "#2a2114";
+    roundRect(ctx, x - 14, y - 52, 28, 34, 2);
+    ctx.fill();
+    for (let row = 0; row < 4; row += 1) {
+      for (let col = 0; col < 3; col += 1) {
+        tabletMark(ctx, x - 9 + col * 9, y - 22 - row * 8, 7, 7, true);
+      }
+    }
+    return true;
+  }
+
+  /* --- 行政所: 高台の四角い建物。旗と大扉 --- */
+  if (art === "adminhall") {
+    ctx.fillStyle = "#6f6a5a";
+    roundRect(ctx, x - 52, y - 8, 104, 12, 2);
+    ctx.fill();
+    mudBrick(ctx, x, y - 8, 88, 50, "#a89a74", "#857a58");
+    // 段になった上部（ジッグラト風の輪郭）
+    mudBrick(ctx, x, y - 58, 62, 18, "#b3a47c", "#8d8161");
+    mudBrick(ctx, x, y - 76, 36, 14, "#c0b189", "#988b68");
+    // 大扉
+    ctx.fillStyle = "#402f1c";
+    roundRect(ctx, x - 13, y - 34, 26, 26, 3);
+    ctx.fill();
+    ctx.strokeStyle = "#c9a960";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 34);
+    ctx.lineTo(x, y - 8);
+    ctx.stroke();
+    // 掲示された板（ここで決まりが読める）
+    tabletMark(ctx, x - 32, y - 34, 14, 18, true);
+    tabletMark(ctx, x + 32, y - 34, 14, 18, true);
+    // 旗
+    ctx.strokeStyle = "#5f4526";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 90);
+    ctx.lineTo(x, y - 76);
+    ctx.stroke();
+    ctx.fillStyle = "#a8453c";
+    ctx.beginPath();
+    ctx.moveTo(x, y - 90);
+    ctx.lineTo(x + 16 + Math.sin(time * 2) * 2, y - 86);
+    ctx.lineTo(x, y - 81);
+    ctx.closePath();
+    ctx.fill();
+    return true;
+  }
+
+  /* --- 織り場: 立て機と、垂れた布 --- */
+  if (art === "loom") {
+    ctx.fillStyle = "#6b4f2e";
+    ctx.fillRect(x - 26, y - 44, 4, 46);
+    ctx.fillRect(x + 22, y - 44, 4, 46);
+    ctx.fillRect(x - 26, y - 46, 52, 4);
+    // たて糸
+    ctx.strokeStyle = "rgba(230,214,180,0.8)";
+    ctx.lineWidth = 0.9;
+    for (let i = 0; i < 10; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(x - 20 + i * 4.4, y - 42);
+      ctx.lineTo(x - 20 + i * 4.4, y - 6);
+      ctx.stroke();
+    }
+    // 織りあがった布が下から伸びていく
+    const woven = 8 + Math.min(20, (state.cooking[stove.id] ?? 0) * 24);
+    ctx.fillStyle = "#c47a5c";
+    roundRect(ctx, x - 21, y - 6 - woven, 43, woven, 1);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(245,225,200,0.6)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i += 1) {
+      const ly = y - 8 - i * 6;
+      if (ly < y - 6 - woven) break;
+      ctx.beginPath();
+      ctx.moveTo(x - 20, ly);
+      ctx.lineTo(x + 21, ly);
+      ctx.stroke();
+    }
+    // 羊毛のかご
+    ctx.fillStyle = "#8a7048";
+    ctx.beginPath();
+    ctx.ellipse(x + 34, y - 2, 9, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e8e2d2";
+    ctx.beginPath();
+    ctx.arc(x + 32, y - 7, 4, 0, Math.PI * 2);
+    ctx.arc(x + 37, y - 6, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    return true;
+  }
+
+  /* --- 油の木立: 丸い樹冠の並木と、しぼり石 --- */
+  if (art === "grove") {
+    for (let i = 0; i < 3; i += 1) {
+      const tx = x - 26 + i * 26;
+      const ty = y - (i % 2) * 8;
+      ctx.fillStyle = "#5f4a30";
+      ctx.fillRect(tx - 2.5, ty - 18, 5, 20);
+      ctx.fillStyle = i % 2 ? "#5d7a4c" : "#6d8a56";
+      ctx.beginPath();
+      ctx.ellipse(tx, ty - 24, 14, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(40,58,34,0.35)";
+      ctx.beginPath();
+      ctx.ellipse(tx - 4, ty - 27, 6, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // しぼり石と受け壺
+    ctx.fillStyle = "#8f8a7c";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 12, 18, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#6f6b60";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 9, 11, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    chainItem(ctx, "oil", x + 24, y + 12, 0.75, time);
+    return true;
+  }
+
+  /* --- 市場の記録席: 秤・商品札・書記席がひと組 --- */
+  if (art === "tradedesk") {
+    // 天幕
+    ctx.strokeStyle = "#6b4f2e";
+    ctx.lineWidth = 3;
+    for (const px of [x - 30, x + 30]) {
+      ctx.beginPath();
+      ctx.moveTo(px, y + 6);
+      ctx.lineTo(px, y - 32);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#b5654a";
+    ctx.beginPath();
+    ctx.moveTo(x - 38, y - 32);
+    ctx.quadraticCurveTo(x, y - 44, x + 38, y - 32);
+    ctx.lineTo(x + 38, y - 28);
+    ctx.quadraticCurveTo(x, y - 40, x - 38, y - 28);
+    ctx.closePath();
+    ctx.fill();
+    // 秤（左右にゆれる皿）
+    const tilt = Math.sin(time * 1.4) * 3;
+    ctx.strokeStyle = "#8a7048";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 22, y - 24);
+    ctx.lineTo(x - 22, y - 10);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 32, y - 24 + tilt);
+    ctx.lineTo(x - 12, y - 24 - tilt);
+    ctx.stroke();
+    for (const [i, px] of [-32, -12].entries()) {
+      ctx.fillStyle = "#c9a960";
+      ctx.beginPath();
+      ctx.ellipse(x + px, y - 20 + (i ? -tilt : tilt), 5, 2.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 書記の机と、書いている人
+    ctx.fillStyle = "#7a5a34";
+    roundRect(ctx, x + 2, y - 14, 34, 5, 2);
+    ctx.fill();
+    writingFigure(ctx, x + 18, y - 14, time, 3, 0.9);
+    // 商品札（値が板で出ている）
+    for (let i = 0; i < 3; i += 1) {
+      tabletMark(ctx, x - 34 + i * 11, y + 2, 9, 12, true);
+    }
+    return true;
+  }
+
+  /* --- 大型市場: 屋台がならぶ大屋根 --- */
+  if (art === "bazaar") {
+    // 大屋根
+    ctx.strokeStyle = "#6b4f2e";
+    ctx.lineWidth = 3.5;
+    for (const px of [x - 56, x - 18, x + 18, x + 56]) {
+      ctx.beginPath();
+      ctx.moveTo(px, y);
+      ctx.lineTo(px, y - 40);
+      ctx.stroke();
+    }
+    for (const [i, sx] of [-38, 0, 38].entries()) {
+      ctx.fillStyle = ["#b5654a", "#8a7048", "#7d8a4e"][i];
+      ctx.beginPath();
+      ctx.moveTo(x + sx - 22, y - 40);
+      ctx.quadraticCurveTo(x + sx, y - 54, x + sx + 22, y - 40);
+      ctx.lineTo(x + sx + 22, y - 35);
+      ctx.quadraticCurveTo(x + sx, y - 49, x + sx - 22, y - 35);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // 台の上の品。区画ごとに違う品が並ぶ
+    for (const [i, sx] of [-38, 0, 38].entries()) {
+      ctx.fillStyle = "#7a5a34";
+      roundRect(ctx, x + sx - 20, y - 16, 40, 5, 2);
+      ctx.fill();
+      const kind = ["cloth", "oil", "wheat"][i];
+      chainItem(ctx, kind, x + sx - 8, y - 22, 0.7, time);
+      chainItem(ctx, kind, x + sx + 8, y - 22, 0.7, time);
+      // 商品札
+      tabletMark(ctx, x + sx, y - 8, 8, 10, true);
+    }
+    return true;
+  }
+
+  /* --- 測量所: 縄と、境界石 --- */
+  if (art === "survey") {
+    ctx.fillStyle = "#8d7a54";
+    roundRect(ctx, x - 30, y - 10, 60, 24, 3);
+    ctx.fill();
+    // 境界石が3本（土地の記録そのもの）
+    for (const [i, sx] of [-22, 0, 22].entries()) {
+      ctx.fillStyle = "#7d7767";
+      ctx.beginPath();
+      ctx.moveTo(x + sx - 6, y + 8);
+      ctx.lineTo(x + sx - 4, y - 18 - i * 3);
+      ctx.lineTo(x + sx + 4, y - 18 - i * 3);
+      ctx.lineTo(x + sx + 6, y + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(50,44,32,0.75)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + sx - 3, y - 12);
+      ctx.lineTo(x + sx + 3, y - 12);
+      ctx.moveTo(x + sx, y - 15);
+      ctx.lineTo(x + sx, y - 8);
+      ctx.stroke();
+    }
+    // 張った縄（測っている最中）
+    ctx.strokeStyle = "#c9b389";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x - 24, y - 16);
+    ctx.quadraticCurveTo(x, y - 10, x + 24, y - 18);
+    ctx.stroke();
+    // 台帳を書く人
+    ctx.fillStyle = "#7a5a34";
+    roundRect(ctx, x + 18, y - 32, 26, 4, 2);
+    ctx.fill();
+    writingFigure(ctx, x + 31, y - 32, time, 7, 0.8);
+    return true;
+  }
+
+  /* --- 徴税所: 窓口と、納められた壺・積まれた記録 --- */
+  if (art === "taxhouse") {
+    mudBrick(ctx, x, y, 56, 36, "#a89a74", "#857a58");
+    ctx.fillStyle = "#8a7448";
+    roundRect(ctx, x - 34, y - 40, 68, 6, 2);
+    ctx.fill();
+    // 受付の窓口（横に長い開口）
+    ctx.fillStyle = "#2e2415";
+    roundRect(ctx, x - 20, y - 26, 40, 14, 2);
+    ctx.fill();
+    ctx.fillStyle = "#7a5a34";
+    roundRect(ctx, x - 24, y - 13, 48, 5, 2);
+    ctx.fill();
+    // 窓口の内がわで板に書きこむ役人
+    writingFigure(ctx, x + 4, y - 13, time, 11, 0.75);
+    // 納められた壺と、積まれた徴税記録
+    for (let i = 0; i < 3; i += 1) {
+      ctx.fillStyle = "#8a5a3c";
+      ctx.beginPath();
+      ctx.ellipse(x - 34 + i * 10, y + 6, 5.5, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (let i = 0; i < Math.min(4, ready); i += 1) {
+      tabletMark(ctx, x + 32, y + 4 - i * 6, 13, 15, true);
+    }
+    return true;
+  }
+
+  /* --- 採石場: 岩肌と、切り出しかけの巨石 --- */
+  if (art === "quarry") {
+    // 段になった岩肌
+    for (let i = 0; i < 3; i += 1) {
+      ctx.fillStyle = ["#5e5a50", "#6f6a5e", "#7d7869"][i];
+      roundRect(ctx, x - 40 + i * 5, y - 12 - i * 12, 80 - i * 10, 14, 2);
+      ctx.fill();
+    }
+    // 切り出しかけの巨石。楔が打ちこんである
+    ctx.fillStyle = "#8f8a7c";
+    ctx.beginPath();
+    ctx.moveTo(x + 6, y + 12);
+    ctx.lineTo(x + 4, y - 14);
+    ctx.lineTo(x + 34, y - 18);
+    ctx.lineTo(x + 38, y + 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(50,46,38,0.7)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x + 5, y - 6);
+    ctx.lineTo(x + 36, y - 10);
+    ctx.stroke();
+    for (const wx of [12, 22, 32]) {
+      ctx.fillStyle = "#c9b389";
+      roundRect(ctx, x + wx - 1.5, y - 12, 3, 6, 1);
+      ctx.fill();
+    }
+    // 切り出した石
+    for (let i = 0; i < Math.min(3, ready); i += 1) {
+      chainItem(ctx, "stone", x - 34 + i * 12, y + 14, 0.7, time);
+    }
+    return true;
+  }
+
+  /* --- 石工の作業場: 石を平らに整える。のみと槌の音 --- */
+  if (art === "masonry") {
+    // 作業台
+    ctx.fillStyle = "#6b4f2e";
+    roundRect(ctx, x - 30, y - 12, 60, 7, 2);
+    ctx.fill();
+    ctx.fillStyle = "#57401f";
+    ctx.fillRect(x - 25, y - 5, 5, 14);
+    ctx.fillRect(x + 20, y - 5, 5, 14);
+    // 整えている途中の石板
+    ctx.fillStyle = "#8f8a7c";
+    roundRect(ctx, x - 22, y - 24, 44, 12, 1.5);
+    ctx.fill();
+    ctx.fillStyle = "#a5a091";
+    roundRect(ctx, x - 20, y - 22, 40, 8, 1.5);
+    ctx.fill();
+    // 石くず
+    ctx.fillStyle = "rgba(200,196,182,0.5)";
+    for (let i = 0; i < 6; i += 1) {
+      const px = x - 26 + ((i * 17) % 52);
+      ctx.beginPath();
+      ctx.arc(px, y + 10 + (i % 3) * 3, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 槌（打つ動き）
+    const hit = Math.abs(Math.sin(time * 4));
+    ctx.strokeStyle = "#7a5a34";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(x + 26, y - 26 - hit * 8);
+    ctx.lineTo(x + 32, y - 36 - hit * 8);
+    ctx.stroke();
+    ctx.fillStyle = "#6f6a5a";
+    roundRect(ctx, x + 29, y - 42 - hit * 8, 9, 7, 1.5);
+    ctx.fill();
+    for (let i = 0; i < Math.min(3, ready); i += 1) {
+      chainItem(ctx, "slab", x + 34, y + 6 - i * 7, 0.65, time);
+    }
+    return true;
+  }
+
+  /* --- 石畳の広場: 道が広く、まっすぐになる --- */
+  if (art === "court") {
+    ctx.fillStyle = "#7d7767";
+    roundRect(ctx, x - 70, y - 26, 140, 46, 4);
+    ctx.fill();
+    // 敷石。目地をずらして敷く
+    ctx.strokeStyle = "rgba(52,48,40,0.55)";
+    ctx.lineWidth = 1;
+    for (let row = 0; row < 4; row += 1) {
+      const ly = y - 26 + row * 11.5;
+      ctx.beginPath();
+      ctx.moveTo(x - 70, ly);
+      ctx.lineTo(x + 70, ly);
+      ctx.stroke();
+      const offset = row % 2 ? 0 : 11;
+      for (let bx = -70 + offset; bx < 70; bx += 22) {
+        ctx.beginPath();
+        ctx.moveTo(x + bx, ly);
+        ctx.lineTo(x + bx, ly + 11.5);
+        ctx.stroke();
+      }
+    }
+    // 広場のふちの柱
+    for (const px of [x - 62, x + 62]) {
+      ctx.fillStyle = "#a89a74";
+      roundRect(ctx, px - 4, y - 48, 8, 24, 2);
+      ctx.fill();
+      ctx.fillStyle = "#c0b189";
+      roundRect(ctx, px - 6, y - 52, 12, 5, 1);
+      ctx.fill();
+    }
+    return true;
+  }
+
+  /* --- 大法典碑 --------------------------------------------------
+   *
+   * ほかの設備と同じ大きさにしてはいけない（仕様書 §17-9）。
+   * 建物2つぶんの高さで立て、石の面いちめんに法文を刻む
+   */
+  if (art === "lawstone") {
+    // 基壇（段になった台）
+    ctx.fillStyle = "#5e5a50";
+    roundRect(ctx, x - 54, y - 12, 108, 14, 2);
+    ctx.fill();
+    ctx.fillStyle = "#6f6a5e";
+    roundRect(ctx, x - 44, y - 24, 88, 13, 2);
+    ctx.fill();
+    ctx.fillStyle = "#7d7869";
+    roundRect(ctx, x - 34, y - 35, 68, 12, 2);
+    ctx.fill();
+
+    // 碑そのもの。上がわずかに細い、丸みのある柱状
+    const top = y - 210;
+    ctx.fillStyle = "#8f8a7c";
+    ctx.beginPath();
+    ctx.moveTo(x - 30, y - 35);
+    ctx.lineTo(x - 24, top + 24);
+    ctx.quadraticCurveTo(x, top - 6, x + 24, top + 24);
+    ctx.lineTo(x + 30, y - 35);
+    ctx.closePath();
+    ctx.fill();
+    // 光のあたる面
+    ctx.fillStyle = "rgba(214,208,190,0.45)";
+    ctx.beginPath();
+    ctx.moveTo(x - 30, y - 35);
+    ctx.lineTo(x - 24, top + 24);
+    ctx.quadraticCurveTo(x - 12, top + 6, x - 6, top + 18);
+    ctx.lineTo(x - 6, y - 35);
+    ctx.closePath();
+    ctx.fill();
+
+    // 上部のレリーフ（法を授かる場面）
+    ctx.fillStyle = "rgba(70,64,52,0.8)";
+    ctx.beginPath();
+    ctx.arc(x - 9, top + 40, 7, 0, Math.PI * 2);
+    ctx.arc(x + 9, top + 42, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(70,64,52,0.6)";
+    roundRect(ctx, x - 14, top + 47, 10, 18, 3);
+    ctx.fill();
+    roundRect(ctx, x + 4, top + 48, 10, 17, 3);
+    ctx.fill();
+
+    // 刻まれた法文。面いちめんに、びっしり
+    ctx.strokeStyle = "rgba(58,52,40,0.85)";
+    ctx.lineWidth = 0.9;
+    for (let row = 0; row < 14; row += 1) {
+      const ly = top + 78 + row * 9;
+      if (ly > y - 44) break;
+      for (let col = 0; col < 5; col += 1) {
+        const gx = x - 20 + col * 9;
+        ctx.beginPath();
+        ctx.moveTo(gx, ly);
+        ctx.lineTo(gx + 5, ly);
+        ctx.moveTo(gx + 1.5, ly - 2.4);
+        ctx.lineTo(gx + 1.5, ly + 2.4);
+        ctx.stroke();
+      }
+    }
+
+    // 見上げる群衆（碑の大きさを、人の背で分からせる）
+    for (let i = 0; i < 7; i += 1) {
+      const px = x - 46 + i * 15 + Math.sin(time * 0.5 + i) * 2;
+      const py = y + 6 + (i % 2) * 5;
+      ctx.fillStyle = ["#7a5a44", "#8a6a4a", "#6a5a48"][i % 3];
+      roundRect(ctx, px - 3.5, py - 12, 7, 12, 3);
+      ctx.fill();
+      ctx.fillStyle = "#c8a878";
+      ctx.beginPath();
+      ctx.arc(px, py - 15, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return true;
+  }
+
+  return false;
+};
+
 /**
  * 第2区画から出てくる建物と作業場。
  * 描けたら true を返す（描けなかったものは今までの絵にまかせる）。
@@ -3411,6 +5296,9 @@ const drawSettlement = (
     ctx.font = FONT;
     return true;
   }
+
+  // 文字のはじまりの街並み。名前ごとに別の形を持たせてある
+  if (drawCity(ctx, stove, x, y, time, state)) return true;
 
   /* --- 貯蔵庫: 中身が減るのが外から見える --- */
   if (art === "store" || art === "rack" || art === "woodstore") {
@@ -9024,9 +10912,11 @@ const currentScene = (state: ShopState): Scene => {
         ? "fire"
         : stage().id === "taiga"
           ? "taiga"
-          : stage().id === "park"
-            ? "park"
-            : "ramen",
+          : stage().id === "moji"
+            ? "moji"
+            : stage().id === "park"
+              ? "park"
+              : "ramen",
     area,
     phase: state.fire.phase,
     weather: state.fire.weather,
@@ -9103,13 +10993,14 @@ export default function Shop({ onSample, paused }: Props) {
       const isAquarium = stage().visualTheme === "aquarium";
       const isFire = stage().id === "fire";
       const isTaiga = stage().id === "taiga";
+      const isMoji = stage().id === "moji";
       const isOnsen = stage().id === "onsen";
       /*
-       * 原始の見た目（火のはじまり・大河の文明）。
+       * 原始の見た目（火のはじまり・大河の文明・文字のはじまり）。
        * 床・区画の看板・作業場・ベンチ・働く人を、こちらの絵で描く。
        * 雪と夜、犬ぞりは「火のはじまり」だけのものなので、isFire のまま。
        */
-      const wild = isFire || isTaiga;
+      const wild = isFire || isTaiga || isMoji;
       /** 画面に映るワールドの横幅。広い区画のステージは少し引いて見せる */
       const view = viewWidth();
 
@@ -9148,6 +11039,8 @@ export default function Shop({ onSample, paused }: Props) {
           drawFireGroundTexture(ctx, area, time, effectsRef.current);
           drawFireEarlyLife(ctx, area, time, effectsRef.current);
         }
+        // 川・対岸・道・前景の3層。文字の段階が上がるほど街に刻みが増える
+        if (isMoji) drawCityGround(ctx, area, time, state, effectsRef.current);
       }
       /* --- 棟の壁と、戸口・渡り廊下（2号店） --- */
       if (wallsOn()) {
@@ -9982,6 +11875,9 @@ export default function Shop({ onSample, paused }: Props) {
           const cost = seatCost(seat);
           ctx.fillText(cost > 1 ? `${seat.label}（${cost}枚）` : seat.label, x, y + 25);
           ctx.font = FONT;
+        } else if (isMoji) {
+          // 受け渡しの場所。ござ・帳場・屋台・契約席で、形も色も変える
+          drawCitySeat(ctx, seat.art ?? "mat", seat.pos.x, seat.pos.y + 4, time);
         } else if (wild) {
           // 丸太のベンチ
           const bx = seat.pos.x;
@@ -10542,6 +12438,10 @@ export default function Shop({ onSample, paused }: Props) {
         explorer: "#3f8fa0",
         runner: "#c98b5a",
         boat: "#4f7f6a",
+        // 文字のはじまり: 書記は生成りの亜麻、役人は藍、石工は石の灰
+        scribe: "#e8dfc4",
+        officer: "#3c4f7a",
+        carver: "#8a8578",
       };
 
       // 鹿とウサギは倒す対象ではない。森そのものが生きているように常に動かす。
@@ -11625,6 +13525,126 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.font = FONT;
       }
 
+      /* --- 文字のはじまり: 混乱と、記録のようす -------------------
+       *
+       * 赤いエラーUIだけで済ませない（仕様書 §10）。
+       * 起きた混乱は、その場にいる人の頭の上に吹き出しで出す
+       */
+      if (isMoji && state.moji.trouble) {
+        const trouble = state.moji.trouble;
+        const spec = TROUBLES.find((item) => item.id === trouble.id);
+        const fade = Math.min(1, trouble.left / 1.2);
+        const bx = trouble.x;
+        const by = trouble.y - 40 - Math.sin(trouble.left * 2) * 2;
+        ctx.save();
+        ctx.globalAlpha = fade;
+        ctx.font = SMALL;
+        const label = spec?.short ?? "？";
+        const w = ctx.measureText(label).width + 20;
+        ctx.fillStyle = "rgba(46,20,14,0.88)";
+        roundRect(ctx, bx - w / 2, by - 12, w, 20, 8);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,150,120,0.75)";
+        ctx.lineWidth = 1.2;
+        roundRect(ctx, bx - w / 2, by - 12, w, 20, 8);
+        ctx.stroke();
+        // 吹き出しのしっぽ
+        ctx.fillStyle = "rgba(46,20,14,0.88)";
+        ctx.beginPath();
+        ctx.moveTo(bx - 4, by + 8);
+        ctx.lineTo(bx + 4, by + 8);
+        ctx.lineTo(bx, by + 14);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#ffb4a0";
+        ctx.fillText(label, bx, by - 1);
+        ctx.font = FONT;
+        ctx.restore();
+      }
+
+      if (isMoji) {
+        /*
+         * 記録の量と、文字の段階。
+         * 「文字Lv.4」ではなく「土地の記録 ― 畑の境目を書き残せる」と、
+         * 意味のことばで出す（仕様書 §13）
+         */
+        const now = mojiTech(state);
+        const next = mojiNextTech(state);
+        const heat = confusion(state);
+        const rows: { text: string; ok: boolean }[] = [
+          { text: now.means, ok: true },
+          {
+            text: `書記 ${scribeCount(state)}人・記録の余力 ${Math.max(0, capacity(state) - cityLoad(state))}`,
+            ok: heat <= 0.05,
+          },
+          { text: `街のようす: ${confusionLabel(state)}`, ok: heat < 0.22 },
+        ];
+        const title = next
+          ? `📖 ${now.name} → ${next.name}まで ${Math.max(0, next.records - state.moji.records)}`
+          : `📖 ${now.name}`;
+        ctx.font = SMALL;
+        const width =
+          Math.max(
+            ctx.measureText(title).width,
+            ...rows.map((row) => ctx.measureText(row.text).width),
+          ) + 22;
+        const height = 22 + rows.length * 13;
+        const px = camX + view - width - 8;
+        const py = camY + 8;
+        ctx.fillStyle = "rgba(10,8,6,0.66)";
+        roundRect(ctx, px, py, width, height, 8);
+        ctx.fill();
+        ctx.strokeStyle =
+          heat > 0.22 ? "rgba(255,150,120,0.7)" : "rgba(255,209,102,0.35)";
+        ctx.lineWidth = 1;
+        roundRect(ctx, px, py, width, height, 8);
+        ctx.stroke();
+        // 次の段階までの進みを、下ぶちの帯で
+        ctx.fillStyle = "rgba(255,209,102,0.5)";
+        ctx.fillRect(px + 2, py + height - 3, (width - 4) * techProgress(state), 2);
+        ctx.fillStyle = "#ffd166";
+        ctx.fillText(title, px + width / 2, py + 11);
+        rows.forEach((row, i) => {
+          ctx.fillStyle = row.ok ? "rgba(226,240,226,0.85)" : "#ff9f8a";
+          ctx.fillText(row.text, px + width / 2, py + 26 + i * 13);
+        });
+        // 記録の総数は、粘土板のしるしを添えて左に出す
+        const badge = `${state.moji.records.toLocaleString("ja-JP")}`;
+        const bw = ctx.measureText(badge).width + 30;
+        const bx = px - bw - 6;
+        ctx.fillStyle = "rgba(10,8,6,0.66)";
+        roundRect(ctx, bx, py, bw, 22, 8);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,209,102,0.35)";
+        roundRect(ctx, bx, py, bw, 22, 8);
+        ctx.stroke();
+        tabletMark(ctx, bx + 12, py + 18, 11, 14, true);
+        ctx.fillStyle = "#f0e2c4";
+        ctx.textAlign = "left";
+        ctx.fillText(badge, bx + 21, py + 11);
+        ctx.textAlign = "center";
+        ctx.font = FONT;
+      }
+
+      /* --- 文字のはじまりの終わり: 大法典碑の前に人が集まる --- */
+      if (isMoji && state.moji.engraved) {
+        ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+        const words = "人類は、記憶を文明に残せるようになった。";
+        const w = ctx.measureText(words).width + 34;
+        const wx = camX + view / 2 - w / 2;
+        const wy = camY + viewH0 * 0.28;
+        ctx.fillStyle = "rgba(10,8,6,0.74)";
+        roundRect(ctx, wx, wy, w, 30, 10);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,209,102,0.6)";
+        ctx.lineWidth = 1.2;
+        roundRect(ctx, wx, wy, w, 30, 10);
+        ctx.stroke();
+        ctx.fillStyle = "#ffd166";
+        ctx.fillText(words, camX + view / 2, wy + 15);
+        ctx.font = FONT;
+      }
+
       /* --- 温泉街: 建てたばかりの区画の工事と、町のミニ地図 --- */
       if (isOnsen) {
         // 工事中（買ってから2.5秒。地ならし → 石を敷く → 街灯がつく）
@@ -12283,6 +14303,23 @@ export default function Shop({ onSample, paused }: Props) {
                 jobs: { ...state.taiga.jobs },
               }
             : null,
+          writing:
+            stage().id === "moji"
+              ? {
+                  records: state.moji.records,
+                  level: state.moji.tech,
+                  name: mojiTech(state).name,
+                  means: mojiTech(state).means,
+                  nextName: mojiNextTech(state)?.name ?? null,
+                  nextAt: mojiNextTech(state)?.records ?? 0,
+                  progress: techProgress(state),
+                  scribes: scribeCount(state),
+                  spare: Math.max(0, capacity(state) - cityLoad(state)),
+                  confusion: confusion(state),
+                  confusionText: confusionLabel(state),
+                  engraved: state.moji.engraved,
+                }
+              : null,
         });
         pendingOffline = null;
       }

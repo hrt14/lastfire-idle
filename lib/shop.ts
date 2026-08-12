@@ -53,6 +53,18 @@ import {
   type OnsenState,
 } from "@/lib/onsen";
 import {
+  MOJI_MARK_IDS,
+  createMoji,
+  fromMoji,
+  mojiDraw,
+  mojiMade,
+  mojiValue,
+  mojiWork,
+  toMoji,
+  updateMoji,
+  type MojiState,
+} from "@/lib/moji";
+import {
   TAIGA_MARK_IDS,
   createTaiga,
   fromTaiga,
@@ -240,7 +252,17 @@ export type StaffKind =
    * 川を行き来する運搬船（大河の文明）。
    * 陸の運び手より多く積めて速いが、遠くへ行くときは必ず川を通る
    */
-  | "boat";
+  | "boat"
+  /**
+   * 書記（文字のはじまり）。
+   * 板を取り、対象を見て、書いて、持って運び、棚へ置く。
+   * このステージの主役なので、ほかの職とは持ちもの・すがたを必ず変える
+   */
+  | "scribe"
+  /** 役人・測量係・衛兵（記録で街を動かす側） */
+  | "officer"
+  /** 石工・彫刻師（石を切り、法文を刻む） */
+  | "carver";
 
 export type HireSpec = {
   id: string;
@@ -563,6 +585,9 @@ const hireSub: Record<StaffKind, string> = {
   explorer: "先まわりして、獲物や土地を見つけてくる",
   runner: "作業場のあいだを運んでくれる",
   boat: "川を行き来して、まとめて運んでくれる",
+  scribe: "板に書きこんで、記録にしてくれる",
+  officer: "土地と税の記録をあつかってくれる",
+  carver: "石を切り出し、文字を刻んでくれる",
 };
 
 const buildPads = (): Pad[] => [
@@ -996,6 +1021,8 @@ export type Persisted = {
   onsen?: unknown;
   /** 大河の文明の季節と増水 */
   taiga?: unknown;
+  /** 文字のはじまりの記録と文字の段階 */
+  moji?: unknown;
 };
 
 export type ShopState = Persisted & {
@@ -1010,6 +1037,8 @@ export type ShopState = Persisted & {
   onsen: OnsenState;
   /** 大河の文明の季節と増水 */
   taiga: TaigaState;
+  /** 文字のはじまりの記録・文字の段階・混乱 */
+  moji: MojiState;
   /** 次に新しい枠を出すまでの間（一度に増やしすぎない） */
   revealWait: number;
   player: Player;
@@ -1184,6 +1213,7 @@ export const createState = (): ShopState => ({
   fire: createFire(),
   onsen: createOnsen(),
   taiga: createTaiga(),
+  moji: createMoji(),
   revealWait: 0,
   padProgress: {},
   levels: { carry: 0, speed: 0, cook: 0, price: 0, gate: 0 },
@@ -1248,6 +1278,7 @@ export const toPersisted = (state: ShopState): Persisted => ({
   fire: toFire(state.fire),
   onsen: toOnsen(state.onsen),
   taiga: toTaiga(state.taiga),
+  moji: toMoji(state.moji),
   padProgress: state.padProgress,
   levels: state.levels,
   served: state.served,
@@ -1281,6 +1312,7 @@ export const fromPersisted = (input: unknown): ShopState => {
     ...FOUND_IDS,
     ...MARK_IDS,
     ...TAIGA_MARK_IDS,
+    ...MOJI_MARK_IDS,
   ]);
   const migrate = (id: string) =>
     id.replace(/^seat-a(\d+)$/, "seat-0-$1").replace(/^seat-b(\d+)$/, "seat-1-$1");
@@ -1364,12 +1396,21 @@ export const fromPersisted = (input: unknown): ShopState => {
   state.fire = fromFire(raw.fire);
   state.onsen = fromOnsen(raw.onsen);
   state.taiga = fromTaiga(raw.taiga);
+  state.moji = fromMoji(raw.moji);
   if (
     state.stageId === "taiga" &&
     state.taiga.sailed &&
     !state.built.includes("build-great-weir")
   ) {
     state.taiga.sailed = false;
+  }
+  // 大法典碑を建てる前のセーブから、締めの演出だけが残らないようにする
+  if (
+    state.stageId === "moji" &&
+    state.moji.engraved &&
+    !state.built.includes("build-code")
+  ) {
+    state.moji.engraved = false;
   }
 
   for (const stove of stoves) {
@@ -1495,6 +1536,21 @@ const itemNames: Record<string, string> = {
   milk: "乳",
   wool: "毛",
   dried: "干し魚",
+  // 文字のはじまり ―― 物資
+  wheat: "麦",
+  reed: "葦",
+  oil: "油",
+  cloth: "布",
+  stone: "石",
+  slab: "石板",
+  // 文字のはじまり ―― 情報（粘土板の流れ）
+  tally: "数量札",
+  rawtab: "生の粘土板",
+  drytab: "乾いた粘土板",
+  tablet: "記録板",
+  deed: "契約板",
+  landtab: "土地台帳",
+  taxtab: "徴税記録",
 };
 
 export const itemLabel = (kind: ItemKind): string =>
@@ -2066,7 +2122,7 @@ export const customerDraw = (state: ShopState) =>
     (total, item) =>
       item.draw && hasEquip(state, item.id) ? total * item.draw : total,
     1,
-  ) * drawBonus(state, festivalOn(state));
+  ) * drawBonus(state, festivalOn(state)) * mojiDraw(state);
 
 export const spawnInterval = (state: ShopState) => SPAWN_TIME / customerDraw(state);
 
@@ -2614,7 +2670,10 @@ const updateStoves = (state: ShopState, dt: number) => {
     // 夜と吹雪は外の仕事を止める。寒いとみんな遅くなる（第2・第4区画）。
     // 大河の文明は、季節と増水でここが変わる
     const weather =
-      fireWork(state, stove) * taigaWork(state, stove) * onsenWork(state, stove, seats);
+      fireWork(state, stove) *
+      taigaWork(state, stove) *
+      mojiWork(state, stove) *
+      onsenWork(state, stove, seats);
     if (weather <= 0) continue;
     const boost = stoveHasCook(state, stove.id) ? cookBoost() : 1;
     const work = stove.work ?? 1;
@@ -2624,6 +2683,8 @@ const updateStoves = (state: ShopState, dt: number) => {
     if (progress >= 1) {
       state.ready[stove.id] = ready + 1;
       state.cooking[stove.id] = progress - 1;
+      // 書き残した板は、街の「記録」として積みあがる（文字のはじまり）
+      mojiMade(state, stove);
       // 1つ作ったら、材料を1つ・まきを1つ使う
       if (isRecipe(stove)) {
         const bag = state.parts[stove.id] ?? {};
@@ -2890,6 +2951,7 @@ const payOut = (
     coinValue(state.levels.price) *
     (seat.value ?? 1) *
     payBonus(state, seat, festivalOn(state)) *
+    mojiValue(state) *
     (guestSpec(guest?.kind)?.pay ?? 1);
   notePleased(state);
   if (hasEquip(state, "ticket")) {
@@ -4673,6 +4735,7 @@ export const update = (state: ShopState, input: Input, dt: number) => {
   updateFire(state, dt, coinValue(state.levels.price));
   updateOnsen(state, dt);
   updateTaiga(state, dt);
+  updateMoji(state, dt);
   updateStoves(state, dt);
   updateHunt(state, dt);
   updateForest(state, dt);

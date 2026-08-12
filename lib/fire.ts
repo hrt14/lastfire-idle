@@ -17,6 +17,7 @@
  */
 
 import { stageDefs } from "@/data/stages";
+import { mojiEngrave } from "@/lib/moji";
 import { taigaSail } from "@/lib/taiga";
 import type { ShopState, StoveSpec, Vec } from "@/lib/shop";
 
@@ -1149,9 +1150,10 @@ const finishBuilds = (state: ShopState) => {
       state.fire.pop = Math.min(popCap(state), state.fire.pop + 1);
     }
     toast(state, gives.note ?? `${site.label ?? "建物"}ができた！`);
-    // 旅の終わり。ステージごとに、出ていく舟がちがう
+    // 旅の終わり。ステージごとに、締めかたがちがう
     if (gives.sail) {
       if (state.stageId === "taiga") taigaSail(state);
+      else if (state.stageId === "moji") mojiEngrave(state);
       else sailAway(state);
     }
   }

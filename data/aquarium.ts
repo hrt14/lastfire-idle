@@ -389,6 +389,9 @@ const staffLabels: Record<StaffKind, string> = {
   explorer: "調査員",
   runner: "飼育員",
   boat: "運搬ボート",
+  scribe: "記録係",
+  officer: "管理係",
+  carver: "造形スタッフ",
 };
 
 const aquariumLabels: StageLabels = {

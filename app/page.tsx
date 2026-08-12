@@ -30,6 +30,7 @@ import {
   type Tier,
 } from "@/data/skins";
 import { planetStages, stageDefs, stageList, type StageId } from "@/data/stages";
+import { TECHS } from "@/lib/moji";
 import { HANDS_PER_POP, JOBS, JOB_STEP, moveHand, type Job } from "@/lib/taiga";
 import { getState } from "@/lib/shopStore";
 import { formatDuration, formatExact, formatMoney } from "@/lib/format";
@@ -76,6 +77,7 @@ export default function Page() {
   const [gacha, setGacha] = useState(false);
   /** 人手の割りふりシート（大河の文明の第6区画から） */
   const [crew, setCrew] = useState(false);
+  const [scribe, setScribe] = useState(false);
   const [tier, setTier] = useState<Tier>(1);
   const [tiers, setTiers] = useState<TierProgress[]>([]);
   /** 上の段が開いた瞬間の演出（1回だけ） */
@@ -480,6 +482,26 @@ export default function Page() {
               👥
             </button>
           ) : null}
+          {sample?.writing ? (
+            <button
+              type="button"
+              className={`chip-button${
+                sample.writing.confusion > 0.22 ? " is-ready" : ""
+              }`}
+              onClick={() => setScribe(true)}
+              aria-label="文字と記録"
+            >
+              📖
+            </button>
+          ) : null}
+          {sample?.writing ? (
+            <span className="chip" aria-label="書き残した記録">
+              <i className="chip-mark" aria-hidden>
+                🪧
+              </i>
+              {formatMoney(sample.writing.records, "")}
+            </span>
+          ) : null}
           <button
             type="button"
             className={`chip-button${gachaReady ? " is-ready" : ""}`}
@@ -698,6 +720,68 @@ export default function Page() {
               type="button"
               className="ghost"
               onClick={() => setCrew(false)}
+            >
+              とじる
+            </button>
+          </section>
+        </div>
+      ) : null}
+
+      {/* 文字の段階。数字ではなく「何ができるようになったか」で並べる */}
+      {scribe && sample?.writing ? (
+        <div className="scrim" onClick={() => setScribe(false)}>
+          <section className="sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-head">
+              <h2>文字と記録</h2>
+              <span className="sheet-money">
+                記録 {sample.writing.records.toLocaleString("ja-JP")}
+              </span>
+              <button
+                type="button"
+                className="sheet-close"
+                onClick={() => setScribe(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="crew-note">
+              書記が板に書きこむたび、街の<strong>記録</strong>が増えます。
+              記録がたまると文字が一段すすみ、そのたびに街の見た目が変わります。
+            </p>
+            <p
+              className={`crew-left${
+                sample.writing.confusion > 0.22 ? " is-bad" : ""
+              }`}
+            >
+              街のようす: {sample.writing.confusionText} ／ 書記{" "}
+              {sample.writing.scribes}人・記録の余力 {sample.writing.spare}
+            </p>
+            <ul className="crew-list">
+              {TECHS.map((tech) => {
+                const done = sample.writing!.level >= tech.level;
+                const now = sample.writing!.level === tech.level;
+                return (
+                  <li key={tech.id}>
+                    <div className="crew-body">
+                      <strong>
+                        {done ? "✓ " : ""}
+                        {tech.name}
+                        {now ? "（いま）" : ""}
+                      </strong>
+                      <p>{tech.means}</p>
+                      <span className="crew-gain">{tech.effect}</span>
+                    </div>
+                    <div className="crew-pick">
+                      <b>{done ? "—" : tech.records.toLocaleString("ja-JP")}</b>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setScribe(false)}
             >
               とじる
             </button>
