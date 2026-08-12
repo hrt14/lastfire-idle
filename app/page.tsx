@@ -754,7 +754,10 @@ export default function Page() {
               }`}
             >
               街のようす: {sample.writing.confusionText} ／ 書記{" "}
-              {sample.writing.scribes}人・記録の余力 {sample.writing.spare}
+              {sample.writing.scribes}人・
+              {sample.writing.short > 0
+                ? `記録が ${sample.writing.short} 足りない`
+                : "記録は追いついている"}
             </p>
             <ul className="crew-list">
               {TECHS.map((tech) => {

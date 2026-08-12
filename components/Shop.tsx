@@ -205,7 +205,8 @@ export type Sample = {
     nextAt: number;
     progress: number;
     scribes: number;
-    spare: number;
+    /** 記録の処理が、どれだけ足りていないか（0 なら追いついている） */
+    short: number;
     confusion: number;
     confusionText: string;
     engraved: boolean;
@@ -13582,10 +13583,17 @@ export default function Shop({ onSample, paused }: Props) {
         const now = mojiTech(state);
         const next = mojiNextTech(state);
         const heat = confusion(state);
+        const short = Math.max(0, cityLoad(state) - capacity(state));
         const rows: { text: string; ok: boolean }[] = [
           { text: now.means, ok: true },
           {
-            text: `書記 ${scribeCount(state)}人・記録の余力 ${Math.max(0, capacity(state) - cityLoad(state))}`,
+            /*
+             * 数だけ出しても意味が伝わらないので、追いついているかで言う。
+             * 足りないときだけ、どれだけ足りないかを出す
+             */
+            text: `書記 ${scribeCount(state)}人・${
+              short > 0 ? `記録が ${short} 足りない` : "記録は追いついている"
+            }`,
             // 「街のようす」と同じ目盛りで色を変える（片方だけ赤くならないように）
             ok: heat < 0.08,
           },
@@ -14326,7 +14334,7 @@ export default function Shop({ onSample, paused }: Props) {
                   nextAt: mojiNextTech(state)?.records ?? 0,
                   progress: techProgress(state),
                   scribes: scribeCount(state),
-                  spare: Math.max(0, capacity(state) - cityLoad(state)),
+                  short: Math.max(0, cityLoad(state) - capacity(state)),
                   confusion: confusion(state),
                   confusionText: confusionLabel(state),
                   engraved: state.moji.engraved,
