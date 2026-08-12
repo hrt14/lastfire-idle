@@ -576,8 +576,30 @@ const hireSub: Record<StaffKind, string> = {
   waiter: "自分の代わりに運ぶ",
   robot: "とても速く運ぶ",
   collector: "自動でお金を拾う",
-  cook: "この寸胴が速くなる",
-  master: "すべての寸胴が1.4倍速くなる",
+  get cook() {
+  const producer = stageLabels().producer;
+  const action =
+    stage().id === "ramen"
+      ? "調理"
+      : stage().id === "park"
+        ? "発券"
+        : stage().id === "onsen"
+          ? "補充"
+          : "作業";
+  return `この${producer}の${action}が速くなる`;
+},
+  get master() {
+  const producer = stageLabels().producer;
+  const action =
+    stage().id === "ramen"
+      ? "調理"
+      : stage().id === "park"
+        ? "発券"
+        : stage().id === "onsen"
+          ? "補充"
+          : "作業";
+  return `すべての${producer}の${action}が1.4倍速くなる`;
+},
   busser: "テーブルの皿を片づける",
   stocker: "倉庫から棚へ商品を並べる",
   server: "厨房の料理をテーブルへ運ぶ",
