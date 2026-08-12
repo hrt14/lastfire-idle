@@ -27,7 +27,8 @@ applyStage(STAGE);
 const state: ShopState = createState();
 state.stageId = STAGE;
 
-const DT = 1 / 20;
+// 工程がつながっているかを見るだけの点検なので、刻みは粗くてよい
+const DT = 1 / 10;
 const MINUTES = Number(process.argv[2] ?? 60);
 const STEPS = Math.round((MINUTES * 60) / DT);
 

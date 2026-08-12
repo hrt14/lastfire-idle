@@ -301,7 +301,7 @@ export const archiveCount = (state: ShopState) =>
  * 実際に画面へ出ているもの（書記・記録庫・文字の段階）から数える。
  */
 export const capacity = (state: ShopState) =>
-  4 + scribeCount(state) * 5 + archiveCount(state) * 8 + state.moji.tech * 4;
+  4 + scribeCount(state) * 6 + archiveCount(state) * 16 + state.moji.tech * 4;
 
 /**
  * 街が抱えている「憶えておかないといけないこと」の量。

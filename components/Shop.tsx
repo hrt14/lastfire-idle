@@ -3895,8 +3895,8 @@ const drawCityGround = (
   /* ---------- 後景: 川 ---------- */
   const river = y0 + 78;
   const grad = ctx.createLinearGradient(0, y0, 0, river);
-  grad.addColorStop(0, "#3c5a63");
-  grad.addColorStop(1, "#547a7d");
+  grad.addColorStop(0, "#2f6b78");
+  grad.addColorStop(1, "#4e9aa0");
   ctx.fillStyle = grad;
   ctx.fillRect(x0, y0, w, river - y0);
   // 流れ。ゆっくり右へ運ばれていく
@@ -3911,19 +3911,19 @@ const drawCityGround = (
     ctx.stroke();
   }
   // 対岸（後景の街）。区画が進むほど家が増え、密になる
-  ctx.fillStyle = "#3f4a44";
+  ctx.fillStyle = "#6b6a52";
   ctx.fillRect(x0, y0, w, 22);
   const houses = 5 + index * 2;
   for (let i = 0; i < houses; i += 1) {
     const hx = x0 + 20 + (w / houses) * i + scatter(i + index * 7) * 18;
     const hh = 10 + scatter(i * 3 + index) * 12;
-    ctx.fillStyle = i % 3 === 0 ? "#5b5546" : "#4e4a3d";
+    ctx.fillStyle = i % 3 === 0 ? "#95886a" : "#7d7358";
     ctx.fillRect(hx, y0 + 22 - hh, 18 + scatter(i) * 10, hh);
   }
   // 神殿。段のある大きな影を、区画ひとつおきに置く
   if (index % 2 === 0) {
     const tx = x0 + w * 0.68;
-    ctx.fillStyle = "#585141";
+    ctx.fillStyle = "#a2946f";
     ctx.fillRect(tx - 34, y0 + 4, 68, 18);
     ctx.fillRect(tx - 24, y0 - 4, 48, 10);
     ctx.fillRect(tx - 14, y0 - 10, 28, 8);
@@ -3959,15 +3959,15 @@ const drawCityGround = (
   }
 
   /* ---------- 堤防（川岸から市街地への一段） ---------- */
-  ctx.fillStyle = "#6f5c3e";
+  ctx.fillStyle = "#8d7550";
   ctx.fillRect(x0, river, w, 16);
-  ctx.fillStyle = "rgba(40,30,18,0.35)";
+  ctx.fillStyle = "rgba(40,30,18,0.3)";
   ctx.fillRect(x0, river + 14, w, 4);
 
   /* ---------- 地面: 曲がった道と小広場 ---------- */
   // 大通りは、まっすぐではなくゆるく蛇行させる
   const roadY = y0 + (y1 - y0) * 0.72;
-  ctx.strokeStyle = "rgba(150,132,96,0.5)";
+  ctx.strokeStyle = "rgba(226,206,158,0.42)";
   ctx.lineWidth = 34;
   ctx.lineCap = "round";
   ctx.beginPath();
@@ -3976,8 +3976,8 @@ const drawCityGround = (
   ctx.quadraticCurveTo(x0 + w * 0.8, roadY + 22, x1 + 10, roadY - 6);
   ctx.stroke();
   // 路地。大通りから北へ2本ぶら下げる
-  ctx.lineWidth = 13;
-  ctx.strokeStyle = "rgba(150,132,96,0.34)";
+  ctx.lineWidth = 11;
+  ctx.strokeStyle = "rgba(226,206,158,0.16)";
   for (const at of [0.24, 0.62]) {
     ctx.beginPath();
     ctx.moveTo(x0 + w * at, roadY);
@@ -3986,7 +3986,7 @@ const drawCityGround = (
   }
   ctx.lineCap = "butt";
   // 小広場（道の途中のふくらみ）
-  ctx.fillStyle = "rgba(150,132,96,0.32)";
+  ctx.fillStyle = "rgba(226,206,158,0.28)";
   ctx.beginPath();
   ctx.ellipse(x0 + w * 0.45, roadY - 6, 60, 26, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -3996,7 +3996,8 @@ const drawCityGround = (
    * ここがこのステージの成長そのもの。段階が上がるほど、
    * 壁の刻み・立て札・境界石が増え、街の見た目が文字で埋まっていく
    */
-  const marks = level * (3 + index);
+  // 増えていくのが分かればよいので、数は抑える（多すぎると街が読めなくなる）
+  const marks = Math.min(14, Math.round(level * (1 + index * 0.4)));
   for (let i = 0; i < marks; i += 1) {
     const mx = x0 + 40 + scatter(i * 9 + index * 31) * (w - 80);
     const my = river + 30 + scatter(i * 13 + index * 17) * (y1 - river - 90);
@@ -11019,7 +11020,9 @@ export default function Shop({ onSample, paused }: Props) {
           time,
         );
       }
-      ctx.fillStyle = wild
+      ctx.fillStyle = isMoji
+        ? "#3b3423"
+        : wild
         ? "#20160f"
         : isPark
           ? "#101826"
@@ -11146,7 +11149,13 @@ export default function Shop({ onSample, paused }: Props) {
         const { x0, x1 } = area.rect;
         const mid = (x0 + x1) / 2;
         const earlyFire = isFire && (area.id === "area-0" || area.id === "area-1");
-        if (earlyFire) {
+        /*
+         * 文字のはじまりに「作業場の帯」は無い。街そのものが舞台なので、
+         * 川・道・前景を敷いた地面（drawCityGround）を、この帯で塗りつぶさない
+         */
+        if (isMoji) {
+          // 何も敷かない
+        } else if (earlyFire) {
           // 序盤だけは「作業場」という長方形そのものを描かない。
           // 踏み固められた土の斑点を重ね、下の自然地面へ溶け込ませる。
           for (let i = 0; i < 13; i += 1) {
@@ -11182,7 +11191,9 @@ export default function Shop({ onSample, paused }: Props) {
         // 山は帯より手前（奥の景色）として描く
         if (area.palette.prop === "volcano") drawVolcano(ctx, area.rect, time);
 
-        if (!earlyFire) {
+        if (isMoji) {
+          // 帯の境目も引かない（街に「厨房の線」は無い）
+        } else if (!earlyFire) {
           ctx.strokeStyle = "rgba(246,231,207,0.16)";
           ctx.lineWidth = 2;
           ctx.beginPath();
@@ -13575,7 +13586,8 @@ export default function Shop({ onSample, paused }: Props) {
           { text: now.means, ok: true },
           {
             text: `書記 ${scribeCount(state)}人・記録の余力 ${Math.max(0, capacity(state) - cityLoad(state))}`,
-            ok: heat <= 0.05,
+            // 「街のようす」と同じ目盛りで色を変える（片方だけ赤くならないように）
+            ok: heat < 0.08,
           },
           { text: `街のようす: ${confusionLabel(state)}`, ok: heat < 0.22 },
         ];

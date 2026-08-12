@@ -3147,7 +3147,8 @@ const mojiAreas: AreaSpec[] = [
     price: 0,
     rect: { x0: 0, y0: 0, x1: 760, y1: 560 },
     padPos: { x: 0, y: 0 },
-    palette: { floor: "#4a4030", deep: "#2b251b", prop: "none" },
+    // 麦の実る畑地。日なたの土と草の色
+    palette: { floor: "#9a8b52", deep: "#6b6136", prop: "none" },
   },
   {
     id: "area-1",
@@ -3155,7 +3156,8 @@ const mojiAreas: AreaSpec[] = [
     price: 1800,
     rect: { x0: 760, y0: 0, x1: 1660, y1: 800 },
     padPos: { x: 730, y: 300 },
-    palette: { floor: "#54432f", deep: "#31261a", prop: "none" },
+    // 粘土をこねる川べり。赤みのある土
+    palette: { floor: "#a8794c", deep: "#6f4e30", prop: "none" },
     // 数え場が回りだして、札だけでは足りなくなったころ
     unlockAfter: "mark-records-30",
     reveal: 20,
@@ -3166,7 +3168,8 @@ const mojiAreas: AreaSpec[] = [
     price: 24000,
     rect: { x0: 1660, y0: 0, x1: 2560, y1: 800 },
     padPos: { x: 1630, y: 300 },
-    palette: { floor: "#4c4735", deep: "#2b291d", prop: "none" },
+    // 学校のある工房通り。日に焼けた砂の色
+    palette: { floor: "#b0a271", deep: "#776c48", prop: "none" },
     // 書記をひとり置いて、板がさばけないと分かってから
     unlockAfter: "scribe-h1",
     reveal: 45,
@@ -3177,7 +3180,8 @@ const mojiAreas: AreaSpec[] = [
     price: 220000,
     rect: { x0: 2560, y0: 0, x1: 3460, y1: 800 },
     padPos: { x: 2530, y: 300 },
-    palette: { floor: "#5a4a33", deep: "#342a1d", prop: "market" },
+    // 天幕のならぶ広場。市のにぎわいを色で出す
+    palette: { floor: "#a8804f", deep: "#6f5433", prop: "market" },
     unlockAfter: "built-build-school",
     reveal: 75,
   },
@@ -3187,7 +3191,8 @@ const mojiAreas: AreaSpec[] = [
     price: 1600000,
     rect: { x0: 3460, y0: 0, x1: 4360, y1: 800 },
     padPos: { x: 3430, y: 300 },
-    palette: { floor: "#45443a", deep: "#282722", prop: "market" },
+    // 行政地区。石を敷いた灰みの地面
+    palette: { floor: "#98937c", deep: "#635f4f", prop: "market" },
     unlockAfter: "built-build-bazaar",
     reveal: 105,
   },
@@ -3197,7 +3202,8 @@ const mojiAreas: AreaSpec[] = [
     price: 14000000,
     rect: { x0: 4360, y0: 0, x1: 5260, y1: 800 },
     padPos: { x: 4330, y: 300 },
-    palette: { floor: "#585848", deep: "#2f2f2a", prop: "none" },
+    // 法の広場。白っぽい石畳
+    palette: { floor: "#aca78d", deep: "#74705f", prop: "none" },
     unlockAfter: "built-build-admin",
     reveal: 136,
   },
