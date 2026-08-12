@@ -1,5 +1,10 @@
 import type { HireSpec, Rect, Vec } from "@/lib/shop";
 import { aquariumCardDef, aquariumRuntimeDef } from "@/data/aquarium";
+import {
+  AQUARIUM_AREA_PATH as AREA_PATH,
+  AQUARIUM_CELL_H as CELL_H,
+  AQUARIUM_CELL_W as CELL_W,
+} from "@/lib/aquariumLayout";
 
 /**
  * 世界水族館 v4: square hub layout.
@@ -7,34 +12,6 @@ import { aquariumCardDef, aquariumRuntimeDef } from "@/data/aquarium";
  * 縦に18区画を積む構成をやめ、5×4グリッドを回りながら中央へ収束する。
  * 既存エンジン・既存セーブ形式は変えず、座標とスタッフ密度だけを上書きする。
  */
-
-const CELL_W = 360;
-const CELL_H = 420;
-
-/**
- * 入口は下中央。右側→上側→左側を回って、最後に中央へ入る。
- * 18区画でほぼ正方形の施設になり、WORLD OCEAN が中央ランドマークになる。
- */
-const AREA_PATH = [
-  [2, 3],
-  [3, 3],
-  [3, 2],
-  [4, 2],
-  [4, 1],
-  [4, 0],
-  [3, 0],
-  [3, 1],
-  [2, 1],
-  [2, 0],
-  [1, 0],
-  [1, 1],
-  [0, 1],
-  [0, 2],
-  [0, 3],
-  [1, 3],
-  [1, 2],
-  [2, 2],
-] as const;
 
 type AquariumRuntimeV4 = typeof aquariumRuntimeDef & {
   __squareHubV4?: boolean;

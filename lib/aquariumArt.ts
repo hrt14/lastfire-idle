@@ -78,6 +78,13 @@ type ExhibitVisual = {
 
 const TAU = Math.PI * 2;
 
+const DARK_OUTLINE = "rgba(5,22,28,0.84)";
+/*
+ * いま描いている水槽の輪郭色。暗い水では明るい輪郭、明るい水では濃い輪郭にする。
+ * 引数で全ての生きものへ配るより安く、描画は同期処理なので取り違えは起きない。
+ */
+let outlineColor = DARK_OUTLINE;
+
 /**
  * 18地域 × 3展示。名前が変われば必ず別設定を使う。
  * 同地域内でも魚のシルエット・色・匹数・主役サイズの最低2点を変える。
@@ -211,6 +218,24 @@ const seeded = (seed: number, n: number) => {
   return x - Math.floor(x);
 };
 
+type BodyOptions = {
+  /** 尾びれの振り（ラジアン）。泳いでいる感じはここで出す */
+  wag?: number;
+  /** 背びれを立てる */
+  dorsal?: number;
+  /** 胸びれを出す */
+  pectoral?: boolean;
+  /** 尾の切れこみ。0 でうちわ形、1 で深い二又 */
+  fork?: number;
+  /** 共通の尾を描くか。専用のヒレを持つ魚は false */
+  tail?: boolean;
+};
+
+/**
+ * 全魚共通の体。
+ * 小さな水槽の中でも「魚だ」と読めることを最優先に、
+ * 濃い輪郭・背びれ・二又の尾・目の光を必ず持たせる。
+ */
 const fishBody = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -219,27 +244,65 @@ const fishBody = (
   sy: number,
   color: string,
   dir = 1,
+  options: BodyOptions = {},
 ) => {
-  // 魚が背景に埋もれないよう、全魚共通で濃い輪郭と小さなハイライトを持たせる。
-  // リアルさより「スマホで一目で魚だと読める」ことを優先する。
-  const outline = "rgba(5,22,28,0.84)";
-  const line = Math.max(0.85, Math.min(1.8, sy * 0.42));
+  const outline = outlineColor;
+  const line = Math.max(0.5, Math.min(1.2, sy * 0.3));
+  const wag = options.wag ?? 0;
+  const fork = options.fork ?? 0.45;
+  const dorsal = options.dorsal ?? 0.8;
 
   ctx.fillStyle = color;
   ctx.strokeStyle = outline;
   ctx.lineWidth = line;
+
+  // 尾。体より先に描いて、付け根で振らせる
+  if (options.tail !== false) {
+  ctx.save();
+  ctx.translate(x - dir * sx * 0.82, y);
+  ctx.rotate(wag * dir);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-dir * sx * 0.62, -sy * 1.15);
+  ctx.quadraticCurveTo(-dir * sx * (0.62 - fork * 0.42), 0, -dir * sx * 0.62, sy * 1.15);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  }
+
+  // 背びれ
+  if (dorsal > 0) {
+    ctx.beginPath();
+    ctx.moveTo(x - dir * sx * 0.46, y - sy * 0.7);
+    ctx.quadraticCurveTo(x - dir * sx * 0.1, y - sy * (0.6 + dorsal * 0.6), x + dir * sx * 0.3, y - sy * 0.68);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
   ctx.beginPath();
   ctx.ellipse(x, y, sx, sy, 0, 0, TAU);
   ctx.fill();
   ctx.stroke();
 
-  ctx.beginPath();
-  ctx.moveTo(x - dir * sx * 0.85, y);
-  ctx.lineTo(x - dir * sx * 1.55, y - sy * 1.05);
-  ctx.lineTo(x - dir * sx * 1.55, y + sy * 1.05);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
+  // 胸びれ。体の下側で小さく動く
+  if (options.pectoral !== false && sx > 3.4) {
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.ellipse(
+      x + dir * sx * 0.1,
+      y + sy * 0.55,
+      sx * 0.3,
+      sy * 0.3,
+      wag * 0.6 * dir + 0.4 * dir,
+      0,
+      TAU,
+    );
+    ctx.fill();
+    ctx.restore();
+  }
 
   // 上面の反射を一筋だけ入れ、小さい魚でも立体に見せる。
   ctx.fillStyle = "rgba(255,255,255,0.34)";
@@ -323,6 +386,7 @@ const drawCreature = (
   pattern: Pattern = "none",
   accent = "rgba(255,255,255,0.72)",
   dir = 1,
+  wag = 0,
 ) => {
   ctx.save();
   ctx.translate(x, y);
@@ -330,11 +394,11 @@ const drawCreature = (
   const d = 1;
   switch (kind) {
     case "tiny":
-      fishBody(ctx, 0, 0, 3.1 * scale, 1.35 * scale, color, d);
+      fishBody(ctx, 0, 0, 3.1 * scale, 1.35 * scale, color, d, { wag, dorsal: 0.7, fork: 0.5 });
       applyPattern(ctx, 0, 0, 3.1 * scale, 1.35 * scale, pattern, d, accent);
       break;
     case "small":
-      fishBody(ctx, 0, 0, 4.6 * scale, 2 * scale, color, d);
+      fishBody(ctx, 0, 0, 4.6 * scale, 2 * scale, color, d, { wag, dorsal: 0.8, fork: 0.55 });
       applyPattern(ctx, 0, 0, 4.6 * scale, 2 * scale, pattern, d, accent);
       break;
     case "round":
@@ -344,7 +408,12 @@ const drawCreature = (
     case "bream": {
       const tall = kind === "discus" ? 4.5 : kind === "cichlid" || kind === "bream" ? 3.5 : 3;
       const wide = kind === "carp" ? 6.2 : kind === "discus" ? 4.6 : 5.2;
-      fishBody(ctx, 0, 0, wide * scale, tall * scale, color, d);
+      // 体高のある魚は尾を小さく、背びれを高く。横から見て種類が違うと分かるようにする
+      fishBody(ctx, 0, 0, wide * scale, tall * scale, color, d, {
+        wag,
+        dorsal: kind === "discus" ? 0.45 : 1,
+        fork: kind === "carp" ? 0.8 : 0.35,
+      });
       if (kind === "carp") {
         ctx.strokeStyle = accent;
         ctx.lineWidth = 0.7;
@@ -359,20 +428,47 @@ const drawCreature = (
     case "arowana": {
       const long = kind === "eel" ? 9.8 : kind === "arowana" ? 8.2 : kind === "knife" ? 7.6 : 6.6;
       const tall = kind === "eel" ? 1.4 : kind === "knife" ? 1.7 : 2.2;
+      /*
+       * 細長い魚は体そのものをくねらせる。
+       * 鼻先から尾へ紡錘形になるよう、太さを sin で作る。
+       */
+      const segs = 10;
+      const spine = (t: number) => ({
+        px: long * scale * (1 - t * 2),
+        py: Math.sin(t * 3.6 - wag * 7) * tall * scale * t * 1.1,
+        th: tall * scale * Math.sin(Math.PI * (0.1 + 0.82 * t)),
+      });
       ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = Math.max(0.6, tall * scale * 0.3);
       ctx.beginPath();
-      ctx.ellipse(0, 0, long * scale, tall * scale, 0, 0, TAU);
+      for (let i = 0; i <= segs; i += 1) {
+        const s = spine(i / segs);
+        if (i === 0) ctx.moveTo(s.px, s.py - s.th);
+        else ctx.lineTo(s.px, s.py - s.th);
+      }
+      for (let i = segs; i >= 0; i -= 1) {
+        const s = spine(i / segs);
+        ctx.lineTo(s.px, s.py + s.th);
+      }
+      ctx.closePath();
       ctx.fill();
+      ctx.stroke();
       if (kind !== "eel") {
+        const tail = spine(1);
         ctx.beginPath();
-        ctx.moveTo(-long * scale * 0.85, 0);
-        ctx.lineTo(-long * scale * 1.18, -2.4 * scale);
-        ctx.lineTo(-long * scale * 1.18, 2.4 * scale);
+        ctx.moveTo(tail.px, tail.py);
+        ctx.lineTo(tail.px - long * scale * 0.3, tail.py - 2.6 * scale);
+        ctx.lineTo(tail.px - long * scale * 0.3, tail.py + 2.6 * scale);
         ctx.closePath();
         ctx.fill();
+        ctx.stroke();
       }
-      ctx.fillStyle = "#243b45";
-      ctx.beginPath(); ctx.arc(long * scale * 0.62, -0.5 * scale, 0.7 * scale, 0, TAU); ctx.fill();
+      // 目。頭がどちらか分かるようにする
+      ctx.fillStyle = "#132a33";
+      ctx.beginPath(); ctx.arc(long * scale * 0.66, -0.5 * scale, Math.max(0.5, 0.72 * scale), 0, TAU); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.beginPath(); ctx.arc(long * scale * 0.7, -0.75 * scale, Math.max(0.2, 0.28 * scale), 0, TAU); ctx.fill();
       applyPattern(ctx, 0, 0, long * scale, tall * scale, pattern, d, accent);
       break;
     }
@@ -383,7 +479,11 @@ const drawCreature = (
     case "tuna": {
       const sx = kind === "tuna" ? 8.2 : kind === "napoleon" ? 7.6 : kind === "perch" ? 7.2 : 6.8;
       const sy = kind === "napoleon" ? 4.1 : kind === "perch" ? 3.2 : 2.7;
-      fishBody(ctx, 0, 0, sx * scale, sy * scale, color, d);
+      fishBody(ctx, 0, 0, sx * scale, sy * scale, color, d, {
+        wag,
+        dorsal: kind === "tuna" ? 1.15 : 0.85,
+        fork: kind === "tuna" ? 0.95 : 0.6,
+      });
       if (kind === "salmon") {
         ctx.fillStyle = accent;
         ctx.beginPath(); ctx.ellipse(0.8 * scale, 1.3 * scale, 3.6 * scale, 0.8 * scale, 0, 0, TAU); ctx.fill();
@@ -396,18 +496,33 @@ const drawCreature = (
       break;
     }
     case "catfish":
-      fishBody(ctx, 0, 0, 7.6 * scale, 2.8 * scale, color, d);
+      fishBody(ctx, 0, 0, 7.6 * scale, 2.8 * scale, color, d, { wag, dorsal: 0.5, fork: 0.2 });
       ctx.strokeStyle = accent;
       ctx.lineWidth = 0.8;
       for (const dy of [-1, 1]) {
         ctx.beginPath(); ctx.moveTo(5.5 * scale, dy * 1.1 * scale); ctx.quadraticCurveTo(10 * scale, dy * 2.2 * scale, 12 * scale, dy * 4 * scale); ctx.stroke();
       }
       break;
-    case "betta":
-      fishBody(ctx, 1 * scale, 0, 4.5 * scale, 2.3 * scale, color, d);
+    case "betta": {
+      // ひらひらした大きな尾びれが主役。共通の尾は出さない
+      const fan = 5.4 * scale;
       ctx.fillStyle = color;
-      ctx.beginPath(); ctx.ellipse(-5 * scale, 0, 4.2 * scale, 4.4 * scale, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 0.8;
+      ctx.save();
+      ctx.translate(-3.4 * scale, 0);
+      ctx.rotate(wag * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(-fan * 1.1, -fan * 1.15, -fan * 1.5, 0);
+      ctx.quadraticCurveTo(-fan * 1.1, fan * 1.15, 0, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      fishBody(ctx, 1 * scale, 0, 4.2 * scale, 2.4 * scale, color, d, { wag: 0, dorsal: 1.5, fork: 0, tail: false });
       break;
+    }
     case "angel":
     case "butterfly":
       ctx.fillStyle = color;
@@ -417,7 +532,7 @@ const drawCreature = (
       applyPattern(ctx, 0, 0, 5 * scale, 6 * scale, pattern, d, accent);
       break;
     case "piranha":
-      fishBody(ctx, 0, 0, 5.8 * scale, 3.3 * scale, color, d);
+      fishBody(ctx, 0, 0, 5.8 * scale, 3.3 * scale, color, d, { wag, dorsal: 0.6, fork: 0.5 });
       applyPattern(ctx, 0, 0, 5.8 * scale, 3.3 * scale, pattern, d, accent);
       ctx.fillStyle = "#f4eee2";
       for (let i = 0; i < 3; i += 1) {
@@ -447,7 +562,7 @@ const drawCreature = (
       }
       break;
     case "rockfish":
-      fishBody(ctx, 0, 0, 5.4 * scale, 3.5 * scale, color, d);
+      fishBody(ctx, 0, 0, 5.4 * scale, 3.5 * scale, color, d, { wag: wag * 0.5, dorsal: 0, fork: 0.15 });
       ctx.strokeStyle = accent; ctx.lineWidth = 0.9;
       for (let i = -2; i <= 2; i += 1) { ctx.beginPath(); ctx.moveTo(i * 1.5 * scale, -2.6 * scale); ctx.lineTo(i * 1.6 * scale, -5.3 * scale); ctx.stroke(); }
       break;
@@ -471,21 +586,24 @@ const drawCreature = (
       }
       break;
     case "clown":
-      fishBody(ctx, 0, 0, 4.8 * scale, 2.5 * scale, color, d);
+      fishBody(ctx, 0, 0, 4.8 * scale, 2.5 * scale, color, d, { wag, dorsal: 0.7, fork: 0.15 });
       applyPattern(ctx, 0, 0, 4.8 * scale, 2.5 * scale, "stripes", d, "#f7f4df");
       break;
     case "shark":
     case "whale-shark": {
       const sx = kind === "whale-shark" ? 11.5 : 8.5;
       const sy = kind === "whale-shark" ? 3.7 : 3.1;
-      fishBody(ctx, 0, 0, sx * scale, sy * scale, color, d);
+      fishBody(ctx, 0, 0, sx * scale, sy * scale, color, d, { wag: wag * 0.7, dorsal: 0, fork: 0.85 });
+      // サメの背びれ。遠目でもサメと分かる形にする
       ctx.fillStyle = color;
-      ctx.beginPath(); ctx.moveTo(-1 * scale, -2 * scale); ctx.lineTo(1 * scale, -7 * scale); ctx.lineTo(3 * scale, -2 * scale); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-1.5 * scale, -sy * scale * 0.6); ctx.lineTo(1.5 * scale, -(sy + 4.4) * scale); ctx.lineTo(4 * scale, -sy * scale * 0.6); ctx.closePath(); ctx.fill(); ctx.stroke();
       if (kind === "whale-shark" || pattern === "spots") applyPattern(ctx, 0, 0, sx * scale, sy * scale, "spots", d, "rgba(230,245,245,0.9)");
       break;
     }
     case "lionfish":
-      fishBody(ctx, 0, 0, 5 * scale, 2.8 * scale, color, d);
+      fishBody(ctx, 0, 0, 5 * scale, 2.8 * scale, color, d, { wag: wag * 0.4, dorsal: 0, fork: 0.1 });
       ctx.strokeStyle = accent; ctx.lineWidth = 0.8;
       for (let i = -3; i <= 3; i += 1) { ctx.beginPath(); ctx.moveTo(i * scale, -2 * scale); ctx.lineTo(i * 1.8 * scale, -7 * scale); ctx.stroke(); }
       applyPattern(ctx, 0, 0, 5 * scale, 2.8 * scale, "stripes", d, accent);
@@ -503,7 +621,7 @@ const drawCreature = (
       for (let i = -3; i <= 3; i += 1) { ctx.beginPath(); ctx.moveTo(i * 1.4 * scale, -3 * scale); ctx.lineTo(i * 1.4 * scale, 3 * scale); ctx.stroke(); }
       break;
     case "angler":
-      fishBody(ctx, 0, 0, 6.4 * scale, 4.1 * scale, color, d);
+      fishBody(ctx, 0, 0, 6.4 * scale, 4.1 * scale, color, d, { wag: wag * 0.5, dorsal: 0.3, fork: 0.1 });
       ctx.strokeStyle = accent; ctx.lineWidth = 0.9;
       ctx.beginPath(); ctx.moveTo(3 * scale, -3 * scale); ctx.quadraticCurveTo(6 * scale, -9 * scale, 8 * scale, -6 * scale); ctx.stroke();
       ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(8 * scale, -6 * scale, 1.8 * scale, 0, TAU); ctx.fill();
@@ -576,27 +694,116 @@ const drawHabitat = (ctx: CanvasRenderingContext2D, habitat: Habitat, seed: numb
   }
 };
 
+/** 底を這う生きもの。中層を泳がせると別の生きものに見えてしまう */
+const BOTTOM_DWELLERS = new Set<Creature>([
+  "loach",
+  "crab",
+  "isopod",
+  "octopus",
+  "eel",
+  "ray",
+  "rockfish",
+  "catfish",
+  "angler",
+]);
+
+/** ゆっくり往復する大物。群れと同じ速さで泳ぐと迫力が出ない */
+const SLOW_SWIMMERS = new Set<Creature>([
+  "arowana",
+  "shark",
+  "whale-shark",
+  "manta",
+  "napoleon",
+  "perch",
+  "turtle",
+  "catfish",
+  "ray",
+]);
+
+type Swim = { x: number; y: number; dir: number; wag: number };
+
+/**
+ * 一匹ぶんの泳ぎを決める。
+ * 群れは水槽の端から端へ回遊し、大物はゆっくり往復、底生は底を歩く。
+ * 座標だけで動かすので、描画コストは止まっているときと変わらない。
+ */
+const swimOf = (
+  kind: Creature,
+  seed: number,
+  i: number,
+  time: number,
+  spread: number,
+  bandTop: number,
+  bandHeight: number,
+  hero: boolean,
+): Swim => {
+  const phase = seeded(seed, i + 400);
+  const bottom = BOTTOM_DWELLERS.has(kind);
+  const slow = hero || SLOW_SWIMMERS.has(kind);
+  const baseY = bandTop + seeded(seed, i + 90) * bandHeight;
+
+  if (slow) {
+    // 端で向きを変える往復。sin なので折り返しで自然に減速する
+    const speed = bottom ? 0.16 : 0.24;
+    const travel = Math.sin(time * speed + phase * TAU);
+    const reach = spread * (hero ? 0.34 : 0.46);
+    return {
+      x: travel * reach,
+      y: bottom ? bandTop + bandHeight * 0.86 : baseY + Math.sin(time * 0.5 + phase * 9) * 1.6,
+      dir: Math.cos(time * speed + phase * TAU) >= 0 ? 1 : -1,
+      wag: Math.sin(time * (bottom ? 1.6 : 2.2) + phase * 7) * 0.16,
+    };
+  }
+
+  // 群れは一方向へ流れ、端まで行ったら反対の端から戻ってくる
+  const dir = seeded(seed, i + 120) > 0.42 ? 1 : -1;
+  const speed = 5 + seeded(seed, i + 150) * 6;
+  const span = spread + 26;
+  const t = ((time * speed + phase * span) % span + span) % span;
+  const x = dir > 0 ? -spread / 2 - 13 + t : spread / 2 + 13 - t;
+  return {
+    x,
+    y: bottom
+      ? bandTop + bandHeight * (0.78 + seeded(seed, i + 200) * 0.2)
+      : baseY + Math.sin(time * 1.5 + phase * 11) * 1.8,
+    dir,
+    wag: Math.sin(time * 7 + phase * 13) * 0.3,
+  };
+};
+
 const drawSchool = (
   ctx: CanvasRenderingContext2D,
   visual: ExhibitVisual,
   seed: number,
   sizeBoost = 1,
+  time = 0,
+  bandShift = 0,
 ) => {
   const hero = Math.max(1, visual.heroScale ?? 1);
   const count = Math.max(1, visual.count);
   const density = visual.density ?? 1;
   const primaryCount = visual.secondary ? Math.max(1, Math.round(count * 0.72)) : count;
   const accent = visual.secondaryColor ?? "rgba(244,248,237,0.8)";
+  const bandHeight = 22 / density;
 
   for (let i = 0; i < primaryCount; i += 1) {
     const isHero = i === 0 && hero > 1.35;
     const s = (isHero ? hero : 0.78 + seeded(seed, i + 4) * 0.32)
       * (count > 20 ? 0.72 : count > 14 ? 0.82 : 1)
       * sizeBoost;
-    const x = isHero ? 2 : -29 + seeded(seed, i + 50) * 58;
-    const y = isHero ? -1 : -11 + seeded(seed, i + 90) * (22 / density);
-    const dir = seeded(seed, i + 120) > 0.22 ? 1 : -1;
-    drawCreature(ctx, visual.primary, x, y, s, visual.color, visual.pattern ?? "none", accent, dir);
+    const swim = swimOf(visual.primary, seed, i, time, 58, -11 + bandShift, bandHeight, isHero);
+    drawCreature(
+      ctx,
+      visual.primary,
+      swim.x,
+      swim.y,
+      s,
+      visual.color,
+      visual.pattern ?? "none",
+      accent,
+      swim.dir,
+      swim.wag,
+    );
   }
 
   if (visual.secondary) {
@@ -605,10 +812,37 @@ const drawSchool = (
       const s = (0.9 + seeded(seed, i + 180) * 0.25)
         * (visual.heroScale && visual.heroScale > 1.4 ? 1.15 : 1)
         * sizeBoost;
-      const x = -24 + seeded(seed, i + 210) * 50;
-      const y = -9 + seeded(seed, i + 240) * 18;
-      drawCreature(ctx, visual.secondary, x, y, s, visual.secondaryColor ?? accent, "none", visual.color, seeded(seed, i + 270) > 0.35 ? 1 : -1);
+      const swim = swimOf(visual.secondary, seed, i + 60, time, 50, -9 + bandShift, 18, false);
+      drawCreature(
+        ctx,
+        visual.secondary,
+        swim.x,
+        swim.y,
+        s,
+        visual.secondaryColor ?? accent,
+        "none",
+        visual.color,
+        swim.dir,
+        swim.wag,
+      );
     }
+  }
+};
+
+/** 水槽の泡。動いているものが増えるほど「生きている水槽」に見える */
+const drawBubbles = (ctx: CanvasRenderingContext2D, seed: number, time: number, tall: number) => {
+  ctx.fillStyle = "rgba(226,250,255,0.5)";
+  ctx.strokeStyle = "rgba(226,250,255,0.7)";
+  ctx.lineWidth = 0.4;
+  for (let i = 0; i < 7; i += 1) {
+    const x = -33 + seeded(seed, i + 500) * 66;
+    const speed = 5 + seeded(seed, i + 520) * 6;
+    const rise = ((time * speed + seeded(seed, i + 540) * tall) % tall);
+    const y = tall / 2 - rise;
+    const r = 0.5 + seeded(seed, i + 560) * 0.9;
+    ctx.beginPath();
+    ctx.arc(x + Math.sin(time * 1.6 + i) * 1.4, y, r, 0, TAU);
+    ctx.stroke();
   }
 };
 
@@ -620,6 +854,7 @@ export const drawAquariumExhibit = (
   ctx: CanvasRenderingContext2D,
   art: string,
   seed: number,
+  time = 0,
 ) => {
   const match = /^aquarium-(\d+)-(\d+)$/.exec(art);
   if (!match) return false;
@@ -641,15 +876,15 @@ export const drawAquariumExhibit = (
   drawHabitat(ctx, visual.habitat, seed + area * 31 + index * 7);
   drawSwimBand(ctx, display.profile, display.outlineMode);
 
-  // 魚は少し大きくし、背景色に応じたリム光を付ける。
-  // 特に小魚の群れが「模様」にならず、一匹ずつ読めることを狙う。
+  /*
+   * 魚の縁取り。以前は shadowBlur でリム光を付けていたが、
+   * 水槽の数だけぼかしが走って重かった。輪郭線の色を水の明るさで
+   * 変えるだけにして、読みやすさは保ったまま描画コストを落とす。
+   */
   ctx.save();
-  ctx.shadowColor = display.outlineMode === "light"
-    ? `rgba(218,248,255,${0.48 * display.contrastBoost})`
-    : `rgba(1,16,20,${0.58 * display.contrastBoost})`;
-  ctx.shadowBlur = display.hero ? 3.6 : 2.4;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
+  outlineColor = display.outlineMode === "light"
+    ? "rgba(226,250,255,0.9)"
+    : "rgba(5,22,28,0.84)";
   // 魚の座標は動かさず、魚体サイズだけ補正する。
   // 群れを座標ごと拡大すると水槽端で切れやすいため。
   drawSchool(
@@ -657,9 +892,13 @@ export const drawAquariumExhibit = (
     visual,
     seed + area * 101 + index * 17,
     display.fishScaleBoost,
+    time,
+    display.bandShift,
   );
+  outlineColor = DARK_OUTLINE;
   ctx.restore();
 
+  drawBubbles(ctx, seed + area * 7 + index * 3, time, 44);
   ctx.restore();
   drawTankFrame(ctx, display.profile, display.hero, area);
   ctx.restore();

@@ -17,6 +17,8 @@ export type AquariumDisplay = {
   fishScaleBoost: number;
   contrastBoost: number;
   outlineMode: "dark" | "light";
+  /** 群れを泳がせる帯の上下ずらし。窓の形で見える範囲が変わるので合わせる */
+  bandShift: number;
 };
 
 const PROFILES: TankProfile[][] = [
@@ -46,6 +48,12 @@ export const getAquariumDisplay = (area: number, index: number): AquariumDisplay
   const darkWater = area >= 15 || profile === "deepSeaLab" || profile === "tunnel";
   const tinyFishArea = [0, 3, 6, 8, 10, 12, 13, 15, 17].includes(area);
 
+  /*
+   * トンネルは真ん中が通路でくり抜かれているので、
+   * 中層に置いた魚がまるごと見えなくなる。上のアーチへ寄せる。
+   */
+  const bandShift = profile === "tunnel" ? -6 : profile === "reefDome" ? -4 : 0;
+
   return {
     profile,
     hero,
@@ -53,6 +61,7 @@ export const getAquariumDisplay = (area: number, index: number): AquariumDisplay
     fishScaleBoost: (tinyFishArea ? 1.13 : 1.08) + (hero ? 0.025 : 0),
     contrastBoost: darkWater ? 1.24 : hero ? 1.18 : 1.1,
     outlineMode: darkWater ? "light" : "dark",
+    bandShift,
   };
 };
 
@@ -90,11 +99,17 @@ const tunnelPath = (ctx: CanvasRenderingContext2D) => {
   ctx.bezierCurveTo(-39, -20, -17, -25, 0, -25);
   ctx.bezierCurveTo(17, -25, 39, -20, 39, 1);
   ctx.lineTo(39, 20);
-  ctx.lineTo(21, 20);
-  ctx.lineTo(21, 4);
-  ctx.bezierCurveTo(21, -8, 10, -11, 0, -11);
-  ctx.bezierCurveTo(-10, -11, -21, -8, -21, 4);
-  ctx.lineTo(-21, 20);
+  ctx.closePath();
+};
+
+/** トンネルの中の通路。水槽の手前に立つ影として描く */
+const tunnelWalkway = (ctx: CanvasRenderingContext2D) => {
+  ctx.beginPath();
+  ctx.moveTo(-21, 21);
+  ctx.lineTo(-21, 4);
+  ctx.bezierCurveTo(-21, -8, -10, -11, 0, -11);
+  ctx.bezierCurveTo(10, -11, 21, -8, 21, 4);
+  ctx.lineTo(21, 21);
   ctx.closePath();
 };
 
@@ -260,10 +275,24 @@ export const drawTankFrame = (
       ctx.stroke();
     }
   } else if (profile === "tunnel") {
-    ctx.strokeStyle = "rgba(177,236,248,0.45)";
+    /*
+     * 通路をくり抜くと、水槽の面積の大半が通路になって魚が見えなくなる。
+     * 水は窓いっぱいに見せ、通路は手前に立つ影として重ねる。
+     */
+    ctx.fillStyle = "rgba(6,22,31,0.92)";
+    tunnelWalkway(ctx);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(177,236,248,0.5)";
     ctx.lineWidth = 2;
+    tunnelWalkway(ctx);
+    ctx.stroke();
+    // 通路の床と足元の光
+    ctx.fillStyle = "rgba(126,226,255,0.3)";
+    ctx.fillRect(-20, 16, 40, 2);
+    ctx.strokeStyle = "rgba(177,236,248,0.35)";
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.arc(0, 3, 31, Math.PI, Math.PI * 2);
+    ctx.arc(0, 4, 15, Math.PI, Math.PI * 2);
     ctx.stroke();
   } else if (profile === "deepSeaLab") {
     ctx.strokeStyle = "#8c96aa";

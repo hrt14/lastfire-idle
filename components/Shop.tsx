@@ -5669,7 +5669,7 @@ const drawSettlement = (
 
   /* --- 川の瀬（魚をとる） --- */
   if (art.startsWith("aquarium-")) {
-    return drawAquariumExhibit(ctx, art, Math.round(x * 31 + y * 17));
+    return drawAquariumExhibit(ctx, art, Math.round(x * 31 + y * 17), time);
   }
 
   if (art === "fish") {
@@ -11047,13 +11047,23 @@ export default function Shop({ onSample, paused }: Props) {
       const openedAreaIdsForBackground = isAquarium
         ? new Set(openedAreasForBackground.map((area) => area.id))
         : null;
+      /*
+       * 5×4の区画を毎フレーム18枚描くと重いので、画面に映る区画だけに絞る。
+       * ワールド全体（box）ではなく、いま見えている範囲で判定する。
+       */
+      const viewRect = {
+        x0: camX - 40,
+        y0: camY - 40,
+        x1: camX + canvas.width / scale + 40,
+        y1: camY + canvas.height / scale + 40,
+      };
       const backgroundAreas = isAquarium
         ? areas.filter(
             (area) =>
-              area.rect.x1 > box.x0 &&
-              area.rect.x0 < box.x1 &&
-              area.rect.y1 > box.y0 &&
-              area.rect.y0 < box.y1,
+              area.rect.x1 > viewRect.x0 &&
+              area.rect.x0 < viewRect.x1 &&
+              area.rect.y1 > viewRect.y0 &&
+              area.rect.y0 < viewRect.y1,
           )
         : openedAreasForBackground;
       for (const area of backgroundAreas) {
@@ -11177,7 +11187,13 @@ export default function Shop({ onSample, paused }: Props) {
       }
 
       /* --- 作業場（歩いて入れる） --- */
-      for (const area of openAreas(state)) {
+      /*
+       * この帯は「ワールドの一番上が入口」という縦積みレイアウト前提で書いてある。
+       * 水族館は 5×4 のグリッドで入口が下段中央にあり、KITCHEN も入口区画の中にある。
+       * y=0 から KITCHEN.bottom まで塗ると館内をまるごと塗りつぶしてしまうので、
+       * 水族館の入口ロビーは drawAquariumHall 側（区画の中）で描く。
+       */
+      for (const area of isAquarium ? [] : openAreas(state)) {
         if (area.rect.y0 !== 0) continue;
         const { x0, x1 } = area.rect;
         const mid = (x0 + x1) / 2;
@@ -11200,21 +11216,17 @@ export default function Shop({ onSample, paused }: Props) {
             ctx.fill();
           }
         } else {
-          ctx.fillStyle = isAquarium
-            ? "#102a34"
-            : isPark
-              ? "#414f6b"
-              : isFire
-                ? "rgba(83,62,39,0.20)"
-                : "#2b241d";
+          ctx.fillStyle = isPark
+            ? "#414f6b"
+            : isFire
+              ? "rgba(83,62,39,0.20)"
+              : "#2b241d";
           ctx.fillRect(x0, 0, x1 - x0, KITCHEN.bottom);
-          ctx.fillStyle = isAquarium
-            ? "rgba(86,220,232,0.045)"
-            : isPark
-              ? "rgba(255,255,255,0.055)"
-              : isFire
-                ? "rgba(255,255,255,0)"
-                : "rgba(255,255,255,0.03)";
+          ctx.fillStyle = isPark
+            ? "rgba(255,255,255,0.055)"
+            : isFire
+              ? "rgba(255,255,255,0)"
+              : "rgba(255,255,255,0.03)";
           for (let y = KITCHEN.top; y < KITCHEN.bottom; y += 22) {
             for (let x = x0; x < x1; x += 22) {
               if (!isFire && ((x + y) / 22) % 2 === 0) ctx.fillRect(x, y, 22, 22);
@@ -11249,40 +11261,7 @@ export default function Shop({ onSample, paused }: Props) {
           }
         }
 
-        if (isAquarium) {
-          // 水族館のエントランス。遊園地の門・万国旗は描かない。
-          const header = area.price === 0 ? "WORLD AQUARIUM" : areaTitle(area.label);
-          const panel = ctx.createLinearGradient(x0 + 20, 0, x1 - 20, 0);
-          panel.addColorStop(0, "#071922");
-          panel.addColorStop(0.5, "#103748");
-          panel.addColorStop(1, "#071922");
-          ctx.fillStyle = panel;
-          roundRect(ctx, x0 + 18, 12, x1 - x0 - 36, 42, 14);
-          ctx.fill();
-          ctx.strokeStyle = "rgba(103,231,238,0.75)";
-          ctx.lineWidth = 1.5;
-          roundRect(ctx, x0 + 18, 12, x1 - x0 - 36, 42, 14);
-          ctx.stroke();
-          ctx.fillStyle = "#9ff4f4";
-          ctx.font = `800 15px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
-          ctx.fillText(header, mid, 30);
-          ctx.font = SMALL;
-          ctx.fillStyle = "rgba(184,241,246,0.75)";
-          ctx.fillText(area.price === 0 ? "FRESH WATER · JAPAN" : "AQUARIUM GALLERY", mid, 45);
-          ctx.font = FONT;
-          ctx.strokeStyle = "rgba(78,211,226,0.5)";
-          ctx.lineWidth = 3;
-          for (let i = 0; i < 3; i += 1) {
-            const yy = 78 + i * 16;
-            ctx.beginPath();
-            for (let xx = x0 + 14; xx <= x1 - 14; xx += 10) {
-              const waveY = yy + Math.sin(xx * 0.05 + time * 1.8 + i) * 2;
-              if (xx == x0 + 14) ctx.moveTo(xx, waveY);
-              else ctx.lineTo(xx, waveY);
-            }
-            ctx.stroke();
-          }
-        } else if (isPark) {
+        if (isPark) {
           // 入園ゲート: 二本の塔と電飾つきのアーチ
           for (const tx of [x0 + 24, x1 - 24]) {
             ctx.fillStyle = "#5b6a8f";
@@ -11390,7 +11369,9 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
-      if (stage().id === "ramen" || isPark || isOnsen) {
+      // 水族館は runtime の id が park なので、遊園地の観覧車・風船・万国旗が
+      // 館内に重なってしまう。水族館は自前の館内描画だけにする。
+      if (stage().id === "ramen" || (isPark && !isAquarium) || isOnsen) {
         drawClassicStageGraphicPass(
           ctx,
           stage().id,
@@ -11571,6 +11552,18 @@ export default function Shop({ onSample, paused }: Props) {
           stove.art.startsWith("aquarium-");
 
         if (aquariumTank) {
+          /*
+           * 水槽の中は一匹ずつ泳がせているので、館内すべてを毎フレーム描くと重い。
+           * 画面に入っていない水槽は飛ばす（54展示 → 見えている十数個だけ）。
+           */
+          if (
+            x + 60 < viewRect.x0 ||
+            x - 60 > viewRect.x1 ||
+            y + 60 < viewRect.y0 ||
+            y - 60 > viewRect.y1
+          ) {
+            continue;
+          }
           // 展示名だけではなく、実際の魚が見えるガラス水槽として描く。
           shadow(ctx, x, y + 22, 42);
           const frame = ctx.createLinearGradient(0, y - 46, 0, y + 28);
@@ -11588,7 +11581,12 @@ export default function Shop({ onSample, paused }: Props) {
           ctx.save();
           ctx.translate(x, y - 12);
           ctx.scale(1.22, 1.22);
-          drawAquariumExhibit(ctx, stove.art ?? "", Math.round(x * 31 + y * 17));
+          drawAquariumExhibit(
+            ctx,
+            stove.art ?? "",
+            Math.round(x * 31 + y * 17),
+            effectsRef.current ? time : 0,
+          );
           ctx.restore();
 
           // ガラスの反射と展示名。
@@ -12397,13 +12395,73 @@ export default function Shop({ onSample, paused }: Props) {
       ctx.fillStyle = isAquarium ? "#0a202b" : isPark ? "#2f3a52" : "#241d18";
       ctx.fillRect(box.x0, top - 10, box.x1 - box.x0, 10);
       const entrance = entrancePos(state);
-      ctx.fillStyle = "#0f0c0a";
-      roundRect(ctx, entrance.x - 34, top - 12, 68, 14, 4);
-      ctx.fill();
-      ctx.fillStyle = "rgba(246,231,207,0.5)";
-      ctx.font = SMALL;
-      ctx.fillText(isAquarium ? "水族館入口" : isPark ? "入園口" : "入口", entrance.x, top - 5);
-      ctx.font = FONT;
+      if (isAquarium) {
+        /*
+         * 水族館の顔になるファサード。館名はここに大きく出す。
+         * 券売所・改札・入口設備の枠は top+62 あたりまでを使うので、
+         * 看板はその下、歩道の空いている帯に置く。
+         */
+        const signW = 288;
+        const signY = top + 70;
+        const facade = ctx.createLinearGradient(0, signY, 0, signY + 54);
+        facade.addColorStop(0, "#0b3346");
+        facade.addColorStop(1, "#04141d");
+        ctx.fillStyle = facade;
+        roundRect(ctx, entrance.x - signW / 2, signY, signW, 54, 16);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(103,231,238,0.7)";
+        ctx.lineWidth = 2;
+        roundRect(ctx, entrance.x - signW / 2, signY, signW, 54, 16);
+        ctx.stroke();
+        // 看板の中を横切る魚の影
+        ctx.save();
+        roundRect(ctx, entrance.x - signW / 2, signY, signW, 54, 16);
+        ctx.clip();
+        ctx.fillStyle = "rgba(86,204,222,0.16)";
+        for (let i = 0; i < 4; i += 1) {
+          const fx =
+            entrance.x - signW / 2 - 40 + ((time * (16 + i * 7) + i * 120) % (signW + 80));
+          const fy = signY + 12 + (i % 3) * 15;
+          ctx.beginPath();
+          ctx.ellipse(fx, fy, 13, 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(fx - 11, fy);
+          ctx.lineTo(fx - 20, fy - 6);
+          ctx.lineTo(fx - 20, fy + 6);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+        ctx.textAlign = "center";
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "rgba(0,10,16,0.85)";
+        ctx.lineWidth = 4;
+        ctx.font = `900 23px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+        ctx.strokeText("WORLD AQUARIUM", entrance.x, signY + 28);
+        ctx.fillStyle = "#a9f6ff";
+        ctx.fillText("WORLD AQUARIUM", entrance.x, signY + 28);
+        ctx.font = `800 10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+        ctx.fillStyle = "rgba(196,244,250,0.82)";
+        ctx.fillText("世 界 水 族 館 ・ メ ダ カ か ら 世 界 の 大 海 へ", entrance.x, signY + 45);
+        ctx.font = FONT;
+        // 入口そのもの
+        ctx.fillStyle = "#061620";
+        roundRect(ctx, entrance.x - 40, top - 14, 80, 16, 5);
+        ctx.fill();
+        ctx.fillStyle = "rgba(169,246,255,0.8)";
+        ctx.font = SMALL;
+        ctx.fillText("水族館入口", entrance.x, top - 5);
+        ctx.font = FONT;
+      } else {
+        ctx.fillStyle = "#0f0c0a";
+        roundRect(ctx, entrance.x - 34, top - 12, 68, 14, 4);
+        ctx.fill();
+        ctx.fillStyle = "rgba(246,231,207,0.5)";
+        ctx.font = SMALL;
+        ctx.fillText(isPark ? "入園口" : "入口", entrance.x, top - 5);
+        ctx.font = FONT;
+      }
 
       // 集客が上がるほど、外の通りがにぎわう
       const draw = customerDraw(state);
@@ -13352,7 +13410,7 @@ export default function Shop({ onSample, paused }: Props) {
       for (const actor of actors) actor.render();
 
       // 前景をキャラクターより手前に被せ、背景→プレイ層→前景の3層にする。
-      if (stage().id === "ramen" || isPark || isOnsen) {
+      if (stage().id === "ramen" || (isPark && !isAquarium) || isOnsen) {
         drawClassicStageForegroundPass(
           ctx,
           stage().id,
