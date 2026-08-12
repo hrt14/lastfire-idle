@@ -1071,7 +1071,12 @@ const onsenAreas: AreaSpec[] = [
     palette: { floor: "#6b5a42", deep: "#4a3d2c", prop: "tatami" },
     building: "annai",
     shop: 2,
-    door: { x: 1420, w: 60, side: "w" },
+    door: [
+      // 到着広場側の既存入口
+      { x: 1420, w: 60, side: "w" },
+      // 夜見世通りが開いたら、北壁からそのまま通りへ抜けられる
+      { x: 2300, w: 72, side: "n", unlockAfter: "area-24" },
+    ],
   },
   {
     id: "area-4",
