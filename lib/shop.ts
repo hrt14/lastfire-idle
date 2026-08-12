@@ -349,6 +349,14 @@ export type AreaPalette = {
     | "headwater";
 };
 
+export type DoorSpec = {
+  x: number;
+  w: number;
+  side?: "s" | "n" | "e" | "w";
+  /** この id が開くまで、この戸口は壁のまま */
+  unlockAfter?: string;
+};
+
 export type AreaSpec = {
   id: string;
   label: string;
@@ -369,7 +377,7 @@ export type AreaSpec = {
    * 温泉街は道の北側にも南側にも建物が並ぶので、四辺どこにでも開けられる。
    * x は「壁に沿った中心」で、東西の壁では縦の位置を指す
    */
-  door?: { x: number; w: number; side?: "s" | "n" | "e" | "w" };
+  door?: DoorSpec | DoorSpec[];
   /** この区画を買うとついてくる渡り廊下（棟と棟をつなぐ、歩ける床） */
   corridor?: Rect;
   /** 買う枠の位置（すでに開いている区画の中に置く） */
@@ -1880,18 +1888,22 @@ const wallData = (state: ShopState): WallCache => {
     const box = boxes.get(area.building);
     if (!box) continue;
     // 戸口は指定した壁（省略で南＝通り側）。壁の位置は棟が広がると動く
-    const { x, w, side = "s" } = area.door;
-    const half = w / 2;
-    const flat = side === "s" || side === "n";
-    const wall = side === "s" ? box.y1 : side === "n" ? box.y0 : side === "e" ? box.x1 : box.x0;
-    const rect = flat
-      ? { x0: x - half, x1: x + half, y0: wall - 14, y1: wall + 14 }
-      : { x0: wall - 14, x1: wall + 14, y0: x - half, y1: x + half };
-    // 戸口の外がどの通りに面しているか（面していなければ、ただの屋外）
-    const out = flat
-      ? { x, y: side === "s" ? wall + 22 : wall - 22 }
-      : { x: side === "e" ? wall + 22 : wall - 22, y: x };
-    openings.push({ rect, nodes: [area.building, roadAt(out) ?? "out"] });
+    const doors = Array.isArray(area.door) ? area.door : [area.door];
+    for (const door of doors) {
+      if (door.unlockAfter && !state.unlocked.includes(door.unlockAfter)) continue;
+      const { x, w, side = "s" } = door;
+      const half = w / 2;
+      const flat = side === "s" || side === "n";
+      const wall = side === "s" ? box.y1 : side === "n" ? box.y0 : side === "e" ? box.x1 : box.x0;
+      const rect = flat
+        ? { x0: x - half, x1: x + half, y0: wall - 14, y1: wall + 14 }
+        : { x0: wall - 14, x1: wall + 14, y0: x - half, y1: x + half };
+      // 戸口の外がどの通りに面しているか（面していなければ、ただの屋外）
+      const out = flat
+        ? { x, y: side === "s" ? wall + 22 : wall - 22 }
+        : { x: side === "e" ? wall + 22 : wall - 22, y: x };
+      openings.push({ rect, nodes: [area.building, roadAt(out) ?? "out"] });
+    }
   }
   // 通りと通りの辻
   for (let i = 0; i < roads.length; i += 1) {
