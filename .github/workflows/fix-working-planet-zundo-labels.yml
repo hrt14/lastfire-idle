@@ -1,0 +1,90 @@
+name: Fix Working Planet object labels
+
+on:
+  push:
+    branches:
+      - agent/fix-working-planet-zundo-labels
+
+permissions:
+  contents: write
+
+jobs:
+  fix-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-working-planet-zundo-labels
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Replace ramen-specific shared descriptions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('lib/shop.ts')
+          text = path.read_text()
+
+          old_cook = '  cook: "この寸胴が速くなる",'
+          new_cook = '''  get cook() {
+            const producer = stageLabels().producer;
+            const action =
+              stage().id === "ramen"
+                ? "調理"
+                : stage().id === "park"
+                  ? "発券"
+                  : stage().id === "onsen"
+                    ? "補充"
+                    : "作業";
+            return `この${producer}の${action}が速くなる`;
+          },'''
+
+          old_master = '  master: "すべての寸胴が1.4倍速くなる",'
+          new_master = '''  get master() {
+            const producer = stageLabels().producer;
+            const action =
+              stage().id === "ramen"
+                ? "調理"
+                : stage().id === "park"
+                  ? "発券"
+                  : stage().id === "onsen"
+                    ? "補充"
+                    : "作業";
+            return `すべての${producer}の${action}が1.4倍速くなる`;
+          },'''
+
+          if text.count(old_cook) != 1:
+              raise SystemExit(f'expected exactly one cook label, found {text.count(old_cook)}')
+          if text.count(old_master) != 1:
+              raise SystemExit(f'expected exactly one master label, found {text.count(old_master)}')
+
+          text = text.replace(old_cook, new_cook, 1)
+          text = text.replace(old_master, new_master, 1)
+
+          if 'この寸胴が速くなる' in text or 'すべての寸胴が1.4倍速くなる' in text:
+              raise SystemExit('shared ramen-only wording still remains')
+
+          path.write_text(text)
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit fix and update main
+        shell: bash
+        run: |
+          rm .github/workflows/fix-working-planet-zundo-labels.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/shop.ts .github/workflows/fix-working-planet-zundo-labels.yml
+          git commit -m "Fix Working Planet object labels"
+          git push origin HEAD:main
