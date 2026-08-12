@@ -787,6 +787,11 @@ button {
   background: linear-gradient(135deg, rgba(58, 106, 110, 0.55), rgba(26, 34, 30, 0.92));
 }
 
+/* 文字のはじまりは、乾いた粘土板と日干しレンガの色 */
+.stage-card.stage-moji {
+  background: linear-gradient(135deg, rgba(178, 142, 88, 0.55), rgba(40, 32, 22, 0.94));
+}
+
 .stage-card.is-locked {
   opacity: 0.55;
 }
