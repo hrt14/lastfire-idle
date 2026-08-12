@@ -2130,11 +2130,27 @@ export const spawnInterval = (state: ShopState) => SPAWN_TIME / customerDraw(sta
  * その作業場に付きっきりの担当者がいるか。
  * 調理人・火の番・薪割りは、担当の作業場に立って速さを上げる
  */
+/**
+ * 作業場に付きっきりで立つ職。
+ * 見た目は職ごとに違っても、「その作業場を受け持つ」ふるまいは同じ。
+ * ここに入れ忘れると、人の手が要る作業場が永久に動かない
+ */
+const STOVE_HANDS: StaffKind[] = [
+  "cook",
+  "splitter",
+  // 文字のはじまり
+  "scribe",
+  "officer",
+  "carver",
+];
+
+/** そのうち、その場から動かない職（押し合いの相手にしない） */
+const STAND_STILL: StaffKind[] = ["cook", "scribe", "officer", "carver"];
+
 export const stoveHasCook = (state: ShopState, stoveId: string) =>
   state.staff.some(
     (worker) =>
-      (worker.kind === "cook" || worker.kind === "splitter") &&
-      worker.stoveId === stoveId,
+      STOVE_HANDS.includes(worker.kind) && worker.stoveId === stoveId,
   );
 
 /**
@@ -3670,7 +3686,11 @@ const spread = (state: ShopState, dt: number) => {
     for (let k = i + 1; k < list.length; k += 1) {
       const a = list[i];
       const b = list[k];
-      if (a.kind === "cook" || b.kind === "cook") continue;
+      /*
+       * 作業場の前に立ちっぱなしの職は、押し合いに入れない。
+       * 既存ステージのふるまいを変えないため、薪割りはこれまでどおり押し合う
+       */
+      if (STAND_STILL.includes(a.kind) || STAND_STILL.includes(b.kind)) continue;
       // ロボはぶつかり判定を持たない（すり抜ける）
       if (a.kind === "robot" || b.kind === "robot") continue;
       if (a.kind === "boat" || b.kind === "boat") continue;
@@ -4181,6 +4201,20 @@ const updateStaff = (state: ShopState, dt: number) => {
     }
 
     if (worker.kind === "cook") {
+      go(state, worker, cookPost(worker), staffSpeed(state), dt);
+      continue;
+    }
+
+    /*
+     * 書記・役人・石工（文字のはじまり）。
+     * 受け持ちの作業場の前に立ち、そこで手を動かし続ける。
+     * ふるまいは調理人と同じで、見た目と持ちものだけが違う
+     */
+    if (
+      worker.kind === "scribe" ||
+      worker.kind === "officer" ||
+      worker.kind === "carver"
+    ) {
       go(state, worker, cookPost(worker), staffSpeed(state), dt);
       continue;
     }

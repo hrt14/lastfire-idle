@@ -18,25 +18,6 @@ import { openSeats, openStoves, stoveHasCook, stoveItem } from "@/lib/shop";
 /* ==================== 情報の品 ==================== */
 
 /**
- * 情報物流に乗る品。物資と同じように「持って運ぶ」ものとして扱う
- * （仕様書 §15「情報物流は物資と同じ見せ方を基本にする」）。
- */
-export const RECORD_ITEMS = [
-  "tally",
-  "rawtab",
-  "drytab",
-  "tablet",
-  "deed",
-  "landtab",
-  "taxtab",
-] as const;
-
-export type RecordItem = (typeof RECORD_ITEMS)[number];
-
-export const isRecordItem = (kind: string): kind is RecordItem =>
-  (RECORD_ITEMS as readonly string[]).includes(kind);
-
-/**
  * 記録として数える品と、その重み。
  *
  * 数量札は「数を線で残しただけ」でも、立派に最初の記録
@@ -146,8 +127,6 @@ export const TECHS: Tech[] = [
   },
 ];
 
-export const TECH_IDS = TECHS.map((tech) => tech.id);
-
 /* ==================== 混乱 ==================== */
 
 export type TroubleId =
@@ -157,7 +136,7 @@ export type TroubleId =
   | "border"
   | "tax";
 
-export type Trouble = {
+type Trouble = {
   id: TroubleId;
   /** 何が起きたか（NPCの上に出す短い言葉） */
   short: string;
@@ -209,7 +188,7 @@ export const TROUBLES: Trouble[] = [
 const TROUBLE_GAP = 22;
 
 /** 混乱の吹き出しが消えるまで（秒） */
-export const TROUBLE_SHOW = 5.5;
+const TROUBLE_SHOW = 5.5;
 
 /* ==================== 状態 ==================== */
 
@@ -263,9 +242,6 @@ export const fromMoji = (input: unknown): MojiState => {
 
 export const isMoji = (state: ShopState) => state.stageId === "moji";
 
-/** 記録の総数 */
-export const records = (state: ShopState) => (isMoji(state) ? state.moji.records : 0);
-
 /** いまの文字の段階 */
 export const tech = (state: ShopState): Tech =>
   TECHS[isMoji(state) ? state.moji.tech : 0];
@@ -292,7 +268,7 @@ export const scribeCount = (state: ShopState) =>
 /** 記録をしまっておける建物（建てたものだけ数える） */
 const ARCHIVES = ["build-archive", "build-archive2", "build-admin"];
 
-export const archiveCount = (state: ShopState) =>
+const archiveCount = (state: ShopState) =>
   isMoji(state) ? ARCHIVES.filter((id) => state.built.includes(id)).length : 0;
 
 /**

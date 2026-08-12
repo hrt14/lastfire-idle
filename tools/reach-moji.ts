@@ -12,9 +12,11 @@ import {
   availablePads,
   createState,
   currentObjective,
+  fromPersisted,
   openStoves,
   padPosOf,
   padPrice,
+  toPersisted,
   update,
   type Pad,
   type ShopState,
@@ -24,8 +26,32 @@ import { TECHS } from "@/lib/moji";
 
 const STAGE = (process.env.STAGE ?? "moji") as "moji" | "taiga";
 applyStage(STAGE);
-const state: ShopState = createState();
+let state: ShopState = createState();
 state.stageId = STAGE;
+
+/*
+ * ALL=1 で、最初から全部の枠を開けておく。
+ * 「値段を貯めるのに何分かかるか」ではなく
+ * 「工程がつながっているか」だけを見たいときはこちら（ずっと速い）。
+ *
+ * unlocked をじかに足しただけでは、人も受け口も作られない。
+ * セーブに書き出して読み直し、エンジンに組み立て直させる
+ */
+if (process.env.ALL) {
+  const def0 = stageDefs[STAGE];
+  for (const id of [
+    ...def0.areas.map((a) => a.id),
+    ...def0.stoves.map((x) => x.id),
+    ...def0.seats.map((x) => x.id),
+    ...def0.hires.map((x) => x.id),
+    ...def0.equipment.map((x) => `equip-${x.id}`),
+  ]) {
+    if (!state.unlocked.includes(id)) state.unlocked.push(id);
+  }
+  state.revealed = [...state.unlocked];
+  state = fromPersisted(toPersisted(state));
+  state.stageId = STAGE;
+}
 
 // 工程がつながっているかを見るだけの点検なので、刻みは粗くてよい
 const DT = 1 / 10;
