@@ -1,6 +1,7 @@
 "use client";
 
 import { drawAquariumExhibit } from "@/lib/aquariumArt";
+import { aquariumNightness } from "@/lib/aquariumNight";
 import { drawAquariumHall } from "@/lib/aquariumTheme";
 import {
   drawFireForegroundPass,
@@ -1298,6 +1299,8 @@ const drawProps = (
     palette: { floor: string; deep: string; prop: string };
   },
   time: number,
+  /** 水族館の夜の深さ（0=昼 / 1=夜）。ナイトアクアリウムを買うまでは 0 */
+  night = 0,
 ) => {
   const { rect, palette } = area;
   if (stage().id === "onsen") {
@@ -1312,7 +1315,7 @@ const drawProps = (
   const baseY = rect.y1 - 40;
 
   if (aquarium) {
-    drawAquariumHall(ctx, area, time);
+    drawAquariumHall(ctx, area, time, night);
     return;
   }
 
@@ -11003,6 +11006,11 @@ export default function Shop({ onSample, paused }: Props) {
 
       const isPark = stage().id === "park";
       const isAquarium = stage().visualTheme === "aquarium";
+      /*
+       * ナイトアクアリウムを買うと、館内に夜が来るようになる。
+       * 見た目だけの時計なので、集客も単価も進行も変わらない。
+       */
+      const nightness = isAquarium ? aquariumNightness(state) : 0;
       const isFire = stage().id === "fire";
       const isTaiga = stage().id === "taiga";
       const isMoji = stage().id === "moji";
@@ -11076,10 +11084,10 @@ export default function Shop({ onSample, paused }: Props) {
         if (isAquarium && !openedAreaIdsForBackground?.has(area.id)) {
           ctx.save();
           ctx.globalAlpha = 0.72;
-          drawProps(ctx, area, effectsRef.current ? time : 0);
+          drawProps(ctx, area, effectsRef.current ? time : 0, nightness);
           ctx.restore();
         } else {
-          drawProps(ctx, area, effectsRef.current ? time : 0);
+          drawProps(ctx, area, effectsRef.current ? time : 0, nightness);
         }
         if (isFire) {
           drawFireGroundTexture(ctx, area, time, effectsRef.current);
@@ -12297,7 +12305,13 @@ export default function Shop({ onSample, paused }: Props) {
 
       /* --- 店の外（歩道と道路 / パークは並木道） --- */
       const top = outsideTop(state);
-      ctx.fillStyle = isAquarium ? "#18313a" : isPark ? "#4a5568" : "#332e28";
+      ctx.fillStyle = isAquarium
+        ? nightness > 0
+          ? "#0d1d26"
+          : "#18313a"
+        : isPark
+          ? "#4a5568"
+          : "#332e28";
       ctx.fillRect(box.x0, top, box.x1 - box.x0, 44);
       ctx.fillStyle = isAquarium ? "#0c1d25" : isPark ? "#2c4433" : "#1c1b1d";
       ctx.fillRect(box.x0, top + 44, box.x1 - box.x0, OUTSIDE_DEPTH - 44);
@@ -12337,6 +12351,25 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.lineTo(box.x1, top + 92);
         ctx.stroke();
         ctx.setLineDash([]);
+      }
+
+      /*
+       * 夜の歩道。地面を落とすのはここまでで、券売所・改札・看板は
+       * このあとに描くので、暗幕をかけても明かりは消えない。
+       */
+      if (isAquarium && nightness > 0) {
+        const veil = ctx.createLinearGradient(0, top, 0, top + OUTSIDE_DEPTH);
+        veil.addColorStop(0, `rgba(3,10,22,${0.34 * nightness})`);
+        veil.addColorStop(1, `rgba(2,6,16,${0.6 * nightness})`);
+        ctx.fillStyle = veil;
+        ctx.fillRect(box.x0, top, box.x1 - box.x0, OUTSIDE_DEPTH);
+        const doorGlow = ctx.createRadialGradient(
+          entrancePos(state).x, top, 4, entrancePos(state).x, top, 120,
+        );
+        doorGlow.addColorStop(0, `rgba(140,232,255,${0.3 * nightness})`);
+        doorGlow.addColorStop(1, "rgba(140,232,255,0)");
+        ctx.fillStyle = doorGlow;
+        ctx.fillRect(entrancePos(state).x - 120, top - 40, 240, 160);
       }
 
       // 入場券売り場と改札（入場のあるステージだけ）
@@ -12413,6 +12446,20 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.lineWidth = 2;
         roundRect(ctx, entrance.x - signW / 2, signY, signW, 54, 16);
         ctx.stroke();
+        if (nightness > 0) {
+          // ナイトアクアリウム開催中は、看板そのものが夜の街あかりになる
+          const halo = ctx.createRadialGradient(
+            entrance.x, signY + 27, 8,
+            entrance.x, signY + 27, signW * 0.62,
+          );
+          halo.addColorStop(0, `rgba(126,226,255,${0.3 * nightness})`);
+          halo.addColorStop(1, "rgba(126,226,255,0)");
+          ctx.fillStyle = halo;
+          ctx.fillRect(
+            entrance.x - signW * 0.62, signY + 27 - signW * 0.62,
+            signW * 1.24, signW * 1.24,
+          );
+        }
         // 看板の中を横切る魚の影
         ctx.save();
         roundRect(ctx, entrance.x - signW / 2, signY, signW, 54, 16);

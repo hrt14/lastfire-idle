@@ -1747,7 +1747,98 @@ const bakedHall = (index: number, theme: Theme, w: number, h: number) => {
   return canvas;
 };
 
-export const drawAquariumHall = (ctx: CanvasRenderingContext2D, area: AquariumArea, time: number) => {
+/**
+ * ナイトアクアリウム。館内の照明を落として、水槽だけを光らせる。
+ *
+ * 焼き込んだ昼の絵の上に暗幕を1枚かけ、そのあと大窓と展示位置の光を
+ * 戻す順で描く。夜ぶんの絵を別に焼かずに済み、夕暮れの途中も同じ式で出せる。
+ */
+const drawNightFall = (
+  ctx: CanvasRenderingContext2D,
+  rect: AquariumArea["rect"],
+  theme: Theme,
+  index: number,
+  night: number,
+  time: number,
+) => {
+  const w = rect.x1 - rect.x0;
+  const h = rect.y1 - rect.y0;
+  const { x0, x1, y0, y1 } = windowRect(rect);
+
+  /*
+   * 1. 天井を落とし、大窓のまわりに光をため、床を落とす ―― を一枚で塗る。
+   * 暗くする色と明るくする色を同じグラデーションの止め位置に置けるので、
+   * 大きな塗りを何枚も重ねずに済む（塗る面積がそのまま重さになる）。
+   * 淡水館は昼の床が明るいので、下側だけ幕を濃くする。
+   */
+  const veil = theme.warm ? 1.16 : 1;
+  const fall = ctx.createLinearGradient(0, rect.y0, 0, rect.y1);
+  fall.addColorStop(0, `rgba(2,8,20,${0.88 * night})`);
+  fall.addColorStop(0.06, `rgba(4,14,32,${0.5 * night})`);
+  fall.addColorStop(0.11, `rgba(24,74,104,${0.3 * night})`);
+  fall.addColorStop(0.46, `rgba(44,126,166,${0.24 * night})`);
+  fall.addColorStop(0.53, `rgba(96,196,232,${0.26 * night})`);
+  fall.addColorStop(0.72, `rgba(4,12,28,${Math.min(0.94, 0.68 * veil) * night})`);
+  fall.addColorStop(1, `rgba(2,6,18,${Math.min(0.94, 0.86 * veil) * night})`);
+  ctx.fillStyle = fall;
+  ctx.fillRect(rect.x0, rect.y0, w, h);
+
+  /*
+   * 2. 大窓そのものは光源。角の丸みは枠の線が隠すので矩形で塗る。
+   * 光の網は drawWindowMotion がすでに描いているので、ここでは重ねない。
+   */
+  const lit = ctx.createLinearGradient(0, y0, 0, y1);
+  lit.addColorStop(0, `rgba(150,236,255,${0.26 * night})`);
+  lit.addColorStop(1, `rgba(46,150,205,${0.18 * night})`);
+  ctx.fillStyle = lit;
+  ctx.fillRect(x0 + 3, y0 + 3, x1 - x0 - 6, y1 - y0 - 6);
+
+  /*
+   * 3. 展示水槽の位置の光だまり。水槽が暗い床から浮かないようにする。
+   * 円形グラデーションは面積ぶん重いので、ランドマーク展示だけ大きく取る。
+   */
+  const mirrored = index % 2 === 1;
+  const spots = mirrored
+    ? [{ x: rect.x0 + 278, y: rect.y0 + 286 }, { x: rect.x0 + 190, y: rect.y0 + 330 }, { x: rect.x0 + 82, y: rect.y0 + 258 }]
+    : [{ x: rect.x0 + 82, y: rect.y0 + 286 }, { x: rect.x0 + 176, y: rect.y0 + 330 }, { x: rect.x0 + 278, y: rect.y0 + 258 }];
+  for (let i = 0; i < spots.length; i += 1) {
+    const p = spots[i];
+    const radius = i === 2 ? 68 : 48;
+    const glow = ctx.createRadialGradient(p.x, p.y - 4, 2, p.x, p.y - 4, radius);
+    glow.addColorStop(0, `rgba(146,238,255,${0.32 * night})`);
+    glow.addColorStop(1, "rgba(146,238,255,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(p.x - radius, p.y - radius, radius * 2, radius * 2);
+  }
+
+  // 4. 足元の誘導灯。暗い床に点々と明かりが続く
+  const cx = (rect.x0 + rect.x1) / 2;
+  for (let i = 0; i < 6; i += 1) {
+    const t = i / 5;
+    const py = rect.y0 + FLOOR_TOP + 30 + t * (h - FLOOR_TOP - 50);
+    const px = cx + Math.sin(t * 3 + (mirrored ? 1.6 : 0)) * 76;
+    const blink = 0.45 + Math.abs(Math.sin(time * 1.1 + i * 0.9)) * 0.3;
+    ctx.fillStyle = `rgba(122,226,246,${blink * night})`;
+    ctx.beginPath();
+    ctx.ellipse(px, py, 3.4, 1.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 5. 天井は消灯し、非常灯だけが残る
+  for (let i = 0; i < 5; i += 1) {
+    const lx = rect.x0 + 36 + i * ((w - 72) / 4);
+    ctx.fillStyle = `rgba(96,190,230,${0.34 * night})`;
+    rounded(ctx, lx - 12, rect.y0 + 16, 24, 3, 1.5);
+    ctx.fill();
+  }
+};
+
+export const drawAquariumHall = (
+  ctx: CanvasRenderingContext2D,
+  area: AquariumArea,
+  time: number,
+  night = 0,
+) => {
   const index = areaIndex(area.id);
   const theme = THEMES[index] ?? THEMES[0];
   const { rect } = area;
@@ -1779,6 +1870,7 @@ export const drawAquariumHall = (ctx: CanvasRenderingContext2D, area: AquariumAr
     ctx.restore();
     drawAmenityLights(ctx, rect, theme, index, time);
   }
+  if (night > 0.002) drawNightFall(ctx, rect, theme, index, night, time);
   if (index !== 0) drawHeader(ctx, rect, theme, index);
   drawLandmarkPlate(ctx, rect, theme, index, time);
 

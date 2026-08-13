@@ -19,6 +19,7 @@ const unlockedUpTo = (lastArea: number) => {
     }
   }
   ids.push("cook-1", "waiter-1", "seller-1", "gatekeeper-1", "robot-1", "stove-2", "cook-2", "stove-3", "cook-3");
+  ids.push("equip-night", "equip-jelly-light", "equip-ocean-sign");
   return ids;
 };
 
@@ -27,8 +28,10 @@ const run = async () => {
   const page = await browser.newPage({ viewport: { width: 430, height: 860 }, deviceScaleFactor: 2 });
   page.on("pageerror", (e) => console.log("‼", e.message));
 
+  // playTime で昼と夜を撃ち分ける（夜は暗幕と光を足すぶん重い）
+  const playTime = Number(process.env.PLAY_TIME ?? 120);
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
-  await page.evaluate((unlocked) => {
+  await page.evaluate(({ unlocked, playTime }) => {
     localStorage.setItem(
       "ramen-arcade-idle-v1",
       JSON.stringify({
@@ -41,7 +44,7 @@ const run = async () => {
             built: [],
             levels: { carry: 6, speed: 8, cook: 8, price: 10, gate: 0 },
             lastSeen: Date.now(),
-            playTime: 1200,
+            playTime,
           },
         },
         skins: ["default"],
@@ -50,7 +53,7 @@ const run = async () => {
         gacha: [1],
       }),
     );
-  }, unlockedUpTo(17));
+  }, { unlocked: unlockedUpTo(17), playTime });
   await page.reload({ waitUntil: "networkidle" });
   const go = page.locator("li.stage-aquarium button.stage-go");
   if (await go.count()) await go.first().click();
@@ -75,7 +78,7 @@ const run = async () => {
   const sorted = [...samples].slice(5).sort((a, b) => a - b);
   const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
   console.log(
-    `frame ms  median ${at(0.5).toFixed(1)}  p90 ${at(0.9).toFixed(1)}  max ${sorted[sorted.length - 1].toFixed(1)}`,
+    `playTime ${playTime}s  frame ms  median ${at(0.5).toFixed(1)}  p90 ${at(0.9).toFixed(1)}  max ${sorted[sorted.length - 1].toFixed(1)}`,
   );
 
   await browser.close();

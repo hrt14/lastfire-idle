@@ -29,6 +29,7 @@ const unlockedUpTo = (lastArea: number) => {
   ids.push("cook-1", "waiter-1", "seller-1", "gatekeeper-1", "robot-1");
   if (lastArea >= 4) ids.push("stove-2", "cook-2");
   if (lastArea >= 8) ids.push("stove-3", "cook-3");
+  if (lastArea >= 12) ids.push("equip-night", "equip-jelly-light", "equip-ocean-sign");
   return ids;
 };
 
@@ -37,6 +38,8 @@ const SCENES: {
   label: string;
   lastArea: number;
   money: number;
+  /** 遊んだ秒数。ナイトアクアリウムの時計はここから出る */
+  playTime?: number;
   /** 撮影のたびに押す矢印キーと時間 */
   walk?: { key: string; hold: number }[];
 }[] = [
@@ -60,14 +63,36 @@ const SCENES: {
   },
   {
     name: "03-end",
-    label: "終盤（世界の海まで）",
+    label: "終盤（世界の海まで・昼）",
     lastArea: 17,
     money: 33_900_000_000_000,
+    playTime: 120,
     walk: [
       { key: "ArrowUp", hold: 3000 },
       { key: "ArrowLeft", hold: 3500 },
       { key: "ArrowDown", hold: 3000 },
     ],
+  },
+  {
+    // ナイトアクアリウム開催中（playTime を夜の時間帯に置く）
+    name: "04-night",
+    label: "ナイトアクアリウム",
+    lastArea: 17,
+    money: 33_900_000_000_000,
+    playTime: 420,
+    walk: [
+      { key: "ArrowUp", hold: 3000 },
+      { key: "ArrowRight", hold: 2500 },
+    ],
+  },
+  {
+    // 夕暮れ（昼から夜へ変わる途中）
+    name: "05-dusk",
+    label: "夕暮れ",
+    lastArea: 17,
+    money: 33_900_000_000_000,
+    playTime: 325,
+    walk: [],
   },
 ];
 
@@ -97,7 +122,7 @@ const run = async () => {
               built: [],
               levels: { carry: 5, speed: 6, cook: 6, price: 8, gate: 0 },
               lastSeen: Date.now(),
-              playTime: 900,
+              playTime: data.playTime,
             },
           },
           skins: ["default"],
@@ -107,7 +132,11 @@ const run = async () => {
         };
         localStorage.setItem("ramen-arcade-idle-v1", JSON.stringify(save));
       },
-      { money: scene.money, unlocked: unlockedUpTo(scene.lastArea) },
+      {
+        money: scene.money,
+        unlocked: unlockedUpTo(scene.lastArea),
+        playTime: scene.playTime ?? 900,
+      },
     );
 
     await page.reload({ waitUntil: "networkidle" });
