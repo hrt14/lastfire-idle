@@ -10,11 +10,23 @@ import { aquariumCardDef, aquariumRuntimeDef } from "@/data/aquarium";
  * - 各地域の3展示は好きな順で投資できる
  * - 現在地域を充実させるか、次地域へ進むかを選べる
  * - 常時5〜7個ほどの投資候補が見える
+ * - 序盤の売上を少し増やし、後半も観覧単価が地域価格に追いつく
  */
 
 // 各展示横の固定自動端末は水族館では使わない。
 aquariumRuntimeDef.autoServer = false;
 aquariumCardDef.autoServer = false;
+
+// 世界水族館は地域解放価格が数兆円まで伸びる一方、旧設定では観覧単価強化が
+// Lv20で止まり、後半に「稼ぎを伸ばす手段がない」状態になっていた。
+// 序盤は1来館あたり約3割だけ稼ぎやすくし、後半は価格強化を継続できるようにする。
+const AQUARIUM_BASE_VALUE = 75;
+const AQUARIUM_ADMISSION = 30;
+
+aquariumRuntimeDef.baseValue = AQUARIUM_BASE_VALUE;
+aquariumCardDef.baseValue = AQUARIUM_BASE_VALUE;
+aquariumRuntimeDef.admission = AQUARIUM_ADMISSION;
+aquariumCardDef.admission = AQUARIUM_ADMISSION;
 
 // 少し先まで選択肢を見せて「次に何を買うか」を考えられる状態にする。
 aquariumRuntimeDef.revealLimit = 7;
@@ -123,6 +135,12 @@ if (speed) {
 const price = upgrade("price");
 if (price) {
   price.basePrice = 140;
+  // 旧Lv20上限では中盤以降に収益の伸びしろが消える。
+  // 地域価格と同様に長く成長できるようLv45まで延長し、強化費の伸びは少し緩める。
+  price.growth = 1.7;
+  price.max = 45;
+  price.detail = (n) =>
+    `観覧単価 ${Math.round(AQUARIUM_BASE_VALUE * Math.pow(1.4, n)).toLocaleString("ja-JP")}円`;
   price.needServed = 5;
   price.reveal = 4;
   delete price.unlockAfter;
