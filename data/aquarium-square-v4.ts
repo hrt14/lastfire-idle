@@ -246,22 +246,22 @@ if (!runtime.__squareHubV4) {
     if (!runtime.hires.some((item) => item.id === hire.id)) runtime.hires.push(hire);
   }
 
-  // 最終区画を「端の最終水槽」ではなく、施設中央の大アトラクションにする。
+  // 最終区画は、施設中央の「世界の大海」。3つの小展示ではなく中央大水槽へ収束する。
   const centralArea = runtime.areas[17];
-  if (centralArea) centralArea.label = "中央オーシャンアリーナをひらく";
+  if (centralArea) centralArea.label = "世界の大海をひらく";
 
   const centralNames = [
     [
       "世界魚群パノラマ",
-      "WORLD OCEAN｜これまで集めた魚たちが一つの巨大展示をつくる中央アリーナ前室。",
+      "WORLD OCEAN｜小型魚の群泳密度を高め、中央大水槽を世界の魚群で満たす強化展示。",
     ],
     [
-      "マンタ・大型サメ回遊アリーナ",
-      "WORLD OCEAN｜大型生物が観客の周囲を回遊する、中央ランドマークの第2展示。",
+      "マンタ回遊ステージ",
+      "WORLD OCEAN｜マンタと大型エイを加え、中央大水槽に大きな回遊の動きを生む強化展示。",
     ],
     [
-      "WORLD OCEAN 中央大アリーナ",
-      "WORLD OCEAN · GRAND FINALE｜シャチショー級のスケールで客が集まる、水族館全体の中央ランドマーク。",
+      "WORLD OCEAN 中央大水槽",
+      "WORLD OCEAN · GRAND FINALE｜通常展示の約5倍。世界の魚群、マンタ、大型サメ、ジンベエザメ級の巨大魚が同じ水槽を回遊する最終ランドマーク。",
     ],
   ] as const;
 
