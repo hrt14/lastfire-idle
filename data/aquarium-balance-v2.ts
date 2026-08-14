@@ -143,9 +143,10 @@ const price = upgrade("price");
 if (price) {
   price.basePrice = 140;
   // 旧Lv20上限では中盤以降に収益の伸びしろが消える。
-  // 地域価格と同様に長く成長できるようLv45まで延長し、強化費の伸びは少し緩める。
-  price.growth = 1.7;
-  price.max = 45;
+  // Lv40以降も「次地域を開く / 単価を上げる」が同程度の投資判断になるよう、
+  // 強化費の伸びを1.6倍に抑えてLv50まで継続できるようにする。
+  price.growth = 1.6;
+  price.max = 50;
   price.detail = (n) =>
     `観覧単価 ${Math.round(AQUARIUM_BASE_VALUE * Math.pow(1.4, n)).toLocaleString("ja-JP")}円`;
   price.needServed = 5;
