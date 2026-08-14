@@ -3,6 +3,7 @@ import AquariumStageRegistry from "@/components/AquariumStageRegistry";
 import ScrollMode from "@/components/ScrollMode";
 import OceanTopLink from "@/components/OceanTopLink";
 import "@/data/aquarium-balance-v2";
+import "@/data/park-late-balance";
 import "./globals.css";
 import "./fx-toggle-fix.css";
 
