@@ -195,6 +195,71 @@ const strokeWindow = (
   ctx.stroke();
 };
 
+/** WORLD OCEAN中央大水槽だけに重ねる、過去2強化の集大成シルエット。 */
+const drawWorldOceanResidents = (
+  ctx: CanvasRenderingContext2D,
+  profile: TankProfile,
+) => {
+  ctx.save();
+  clipTankInterior(ctx, profile);
+  ctx.clip();
+
+  // 小魚の群泳。主役の巨大魚より奥に薄く置く。
+  ctx.fillStyle = "rgba(222,248,255,0.6)";
+  for (let i = 0; i < 9; i += 1) {
+    const x = -31 + (i % 5) * 13 + Math.floor(i / 5) * 5;
+    const y = -13 + (i % 3) * 5;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 2.3, 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y);
+    ctx.lineTo(x - 4.8, y - 1.8);
+    ctx.lineTo(x - 4.8, y + 1.8);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // マンタ。翼のような輪郭で、一目で普通の魚と違うと分かる。
+  ctx.fillStyle = "rgba(91,122,139,0.74)";
+  ctx.strokeStyle = "rgba(219,249,255,0.5)";
+  ctx.lineWidth = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(-15, 1);
+  ctx.bezierCurveTo(-29, -8, -32, 3, -19, 8);
+  ctx.quadraticCurveTo(-13, 11, -8, 5);
+  ctx.quadraticCurveTo(-3, 11, 3, 8);
+  ctx.bezierCurveTo(15, 3, 11, -8, -3, 1);
+  ctx.quadraticCurveTo(-9, -3, -15, 1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-8, 7);
+  ctx.quadraticCurveTo(-5, 15, -2, 18);
+  ctx.stroke();
+
+  // 大型サメ。右奥に置いてマンタと役割を分ける。
+  ctx.fillStyle = "rgba(104,137,151,0.78)";
+  ctx.beginPath();
+  ctx.ellipse(20, 8, 11, 3.6, -0.06, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(10, 8);
+  ctx.lineTo(4, 2);
+  ctx.lineTo(5, 13);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(18, 5);
+  ctx.lineTo(21, -1);
+  ctx.lineTo(24, 5);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+};
+
 export const drawTankFrame = (
   ctx: CanvasRenderingContext2D,
   profile: TankProfile,
@@ -215,6 +280,11 @@ export const drawTankFrame = (
   ctx.translate(2.5, 4);
   strokeWindow(ctx, profile, "rgba(0,0,0,0.34)", hero ? 6 : 4.6);
   ctx.restore();
+
+  // 中央大水槽には、1番・2番強化で得た魚群とマンタ・大型サメも同居させる。
+  if (area === 17 && hero && profile === "megaWall") {
+    drawWorldOceanResidents(ctx, profile);
+  }
 
   strokeWindow(ctx, profile, frame, hero ? 5.4 : 4.1);
   strokeWindow(ctx, profile, glass, hero ? 1.5 : 1.15);
@@ -309,6 +379,15 @@ export const drawTankFrame = (
       const y = Math.sin(a) * 24;
       ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.stroke();
     }
+  }
+
+  if (area === 17 && hero) {
+    // 巨大水槽だけは建築物としての土台も大きく見せる。
+    ctx.fillStyle = "rgba(8,30,42,0.9)";
+    rr(ctx, -46, 23, 92, 5, 2.5);
+    ctx.fill();
+    ctx.fillStyle = "rgba(141,242,255,0.28)";
+    ctx.fillRect(-38, 24, 76, 1.1);
   }
 
   if (hero) {
