@@ -39,12 +39,14 @@ const PROFILES: TankProfile[][] = [
   ["panorama", "megaWall", "megaWall"],
   ["megaWall", "megaWall", "tunnel"],
   ["deepSeaLab", "deepSeaLab", "deepSeaLab"],
-  ["megaWall", "tunnel", "megaWall"],
+  // WORLD OCEAN は2つの強化展示から、最後に壁一面の中央大水槽へ収束する。
+  ["panorama", "reefDome", "megaWall"],
 ];
 
 export const getAquariumDisplay = (area: number, index: number): AquariumDisplay => {
   const profile = PROFILES[area]?.[index - 1] ?? "panorama";
   const hero = index === 3;
+  const centralGrandTank = area === 17 && index === 3;
   const darkWater = area >= 15 || profile === "deepSeaLab" || profile === "tunnel";
   const tinyFishArea = [0, 3, 6, 8, 10, 12, 13, 15, 17].includes(area);
 
@@ -57,9 +59,13 @@ export const getAquariumDisplay = (area: number, index: number): AquariumDisplay
   return {
     profile,
     hero,
-    tankScale: hero ? 1.15 : index === 2 ? 1.035 : 0.98,
-    fishScaleBoost: (tinyFishArea ? 1.13 : 1.08) + (hero ? 0.025 : 0),
-    contrastBoost: darkWater ? 1.24 : hero ? 1.18 : 1.1,
+    // WORLD OCEAN の最終水槽だけは通常展示の約5倍の面積。
+    // sqrt(5) ≒ 2.24 なので、縦横を2.25倍にして「少し大きい」ではなく別格にする。
+    tankScale: centralGrandTank ? 2.25 : hero ? 1.15 : index === 2 ? 1.035 : 0.98,
+    fishScaleBoost: centralGrandTank
+      ? 1.08
+      : (tinyFishArea ? 1.13 : 1.08) + (hero ? 0.025 : 0),
+    contrastBoost: centralGrandTank ? 1.34 : darkWater ? 1.24 : hero ? 1.18 : 1.1,
     outlineMode: darkWater ? "light" : "dark",
     bandShift,
   };
