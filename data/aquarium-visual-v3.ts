@@ -14,6 +14,18 @@ type ExhibitLayout = { x: number; y: number };
 
 const layoutForArea = (area: number): ExhibitLayout[] => {
   const y0 = area * AREA_H;
+
+  // 最終区画だけは通常の3展示レイアウトを崩す。
+  // 中央上側に約5倍の大水槽、手前左右に2つの強化展示を置き、
+  // 「3つの小水槽」ではなく「1つのランドマークへ収束する」構図にする。
+  if (area === 17) {
+    return [
+      { x: 82, y: y0 + 344 },
+      { x: 278, y: y0 + 344 },
+      { x: 180, y: y0 + 230 },
+    ];
+  }
+
   const mirrored = area % 2 === 1;
   if (mirrored) {
     return [
@@ -46,18 +58,40 @@ for (let region = 0; region < aquariumRuntimeDef.areas.length; region += 1) {
 
     if (exhibit) {
       exhibit.pos = { x: p.x, y: p.y };
-      exhibit.zone = {
-        x0: p.x - 48,
-        y0: p.y - 138,
-        x1: p.x + 48,
-        y1: p.y - 14,
-      };
+      exhibit.zone =
+        region === 17 && index === 3
+          ? {
+              // 巨大水槽本体の占有範囲。通常展示の約5倍の見た目に合わせ、
+              // 中央の床をしっかりランドマークとして使う。
+              x0: p.x - 120,
+              y0: p.y - 118,
+              x1: p.x + 120,
+              y1: p.y + 48,
+            }
+          : {
+              x0: p.x - 48,
+              y0: p.y - 138,
+              x1: p.x + 48,
+              y1: p.y - 14,
+            };
     }
 
     if (viewing) {
-      viewing.pos = { x: p.x, y: p.y + 64 };
-      viewing.serve = { x: p.x, y: p.y + 23 };
-      viewing.tray = { x: p.x, y: p.y + 40 };
+      if (region === 17 && index === 3) {
+        // プレイヤーと客が「水槽の中」ではなく、その手前の観覧デッキに立つ構図。
+        viewing.pos = { x: 180, y: region * AREA_H + 382 };
+        viewing.serve = { x: 180, y: region * AREA_H + 350 };
+        viewing.tray = { x: 180, y: region * AREA_H + 366 };
+      } else if (region === 17) {
+        // 左右の2展示は大水槽の強化ポイントとして手前の隅へ寄せる。
+        viewing.pos = { x: p.x, y: p.y + 48 };
+        viewing.serve = { x: p.x, y: p.y + 21 };
+        viewing.tray = { x: p.x, y: p.y + 34 };
+      } else {
+        viewing.pos = { x: p.x, y: p.y + 64 };
+        viewing.serve = { x: p.x, y: p.y + 23 };
+        viewing.tray = { x: p.x, y: p.y + 40 };
+      }
     }
   }
 }
@@ -90,7 +124,7 @@ const areaNames = [
   "インド洋",
   "外洋",
   "深海",
-  "世界の海",
+  "世界の大海",
 ];
 
 for (let i = 0; i < areaNames.length; i += 1) {
@@ -124,10 +158,15 @@ const landmarks: Array<[number, string, string]> = [
   [14, "インド洋大型魚水槽", "OCEAN · INDIAN OCEAN｜大型エイと大型サメがゆったり横切り、魚の数ではなく大きさで圧倒する。"],
   [15, "外洋回遊大水槽", "OCEAN · OPEN OCEAN｜大群泳の中をマグロ、サメ、大型エイが回遊する水族館らしい巨大展示。"],
   [16, "深海発光大水槽", "OCEAN · DEEP SEA｜暗闇の中で深海魚が光り、館内の雰囲気そのものが変わる特殊展示。"],
-  [17, "WORLD OCEAN 巨大水槽", "WORLD OCEAN · GRAND FINALE｜世界の魚群、マンタ、大型サメ、巨大魚が同じ水槽を泳ぐ最終ランドマーク。"],
+  [17, "WORLD OCEAN 中央大水槽", "WORLD OCEAN · GRAND FINALE｜通常展示の約5倍。世界の魚群、マンタ、大型サメ、ジンベエザメ級の巨大魚が同じ水槽を回遊する最終ランドマーク。"],
 ];
 
 for (const [region, label, detail] of landmarks) rename(region, 3, label, detail);
+
+// WORLD OCEAN の1・2番展示は独立した小水槽ではなく、
+// 中央大水槽が完成していく過程を示す強化ポイントとして読める名前にする。
+rename(17, 1, "世界魚群パノラマ", "WORLD OCEAN｜小型魚の群泳密度を高め、中央大水槽を世界の魚群で満たす強化展示。");
+rename(17, 2, "マンタ回遊ステージ", "WORLD OCEAN｜マンタと大型エイを加え、中央大水槽に大きな回遊の動きを生む強化展示。");
 
 // カメラ開始位置も直線中央ではなく、入口から奥の展示へ視線が抜ける位置にする。
 aquariumRuntimeDef.startPos = { x: 176, y: 274 };
