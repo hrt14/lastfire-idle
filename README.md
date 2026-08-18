@@ -7,8 +7,10 @@
 
 - **湯けむり温泉街** — 道の上の足湯ひとつから、道を延ばし、店を建てて温泉街へ（30区画）。
   仕様と実装メモは [docs/onsen-town.md](docs/onsen-town.md)
-- **世界水族館** — メダカ数匹の小さな水槽から、世界の大海の巨大水槽へ（18区画）。
-  館内グラフィックのメモは [docs/aquarium-hall-v5.md](docs/aquarium-hall-v5.md)
+- **世界水族館** — メダカ数匹の小さな水槽から、世界の大海、ショップとレストラン、
+  そして時代をさかのぼって40億年前の生命誕生の海まで（54区画）。
+  館内グラフィックのメモは [docs/aquarium-hall-v5.md](docs/aquarium-hall-v5.md)、
+  施設棟と古代棟は [docs/aquarium-expansion-v6.md](docs/aquarium-expansion-v6.md)
 - **火のはじまり** — 狩り・薪・たき火から、集落と村へ（6区画）。
   設計メモは [docs/fire-early-game.md](docs/fire-early-game.md) と
   [docs/fire-zones.md](docs/fire-zones.md)

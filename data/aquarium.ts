@@ -18,6 +18,11 @@ import {
 /**
  * はんじょうダッシュ「世界水族館」
  *
+ * 54区画。本館18（現世の世界の海）＋ 施設棟4（ショップ・レストラン・
+ * 両生類館・爬虫類館）＋ 古代棟32（時代をさかのぼり、最後は生命誕生の海）。
+ * 館内のレイアウトは lib/aquariumLayout.ts、拡張の中身は
+ * data/aquarium-expansion-v6.ts と docs/aquarium-expansion-v6.md にある。
+ *
  * 専用エンジンは作らず、既存のドリームパークの仕組みを再利用する。
  * - 券売所 = 既存の producer
  * - 水槽 = 「魚が泳ぐ」既存の fish art を持つ作業場
@@ -862,7 +867,7 @@ const aquariumRuntimeDef: StageDef = {
   id: "park",
   visualTheme: "aquarium",
   name: "世界水族館",
-  subtitle: "メダカから世界の大海へ",
+  subtitle: "メダカから、40億年前の海へ",
   icon: "🐠",
   itemIcon: "🎟️",
   frontRoom: { top: 38, bottom: 210 },

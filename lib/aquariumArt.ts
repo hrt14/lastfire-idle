@@ -306,17 +306,17 @@ const EXHIBITS: ExhibitVisual[][] = [
   [
     { name: "氷の下のタラ", habitat: "ice-sea", primary: "small", count: 15, color: "#b9cbd4", density: 1.2 },
     { name: "タテゴトアザラシ", habitat: "ice-sea", primary: "seal", count: 3, color: "#e2e8ec", secondaryColor: "#4c5a63", pattern: "spots" },
-    { name: "ホッキョククジラ", habitat: "ice-sea", primary: "whale", count: 1, color: "#3d4a56", heroScale: 2.4 },
+    { name: "ホッキョククジラ", habitat: "ice-sea", primary: "whale", count: 1, color: "#5b6d7c", heroScale: 2.4 },
   ],
   [
     { name: "メガロドンの歯", habitat: "giant-shark-sea", primary: "fossil", count: 5, color: "#d9cbaa", still: true, heroScale: 1.2 },
     { name: "古代のホホジロザメ", habitat: "giant-shark-sea", primary: "shark", count: 3, color: "#71818c", heroScale: 1.45 },
-    { name: "メガロドン", habitat: "giant-shark-sea", primary: "shark", secondary: "tiny", count: 6, color: "#4d5a63", secondaryColor: "#cfe4ea", heroScale: 2.7 },
+    { name: "メガロドン", habitat: "giant-shark-sea", primary: "shark", secondary: "tiny", count: 6, color: "#6b7c88", secondaryColor: "#cfe4ea", heroScale: 2.7 },
   ],
   [
     { name: "アクロフィセター", habitat: "giant-shark-sea", primary: "dolphin", count: 3, color: "#5d6b74" },
     { name: "古代のイルカ", habitat: "giant-shark-sea", primary: "dolphin", count: 7, color: "#8fa3ad" },
-    { name: "リヴィアタン", habitat: "giant-shark-sea", primary: "whale", count: 1, color: "#43505a", heroScale: 2.5 },
+    { name: "リヴィアタン", habitat: "giant-shark-sea", primary: "whale", count: 1, color: "#5f7180", heroScale: 2.5 },
   ],
   [
     { name: "デスモスチルス", habitat: "warm-shallow", primary: "landbeast", count: 2, color: "#6f6250" },
@@ -331,7 +331,7 @@ const EXHIBITS: ExhibitVisual[][] = [
   [
     { name: "ドルドン", habitat: "giant-shark-sea", primary: "whale", count: 3, color: "#5b6a72" },
     { name: "原始のマナティー", habitat: "giant-shark-sea", primary: "seacow", count: 2, color: "#7a6d5d" },
-    { name: "バシロサウルス", habitat: "giant-shark-sea", primary: "serpentWhale", count: 1, color: "#3f4c55", heroScale: 2.6 },
+    { name: "バシロサウルス", habitat: "giant-shark-sea", primary: "serpentWhale", count: 1, color: "#5c6e7c", heroScale: 2.6 },
   ],
   [
     { name: "パキケトゥス", habitat: "paleo-shore", primary: "landbeast", count: 3, color: "#7c6a4c" },
@@ -345,18 +345,18 @@ const EXHIBITS: ExhibitVisual[][] = [
   ],
   [
     { name: "最後のアンモナイト", habitat: "mesozoic-sea", primary: "ammonite", count: 7, color: "#c2a877", secondaryColor: "#7a6242" },
-    { name: "プログナトドン", habitat: "mesozoic-sea", primary: "mosasaur", count: 2, color: "#4c6069", heroScale: 1.5 },
-    { name: "モササウルス", habitat: "mesozoic-sea", primary: "mosasaur", secondary: "ammonite", count: 5, color: "#3b525f", secondaryColor: "#b39a68", heroScale: 2.6 },
+    { name: "プログナトドン", habitat: "mesozoic-sea", primary: "mosasaur", count: 2, color: "#68838d", heroScale: 1.5 },
+    { name: "モササウルス", habitat: "mesozoic-sea", primary: "mosasaur", secondary: "ammonite", count: 5, color: "#587a86", secondaryColor: "#b39a68", heroScale: 2.6 },
   ],
   [
     { name: "ヘスペロルニス", habitat: "mesozoic-sea", primary: "diveBird", count: 5, color: "#465049", secondaryColor: "#cfd6c4" },
     { name: "クシファクティヌス", habitat: "mesozoic-sea", primary: "tuna", count: 2, color: "#8a9aa2", heroScale: 1.9 },
-    { name: "アーケロン", habitat: "mesozoic-sea", primary: "turtle", count: 1, color: "#59604b", heroScale: 2.6 },
+    { name: "アーケロン", habitat: "mesozoic-sea", primary: "turtle", count: 1, color: "#7d8763", heroScale: 2.6 },
   ],
   [
     { name: "イノセラムス", habitat: "mesozoic-sea", primary: "bivalve", count: 8, color: "#b6a684", still: true },
-    { name: "スティクソサウルス", habitat: "mesozoic-sea", primary: "plesiosaur", count: 2, color: "#54677a", heroScale: 1.45 },
-    { name: "エラスモサウルス", habitat: "mesozoic-sea", primary: "plesiosaur", count: 1, color: "#405568", heroScale: 2.4 },
+    { name: "スティクソサウルス", habitat: "mesozoic-sea", primary: "plesiosaur", count: 2, color: "#7590a6", heroScale: 1.45 },
+    { name: "エラスモサウルス", habitat: "mesozoic-sea", primary: "plesiosaur", count: 1, color: "#6a86a0", heroScale: 2.4 },
   ],
   [
     { name: "オンコプリスティス", habitat: "paleo-river", primary: "sawfish", count: 3, color: "#7d7f61" },
@@ -365,13 +365,13 @@ const EXHIBITS: ExhibitVisual[][] = [
   ],
   [
     { name: "レプトレピス", habitat: "mesozoic-sea", primary: "tiny", count: 18, color: "#c5d8de", density: 1.25 },
-    { name: "メトリオリンクス", habitat: "mesozoic-sea", primary: "mosasaur", count: 3, color: "#4e5f52" },
-    { name: "リオプレウロドン", habitat: "mesozoic-sea", primary: "pliosaur", count: 1, color: "#3d4f5c", heroScale: 2.5 },
+    { name: "メトリオリンクス", habitat: "mesozoic-sea", primary: "mosasaur", count: 3, color: "#6d8272" },
+    { name: "リオプレウロドン", habitat: "mesozoic-sea", primary: "pliosaur", count: 1, color: "#5d7686", heroScale: 2.5 },
   ],
   [
     { name: "ベレムナイト", habitat: "mesozoic-sea", primary: "belemnite", count: 10, color: "#9fb2b6" },
     { name: "アンモナイトの群れ", habitat: "mesozoic-sea", primary: "ammonite", count: 9, color: "#c9ad78", secondaryColor: "#7a6242" },
-    { name: "イクチオサウルス", habitat: "mesozoic-sea", primary: "dolphin", count: 2, color: "#4f6470", heroScale: 2.1 },
+    { name: "イクチオサウルス", habitat: "mesozoic-sea", primary: "dolphin", count: 2, color: "#6f8b99", heroScale: 2.1 },
   ],
   [
     { name: "古代のカブトガニ", habitat: "lagoon", primary: "horseshoe", count: 4, color: "#8a7248" },
@@ -381,7 +381,7 @@ const EXHIBITS: ExhibitVisual[][] = [
   [
     { name: "タニストロフェウス", habitat: "mesozoic-sea", primary: "plesiosaur", count: 2, color: "#63705c", heroScale: 1.35 },
     { name: "プラコダス", habitat: "mesozoic-sea", primary: "turtle", count: 4, color: "#7a6b4e" },
-    { name: "ショニサウルス", habitat: "mesozoic-sea", primary: "dolphin", secondary: "tiny", count: 8, color: "#44545f", secondaryColor: "#cfe1e6", heroScale: 2.9 },
+    { name: "ショニサウルス", habitat: "mesozoic-sea", primary: "dolphin", secondary: "tiny", count: 8, color: "#63798a", secondaryColor: "#cfe1e6", heroScale: 2.9 },
   ],
   [
     { name: "ヘノドゥス", habitat: "lagoon", primary: "turtle", count: 3, color: "#8a7a55" },
@@ -396,7 +396,7 @@ const EXHIBITS: ExhibitVisual[][] = [
   [
     { name: "ゴニアタイト", habitat: "permian-sea", primary: "ammonite", count: 8, color: "#a89468", secondaryColor: "#6b5a3c" },
     { name: "メソサウルス", habitat: "permian-sea", primary: "plesiosaur", count: 4, color: "#5f6b52" },
-    { name: "ヘリコプリオン", habitat: "permian-sea", primary: "earlyshark", count: 1, color: "#5c6a6c", heroScale: 2.5 },
+    { name: "ヘリコプリオン", habitat: "permian-sea", primary: "earlyshark", count: 1, color: "#7d8d90", heroScale: 2.5 },
   ],
   [
     { name: "巨大なヤゴ", habitat: "carbon-swamp", primary: "nymph", count: 5, color: "#6b7248" },
@@ -411,7 +411,7 @@ const EXHIBITS: ExhibitVisual[][] = [
   [
     { name: "ボスリオレピス", habitat: "devonian", primary: "placoderm", count: 5, color: "#7a7357", secondaryColor: "#a89b74" },
     { name: "クラドセラケ", habitat: "devonian", primary: "earlyshark", count: 5, color: "#8b8f7e" },
-    { name: "ダンクルオステウス", habitat: "devonian", primary: "placoderm", count: 1, color: "#5c6350", secondaryColor: "#9aa383", heroScale: 2.8 },
+    { name: "ダンクルオステウス", habitat: "devonian", primary: "placoderm", count: 1, color: "#7c8468", secondaryColor: "#9aa383", heroScale: 2.8 },
   ],
   [
     { name: "ハイネリア", habitat: "paleo-shore", primary: "lobefin", count: 2, color: "#6a6b4a", heroScale: 1.65 },
@@ -426,10 +426,10 @@ const EXHIBITS: ExhibitVisual[][] = [
   [
     { name: "三葉虫の群れ", habitat: "ordovician", primary: "trilobite", count: 11, color: "#6f6350", density: 1.15 },
     { name: "筆石の帯", habitat: "ordovician", primary: "graptolite", count: 9, color: "#4f5a5e" },
-    { name: "カメロケラス", habitat: "ordovician", primary: "orthocone", count: 1, color: "#b09a6a", secondaryColor: "#6b5a3c", heroScale: 2.6 },
+    { name: "カメロケラス", habitat: "ordovician", primary: "orthocone", count: 1, color: "#d6bd86", secondaryColor: "#6b5a3c", heroScale: 2.6 },
   ],
   [
-    { name: "ウィワクシア", habitat: "cambrian", primary: "hallucigenia", count: 6, color: "#a08553" },
+    { name: "ウィワクシア", habitat: "cambrian", primary: "hallucigenia", count: 6, color: "#c2a06a" },
     { name: "ハルキゲニア", habitat: "cambrian", primary: "hallucigenia", count: 8, color: "#c0a06a", pattern: "stripes" },
     { name: "アノマロカリス", habitat: "cambrian", primary: "anomalocaris", count: 1, color: "#c2603f", secondaryColor: "#f4d9a8", heroScale: 2.4 },
   ],
@@ -2095,22 +2095,34 @@ const drawHabitat = (ctx: CanvasRenderingContext2D, habitat: Habitat, seed: numb
     }
   }
   if (habitat === "terrarium") {
-    // 左が陸、右が水。段差と植物で、水槽と別ものだと分かるようにする。
+    // 左が陸、右が水。生きものはこの上に乗るので、必ず先に描いておく。
     ctx.fillStyle = "rgba(104,120,70,0.94)";
     ctx.beginPath();
-    ctx.moveTo(-38, 4); ctx.quadraticCurveTo(-18, -2, 2, 5); ctx.lineTo(2, 21); ctx.lineTo(-38, 21);
+    ctx.moveTo(-38, 10); ctx.quadraticCurveTo(-20, 4, -2, 11); ctx.lineTo(-2, 21); ctx.lineTo(-38, 21);
     ctx.closePath(); ctx.fill();
+    // 岸のふち。陸と水のさかい目をはっきりさせる。
+    ctx.strokeStyle = "rgba(62,82,46,0.9)"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(-38, 10); ctx.quadraticCurveTo(-20, 4, -2, 11); ctx.stroke();
+    // 水のほう
+    ctx.fillStyle = "rgba(110,164,186,0.34)";
+    ctx.beginPath(); ctx.moveTo(-2, 11); ctx.lineTo(38, 13); ctx.lineTo(38, 21); ctx.lineTo(-2, 21); ctx.closePath(); ctx.fill();
     ctx.fillStyle = "rgba(56,80,52,0.8)";
     for (let i = 0; i < 5; i += 1) {
       const x = -34 + i * 8;
-      ctx.beginPath(); ctx.ellipse(x, -1 + seeded(seed, i) * 3, 4.4, 2, -0.5 + i * 0.2, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x, 5 + seeded(seed, i) * 3, 4.4, 2, -0.5 + i * 0.2, 0, TAU); ctx.fill();
     }
     ctx.strokeStyle = "#6b5738"; ctx.lineWidth = 2.6;
-    ctx.beginPath(); ctx.moveTo(-24, 2); ctx.quadraticCurveTo(-4, -12, 26, -6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-30, -4); ctx.quadraticCurveTo(-4, -15, 30, -8); ctx.stroke();
+    // 枝から下がる葉
+    for (let i = 0; i < 5; i += 1) {
+      const x = -26 + i * 13;
+      ctx.fillStyle = i % 2 ? "rgba(96,142,74,0.85)" : "rgba(126,168,84,0.85)";
+      ctx.beginPath(); ctx.ellipse(x, -14 + seeded(seed, i + 30) * 4, 5.4, 2.4, -0.6 + i * 0.28, 0, TAU); ctx.fill();
+    }
     // 霧吹きの水滴
     ctx.fillStyle = "rgba(226,250,240,0.4)";
     for (let i = 0; i < 6; i += 1) {
-      ctx.beginPath(); ctx.arc(-30 + seeded(seed, i + 40) * 62, -16 + seeded(seed, i + 50) * 10, 0.9, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(-30 + seeded(seed, i + 40) * 62, -18 + seeded(seed, i + 50) * 8, 0.9, 0, TAU); ctx.fill();
     }
   }
 
@@ -2229,6 +2241,12 @@ const BOTTOM_DWELLERS = new Set<Creature>([
   "sawfish",
   "spinosaur",
   "frog",
+  "crinoid",
+  "stromatolite",
+  "charnia",
+  "bivalve",
+  "mineral",
+  "fossil",
 ]);
 
 /** ゆっくり往復する大物。群れと同じ速さで泳ぐと迫力が出ない */

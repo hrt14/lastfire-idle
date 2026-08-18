@@ -11056,7 +11056,7 @@ export default function Shop({ onSample, paused }: Props) {
         ? new Set(openedAreasForBackground.map((area) => area.id))
         : null;
       /*
-       * 5×4の区画を毎フレーム18枚描くと重いので、画面に映る区画だけに絞る。
+       * 9×6の区画を毎フレーム54枚描くと重いので、画面に映る区画だけに絞る。
        * ワールド全体（box）ではなく、いま見えている範囲で判定する。
        */
       const viewRect = {
@@ -11065,6 +11065,14 @@ export default function Shop({ onSample, paused }: Props) {
         x1: camX + canvas.width / scale + 40,
         y1: camY + canvas.height / scale + 40,
       };
+      /** 画面の外か。区画・展示が増えたステージで、描かなくていいものを外す */
+      const offView = (x: number, y: number, pad = 70) =>
+        x + pad < viewRect.x0 ||
+        x - pad > viewRect.x1 ||
+        y + pad < viewRect.y0 ||
+        y - pad > viewRect.y1;
+      const rectOffView = (r: { x0: number; y0: number; x1: number; y1: number }) =>
+        r.x1 < viewRect.x0 || r.x0 > viewRect.x1 || r.y1 < viewRect.y0 || r.y0 > viewRect.y1;
       const backgroundAreas = isAquarium
         ? areas.filter(
             (area) =>
@@ -11492,6 +11500,7 @@ export default function Shop({ onSample, paused }: Props) {
       if (isAquarium) {
         // 水槽沿いの館内順路。遊園地の石畳ではなく青い誘導ライン。
         for (const area of openAreas(state)) {
+          if (rectOffView(area.rect)) continue;
           const { rect } = area;
           ctx.fillStyle = "rgba(5,16,24,0.34)";
           ctx.fillRect(rect.x0, rect.y1 - 38, rect.x1 - rect.x0, 30);
@@ -11862,6 +11871,7 @@ export default function Shop({ onSample, paused }: Props) {
       for (const seat of openSeats(state)) {
         const mode = seatMode(seat);
         if (mode === "table" || mode === "shelf") {
+          if (offView(seat.pos.x, seat.pos.y)) continue;
           const { x, y } = seat.pos;
           const area = openAreas(state).find(
             (item) => item.id === `area-${seat.area}`,
@@ -12074,6 +12084,7 @@ export default function Shop({ onSample, paused }: Props) {
       }
 
       for (const seat of openSeats(state)) {
+        if (offView(seat.pos.x, seat.pos.y)) continue;
         const tray = trayPos(seat);
         const mode = seatMode(seat);
         const hot = waitingSeats.has(seat.id);
@@ -12171,6 +12182,7 @@ export default function Shop({ onSample, paused }: Props) {
       /* --- 区画の仕切り --- */
       for (const area of openAreas(state)) {
         if (area.price === 0 || area.rect.y0 === 0) continue;
+        if (rectOffView(area.rect)) continue;
         if (!isFire) {
           ctx.strokeStyle = "rgba(246,231,207,0.14)";
           ctx.lineWidth = 2;
@@ -12490,7 +12502,7 @@ export default function Shop({ onSample, paused }: Props) {
         ctx.fillText("WORLD AQUARIUM", entrance.x, signY + 28);
         ctx.font = `800 10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
         ctx.fillStyle = "rgba(196,244,250,0.82)";
-        ctx.fillText("世 界 水 族 館 ・ メ ダ カ か ら 世 界 の 大 海 へ", entrance.x, signY + 45);
+        ctx.fillText("世 界 水 族 館 ・ メ ダ カ か ら 、 4 0 億 年 前 の 海 へ", entrance.x, signY + 45);
         ctx.font = FONT;
         // 入口そのもの
         ctx.fillStyle = "#061620";
@@ -12544,6 +12556,7 @@ export default function Shop({ onSample, paused }: Props) {
       /* --- 場所ごとの自動供給機 --- */
       for (const seat of openSeats(state)) {
         if (!hasAuto(state, seat)) continue;
+        if (offView(seat.pos.x, seat.pos.y)) continue;
         const at = autoPos(seat);
         shadow(ctx, at.x, at.y + 16, 12);
         ctx.fillStyle = "#3f4a5a";

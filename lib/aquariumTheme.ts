@@ -206,6 +206,26 @@ const WINDOW_BOTTOM = 205;
 /** 通路の床が始まる高さ */
 const FLOOR_TOP = 205;
 
+/** #rrggbb の明るさ（0〜1）。影を濃くするか淡くするかの判定に使う */
+const luminance = (hex: string) => {
+  const v = parseInt(hex.slice(1), 16);
+  const r = (v >> 16) & 255;
+  const g = (v >> 8) & 255;
+  const b = v & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+};
+
+/**
+ * 大窓の奥に置く影の色。
+ *
+ * 明るい水に白い影を置いても、暗い水に黒い影を置いても、どちらも消える。
+ * 窓の中ほどの明るさを見て、必ず反対側の色を返す。
+ */
+const shadeFor = (theme: Theme) =>
+  (luminance(theme.waterTop) + luminance(theme.waterBottom)) / 2 > 0.42
+    ? "#22303a"
+    : "#dff8ff";
+
 const areaIndex = (id: string) => {
   const match = id.match(/area-(\d+)/);
   return match ? Number(match[1]) : 0;
@@ -1024,11 +1044,12 @@ const drawHabitatScene = (
       warmth.addColorStop(1, "rgba(255,190,110,0.26)");
       ctx.fillStyle = warmth;
       ctx.fillRect(x0, y1 - 70, w, 70);
+      const dineShade = shadeFor(theme);
       for (let i = 0; i < 9; i += 1) {
-        fishShadow(ctx, x0 + 20 + i * 38, y0 + 40 + (i % 4) * 26, 0.34 + (i % 3) * 0.1, 0.15, i % 2 ? 1 : -1, "#dff8ff");
+        fishShadow(ctx, x0 + 20 + i * 38, y0 + 40 + (i % 4) * 26, 0.34 + (i % 3) * 0.1, 0.2, i % 2 ? 1 : -1, dineShade);
       }
       // 頭上を横切る大きな影。食事中に見上げると、これが通る。
-      fishShadow(ctx, x0 + 120, y0 + 30, 1.2, 0.13, -1, "#dff8ff");
+      fishShadow(ctx, x0 + 120, y0 + 30, 1.2, 0.18, -1, dineShade);
       break;
     }
     case "facility-shop":
@@ -1104,9 +1125,10 @@ const drawHabitatScene = (
       deep.addColorStop(1, "rgba(4,26,44,0.5)");
       ctx.fillStyle = deep;
       ctx.fillRect(x0, y0, w, y1 - y0);
-      fishShadow(ctx, x0 + w * 0.62, y0 + (y1 - y0) * 0.52, 2.5, 0.17, -1, "#d8f2ff");
+      const openShade = shadeFor(theme);
+      fishShadow(ctx, x0 + w * 0.62, y0 + (y1 - y0) * 0.52, 2.5, 0.22, -1, openShade);
       for (let i = 0; i < 5; i += 1) {
-        fishShadow(ctx, x0 + 30 + i * 74, y0 + 34 + (i % 3) * 30, 0.3, 0.1, i % 2 ? 1 : -1, "#d8f2ff");
+        fishShadow(ctx, x0 + 30 + i * 74, y0 + 34 + (i % 3) * 30, 0.3, 0.14, i % 2 ? 1 : -1, openShade);
       }
       break;
     }
@@ -1130,7 +1152,7 @@ const drawHabitatScene = (
         ctx.quadraticCurveTo(x + 10, y1 - 34, x + 2, y1 - 58 - (i % 3) * 8);
         ctx.stroke();
       }
-      fishShadow(ctx, x0 + w * 0.4, y0 + (y1 - y0) * 0.42, 1.6, 0.15, 1, theme.warm ? "#2f4a42" : "#dff8ff");
+      fishShadow(ctx, x0 + w * 0.4, y0 + (y1 - y0) * 0.42, 1.6, 0.2, 1, theme.warm ? "#2f4a42" : shadeFor(theme));
       break;
     }
     case "paleo-shore": {
@@ -1212,7 +1234,9 @@ const drawHabitatScene = (
     case "mesozoic": {
       // 中生代の海。アンモナイトの渦が奥に浮かび、首長竜の影が横切る。
       drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
-      ctx.strokeStyle = "rgba(226,244,250,0.16)";
+      ctx.save();
+      ctx.globalAlpha = 0.24;
+      ctx.strokeStyle = shadeFor(theme);
       ctx.lineWidth = 2.2;
       for (let i = 0; i < 6; i += 1) {
         const cx = x0 + 26 + i * 62;
@@ -1228,16 +1252,18 @@ const drawHabitatScene = (
         }
         ctx.stroke();
       }
+      ctx.restore();
       // 首の長い影。中生代の海だと一目で分かるシルエット。
       ctx.save();
-      ctx.globalAlpha = 0.16;
-      ctx.fillStyle = "#dff8ff";
+      ctx.globalAlpha = 0.22;
+      const meso = shadeFor(theme);
+      ctx.fillStyle = meso;
       const ny = y0 + (y1 - y0) * 0.46;
       const nx = x0 + w * 0.36;
       ctx.beginPath();
       ctx.ellipse(nx, ny, 44, 13, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "#dff8ff";
+      ctx.strokeStyle = meso;
       ctx.lineWidth = 7;
       ctx.beginPath();
       ctx.moveTo(nx + 34, ny - 4);
@@ -1329,8 +1355,8 @@ const drawHabitatScene = (
       ctx.fill();
       // まっすぐな殻の影。古生代の海の目印。
       ctx.save();
-      ctx.globalAlpha = 0.16;
-      ctx.fillStyle = "#e2f4ff";
+      ctx.globalAlpha = 0.26;
+      ctx.fillStyle = shadeFor(theme);
       for (let i = 0; i < 3; i += 1) {
         const cy = y0 + 40 + i * 44;
         const cx = x0 + 40 + i * 96;
@@ -1397,8 +1423,8 @@ const drawHabitatScene = (
       }
       // 巨大な顎の影
       ctx.save();
-      ctx.globalAlpha = 0.17;
-      ctx.fillStyle = "#eefade";
+      ctx.globalAlpha = 0.24;
+      ctx.fillStyle = shadeFor(theme);
       const jy = y0 + (y1 - y0) * 0.44;
       ctx.beginPath();
       ctx.moveTo(x0 + w * 0.7, jy - 26);
@@ -1684,7 +1710,10 @@ const drawTerrariumWall = (
   ctx: CanvasRenderingContext2D,
   rect: AquariumArea["rect"],
   theme: Theme,
+  index: number,
 ) => {
+  // 両生類館は水と苔、爬虫類館は岩と乾いた砂。同じケージでも中身を変える。
+  const reptile = index === 21;
   const { x0, x1, y0, y1 } = windowRect(rect);
   const w = x1 - x0;
   const h = y1 - y0;
@@ -1709,8 +1738,8 @@ const drawTerrariumWall = (
     ctx.fillStyle = air;
     ctx.fillRect(cx, cy, cw, ch);
 
-    // 下半分が水、上半分が陸と枝。
-    ctx.fillStyle = "rgba(58,86,52,0.9)";
+    // 下半分が地面、上半分が枝と葉。
+    ctx.fillStyle = reptile ? "rgba(112,98,58,0.92)" : "rgba(58,86,52,0.9)";
     ctx.beginPath();
     ctx.moveTo(cx, cy + ch * 0.52);
     ctx.quadraticCurveTo(cx + cw * 0.5, cy + ch * 0.44, cx + cw, cy + ch * 0.56);
@@ -1718,8 +1747,36 @@ const drawTerrariumWall = (
     ctx.lineTo(cx, cy + ch);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "rgba(126,182,214,0.36)";
-    ctx.fillRect(cx, cy + ch * 0.72, cw, ch * 0.28);
+    if (reptile) {
+      // 日光浴の岩と、乾いた砂の筋。
+      ctx.fillStyle = "rgba(146,132,92,0.95)";
+      ctx.beginPath();
+      ctx.ellipse(cx + cw * 0.32, cy + ch * 0.64, cw * 0.26, ch * 0.06, -0.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(180,164,118,0.5)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 3; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(cx + 4, cy + ch * (0.78 + i * 0.06));
+        ctx.lineTo(cx + cw - 4, cy + ch * (0.8 + i * 0.06));
+        ctx.stroke();
+      }
+      // 浅い水皿
+      ctx.fillStyle = "rgba(126,182,214,0.3)";
+      ctx.beginPath();
+      ctx.ellipse(cx + cw * 0.74, cy + ch * 0.88, cw * 0.2, ch * 0.04, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // 苔と、湧き水の浅瀬。
+      ctx.fillStyle = "rgba(126,182,214,0.36)";
+      ctx.fillRect(cx, cy + ch * 0.72, cw, ch * 0.28);
+      ctx.fillStyle = "rgba(96,142,74,0.7)";
+      for (let i = 0; i < 4; i += 1) {
+        ctx.beginPath();
+        ctx.ellipse(cx + 6 + i * (cw / 4), cy + ch * (0.58 + (i % 2) * 0.05), 6, 2.6, -0.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     ctx.strokeStyle = "#6b5738";
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -1727,13 +1784,67 @@ const drawTerrariumWall = (
     ctx.quadraticCurveTo(cx + cw * 0.5, cy + ch * 0.16, cx + cw - 4, cy + ch * 0.3);
     ctx.stroke();
     for (let i = 0; i < 4; i += 1) {
-      leaf(ctx, cx + 8 + i * (cw / 4), cy + ch * (0.2 + (i % 2) * 0.12), 9, 4, -0.5 + i * 0.3, "#5f9a58");
+      leaf(
+        ctx,
+        cx + 8 + i * (cw / 4),
+        cy + ch * (0.2 + (i % 2) * 0.12),
+        9,
+        4,
+        -0.5 + i * 0.3,
+        reptile ? "#8a9450" : "#5f9a58",
+      );
     }
-    // ケージの主。1匹だけ、輪郭のはっきりした影を置く。
-    ctx.fillStyle = "rgba(24,32,22,0.72)";
-    ctx.beginPath();
-    ctx.ellipse(cx + cw * 0.5, cy + ch * (0.62 + (c % 2) * 0.08), cw * 0.2, ch * 0.05, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // ケージの主。両生類館はカエル、爬虫類館はトカゲとヘビ。
+    const px = cx + cw * (c % 2 ? 0.34 : 0.62);
+    const py = cy + ch * (c % 2 ? 0.5 : 0.6);
+    const frog = !reptile && c % 2 === 1;
+    ctx.fillStyle = frog ? "rgba(58,146,78,0.95)" : reptile ? "rgba(158,138,68,0.95)" : "rgba(96,124,72,0.95)";
+    ctx.strokeStyle = "rgba(12,22,12,0.8)";
+    ctx.lineWidth = 0.9;
+    if (frog) {
+      // カエル。丸い体と、たたんだ後ろ足。
+      ctx.beginPath();
+      ctx.ellipse(px, py, 6.4, 4.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(px - 1, py + side * 3);
+        ctx.quadraticCurveTo(px - 8, py + side * 8, px - 2, py + side * 7);
+        ctx.quadraticCurveTo(px + 3, py + side * 6, px + 2, py + side * 3);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = "#f6fbf0";
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(px + 4, py - 2 + side * 1.8, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      // トカゲ。長い胴と尾、4本の足。
+      ctx.beginPath();
+      ctx.ellipse(px, py, 8, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(146,124,58,0.95)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px - 7, py);
+      ctx.quadraticCurveTo(px - 14, py - 2, px - 18, py + 3);
+      ctx.stroke();
+      ctx.lineWidth = 1.6;
+      for (const [lx, ly] of [[3, 1], [-3, 1], [3, -1], [-3, -1]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(px + lx, py + ly * 2);
+        ctx.lineTo(px + lx - 2, py + ly * 5.4);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#f6fbf0";
+      ctx.beginPath();
+      ctx.arc(px + 6, py - 1, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
 
     // 保温ランプ。爬虫類館らしい暖色の点光源。
@@ -1814,8 +1925,8 @@ const drawWindowMotion = (
    * 奥を横切る生きもの。地域が進むほど大きく、数を減らす。
    * 「大きい魚がいる = 進んでいる」がひと目で分かるようにする。
    */
-  const shade = theme.warm ? "#2c4b45" : "#dff8ff";
-  const alpha = theme.sunless ? 0.07 : theme.warm ? 0.16 : 0.15;
+  const shade = theme.warm ? "#2c4b45" : shadeFor(theme);
+  const alpha = theme.sunless ? 0.07 : theme.warm ? 0.16 : 0.18;
   const bigness = 0.5 + index * 0.1;
   const school = index < 8 ? 6 : 5;
   for (let i = 0; i < school; i += 1) {
@@ -2659,7 +2770,7 @@ const paintHallStatic = (
   drawCeiling(ctx, rect, theme, index);
   if (index === 0) drawEntranceLobby(ctx, rect);
   else if (theme.kind === "shop") drawShopWall(ctx, rect, theme);
-  else if (theme.kind === "terrarium") drawTerrariumWall(ctx, rect, theme);
+  else if (theme.kind === "terrarium") drawTerrariumWall(ctx, rect, theme, index);
   else {
     drawGreatWindow(ctx, rect, theme);
     drawGlassSheen(ctx, rect);

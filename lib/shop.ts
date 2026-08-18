@@ -515,7 +515,7 @@ export const revealLimit = (state: ShopState) => {
   if (base === undefined) return Infinity;
   let limit = base;
   for (const [id, value] of Object.entries(currentStage.revealLimitBy ?? {})) {
-    if (state.unlocked.includes(id)) limit = Math.max(limit, value);
+    if (isUnlocked(state, id)) limit = Math.max(limit, value);
   }
   return limit;
 };
@@ -564,7 +564,7 @@ export const autoPrice = (seat: SeatSpec) =>
   Math.max(2500, Math.round(seat.price * 6 + 2500));
 
 export const hasAuto = (state: ShopState, seat: SeatSpec) =>
-  !!currentStage.autoServer && state.unlocked.includes(autoId(seat));
+  !!currentStage.autoServer && isUnlocked(state, autoId(seat));
 
 /** 自動供給機を置く場所（配膳口の横） */
 export const autoPos = (seat: SeatSpec): Vec => ({
@@ -731,8 +731,34 @@ export const applyStage = (id: StageId) => {
 applyStage("ramen");
 
 
+/*
+ * 開いたものの id を引くための索引。
+ *
+ * state.unlocked は配列なので includes が線形に走る。区画54・展示162まで
+ * 伸びると、1フレームのあいだに何万回も文字列を突き合わせることになり、
+ * 描画ではなくこの判定だけでフレームが埋まる。
+ * unlocked は積むだけ（fromPersisted で作り直すほかは push のみ）なので、
+ * 配列そのものか長さが変わったときにだけ Set を作り直せばよい。
+ */
+let unlockedIndex: { list: string[]; size: number; set: Set<string> } | null = null;
+
+export const isUnlocked = (state: ShopState, id: string) => {
+  if (
+    !unlockedIndex ||
+    unlockedIndex.list !== state.unlocked ||
+    unlockedIndex.size !== state.unlocked.length
+  ) {
+    unlockedIndex = {
+      list: state.unlocked,
+      size: state.unlocked.length,
+      set: new Set(state.unlocked),
+    };
+  }
+  return unlockedIndex.set.has(id);
+};
+
 export const openAreas = (state: ShopState) =>
-  areas.filter((area) => area.price === 0 || state.unlocked.includes(area.id));
+  areas.filter((area) => area.price === 0 || isUnlocked(state, area.id));
 
 /** 店先（歩道）の深さ */
 export const OUTSIDE_DEPTH = 118;
@@ -822,7 +848,7 @@ export const streetPos = (state: ShopState): Vec => ({
 
 /** 次に買える区画（なければ null） */
 export const nextArea = (state: ShopState) =>
-  areas.find((area) => area.price > 0 && !state.unlocked.includes(area.id)) ??
+  areas.find((area) => area.price > 0 && !isUnlocked(state, area.id)) ??
   null;
 
 /* ---------- 状態 ---------- */
@@ -1376,7 +1402,7 @@ export const fromPersisted = (input: unknown): ShopState => {
         const price = pad.price;
         if (value >= price) {
           // 値段を変えた結果、もう払い終えているぶんは開放しておく
-          if (!state.unlocked.includes(pad.id)) state.unlocked.push(pad.id);
+          if (!isUnlocked(state, pad.id)) state.unlocked.push(pad.id);
           continue;
         }
         state.padProgress[pad.id] = clamp(value, 0, price);
@@ -1397,8 +1423,8 @@ export const fromPersisted = (input: unknown): ShopState => {
   // ただで付いてくる作業場は、読み込み直したときにも開いておく
   for (const extra of stoves) {
     if (extra.price !== 0 || !extra.unlockAfter) continue;
-    if (state.unlocked.includes(extra.id)) continue;
-    if (state.unlocked.includes(extra.unlockAfter)) state.unlocked.push(extra.id);
+    if (isUnlocked(state, extra.id)) continue;
+    if (isUnlocked(state, extra.unlockAfter)) state.unlocked.push(extra.id);
   }
 
   // 建てあがった建物と、積みかけの材料
@@ -1444,7 +1470,7 @@ export const fromPersisted = (input: unknown): ShopState => {
   }
 
   for (const stove of stoves) {
-    if (state.unlocked.includes(stove.id)) {
+    if (isUnlocked(state, stove.id)) {
       state.ready[stove.id] = 0;
       state.cooking[stove.id] = 0;
       if (isStation(stove)) state.hold[stove.id] = 0;
@@ -1460,9 +1486,9 @@ export const fromPersisted = (input: unknown): ShopState => {
       }
     }
   }
-  const ticket = state.unlocked.includes("equip-ticket");
+  const ticket = isUnlocked(state, "equip-ticket");
   state.staff = hires
-    .filter((hire) => state.unlocked.includes(hire.id))
+    .filter((hire) => isUnlocked(state, hire.id))
     .map((hire, index) => {
       const worker = makeStaff(hire, index + 1, hireHome(state, hire));
       // 券売機があるあいだ、レジ係はホール店員として働く
@@ -1488,12 +1514,12 @@ export const fromPersisted = (input: unknown): ShopState => {
  */
 export const openStoves = (state: ShopState) =>
   stoves.filter(
-    (stove) => state.unlocked.includes(stove.id) && areaOpen(state, stove.area),
+    (stove) => isUnlocked(state, stove.id) && areaOpen(state, stove.area),
   );
 
 export const openSeats = (state: ShopState) =>
   seats.filter(
-    (seat) => state.unlocked.includes(seat.id) && areaOpen(state, seat.area),
+    (seat) => isUnlocked(state, seat.id) && areaOpen(state, seat.area),
   );
 
 /** その場所の遊び方 */
@@ -1788,7 +1814,7 @@ export const shelfStock = (state: ShopState, seatId: string) =>
 export const payPos = (seat: SeatSpec): Vec => seat.pay ?? seat.serve;
 
 export const areaOpen = (state: ShopState, area: number) =>
-  area === 0 || state.unlocked.includes(`area-${area}`);
+  area === 0 || isUnlocked(state, `area-${area}`);
 
 /** まだ買っていない区画の中か（工事中で入れない） */
 export const isBlocked = (state: ShopState, pos: Vec) =>
@@ -1796,7 +1822,7 @@ export const isBlocked = (state: ShopState, pos: Vec) =>
   areas.some(
     (area) =>
       area.price > 0 &&
-      !state.unlocked.includes(area.id) &&
+      !isUnlocked(state, area.id) &&
       pos.x > area.rect.x0 &&
       pos.x < area.rect.x1 &&
       pos.y > area.rect.y0 &&
@@ -1912,7 +1938,7 @@ const wallData = (state: ShopState): WallCache => {
     // 戸口は指定した壁（省略で南＝通り側）。壁の位置は棟が広がると動く
     const doors = Array.isArray(area.door) ? area.door : [area.door];
     for (const door of doors) {
-      if (door.unlockAfter && !state.unlocked.includes(door.unlockAfter)) continue;
+      if (door.unlockAfter && !isUnlocked(state, door.unlockAfter)) continue;
       const { x, w, side = "s" } = door;
       const half = w / 2;
       const flat = side === "s" || side === "n";
@@ -2136,7 +2162,7 @@ export const playerSpeed = (state: ShopState) =>
   moveBonus(state);
 
 export const hasEquip = (state: ShopState, id: EquipId) =>
-  state.unlocked.includes(`equip-${id}`);
+  isUnlocked(state, `equip-${id}`);
 
 export const hasMaster = (state: ShopState) =>
   state.staff.some((worker) => worker.kind === "master");
@@ -2207,7 +2233,7 @@ export const padLevel = (state: ShopState, pad: Pad) =>
 
 /** 先に買っておくものが済んでいるか（順ぐりに出していくための条件） */
 const opened = (state: ShopState, needs: string | undefined) =>
-  !needs || state.unlocked.includes(needs);
+  !needs || isUnlocked(state, needs);
 
 /**
  * 条件のうえでは出せる枠。
@@ -2224,21 +2250,21 @@ const eligiblePads = (state: ShopState) =>
       if (!upgrade || !opened(state, upgrade.unlockAfter)) return false;
       return state.levels[pad.upgradeId] < upgrade.max;
     }
-    if (state.unlocked.includes(pad.id)) return false;
+    if (isUnlocked(state, pad.id)) return false;
 
     // 調理人はその寸胴を買ってから
     const hire = hireById.get(pad.id);
     if (hire?.kind === "collector" && hasEquip(state, "ticket")) return false;
     if (hire?.stoveId) {
       return (
-        state.unlocked.includes(hire.stoveId) && opened(state, hire.unlockAfter)
+        isUnlocked(state, hire.stoveId) && opened(state, hire.unlockAfter)
       );
     }
 
     // 自動供給機は、その場所を買ってから出す
     if (pad.id.startsWith("auto-")) {
       const owner = seatById.get(pad.id.slice(5));
-      return !!owner && state.unlocked.includes(owner.id);
+      return !!owner && isUnlocked(state, owner.id);
     }
 
     // 席・店員・寸胴・設備は、その区画が開いてから出す。
@@ -2446,7 +2472,7 @@ const pop = (state: ShopState, pos: Vec, text: string) => {
 };
 
 const unlock = (state: ShopState, padId: string) => {
-  if (state.unlocked.includes(padId)) return;
+  if (isUnlocked(state, padId)) return;
   state.unlocked.push(padId);
   delete state.padProgress[padId];
 
@@ -2465,7 +2491,7 @@ const unlock = (state: ShopState, padId: string) => {
    */
   for (const extra of stoves) {
     if (extra.price !== 0 || extra.unlockAfter !== padId) continue;
-    if (state.unlocked.includes(extra.id)) continue;
+    if (isUnlocked(state, extra.id)) continue;
     state.unlocked.push(extra.id);
     state.ready[extra.id] = 0;
     state.cooking[extra.id] = 0;
@@ -2475,7 +2501,7 @@ const unlock = (state: ShopState, padId: string) => {
   // 値段0の席も同じ（2号店を買うと、動く店が丸ごとついてくる）
   for (const extra of seats) {
     if (extra.price !== 0 || extra.unlockAfter !== padId) continue;
-    if (state.unlocked.includes(extra.id)) continue;
+    if (isUnlocked(state, extra.id)) continue;
     state.unlocked.push(extra.id);
   }
   const hire = hireById.get(padId);
@@ -2757,7 +2783,7 @@ const flowLinks = (state: ShopState, dt: number) => {
   for (const item of equipment) {
     if (!item.link || !hasEquip(state, item.id)) continue;
     const { from, to } = item.link;
-    if (!state.unlocked.includes(from) || !state.unlocked.includes(to)) continue;
+    if (!isUnlocked(state, from) || !isUnlocked(state, to)) continue;
     const key = `link-${item.id}`;
     state.autoTimer[key] = (state.autoTimer[key] ?? 0) + dt;
     /*

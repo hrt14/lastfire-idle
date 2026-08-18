@@ -574,22 +574,10 @@ export const drawTankFrame = (
     ctx.quadraticCurveTo(0, -21, 30, -14);
     ctx.stroke();
   } else if (profile === "terrarium") {
-    // 陸と水を半分ずつ。枝が1本かかっていると「ケージ」と読める。
-    ctx.fillStyle = "rgba(96,112,68,0.92)";
-    ctx.beginPath();
-    ctx.moveTo(-33, 6);
-    ctx.quadraticCurveTo(-14, -1, 4, 5);
-    ctx.lineTo(4, 23);
-    ctx.lineTo(-33, 23);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "#6d5b3c";
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    ctx.moveTo(-28, -8);
-    ctx.quadraticCurveTo(-4, -16, 26, -4);
-    ctx.stroke();
-    // 通気の網。上辺だけに入れて、水槽ではないことを示す。
+    /*
+     * 陸と枝は生きものより奥（drawHabitat 側）に置いてある。
+     * ここで描くのは、生きものより手前に来るものだけ ―― 通気の網と枠の影。
+     */
     ctx.strokeStyle = "rgba(215,226,196,0.5)";
     ctx.lineWidth = 0.8;
     for (let i = -30; i <= 30; i += 6) {
@@ -598,6 +586,11 @@ export const drawTankFrame = (
       ctx.lineTo(i, -19);
       ctx.stroke();
     }
+    // 手前のガラスに映る保温ランプ。ケージだと分かる暖色の点。
+    ctx.fillStyle = "rgba(255,196,120,0.5)";
+    ctx.beginPath();
+    ctx.arc(24, -19, 3, 0, Math.PI * 2);
+    ctx.fill();
   } else if (profile === "ancientWall") {
     // 石の額。角に石留めを打って、本館のガラス壁と手ざわりを変える。
     ctx.fillStyle = "rgba(126,110,86,0.85)";

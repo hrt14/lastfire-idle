@@ -20,6 +20,13 @@ const unlockedUpTo = (lastArea: number) => {
   }
   ids.push("cook-1", "waiter-1", "seller-1", "gatekeeper-1", "robot-1", "stove-2", "cook-2", "stove-3", "cook-3");
   ids.push("equip-night", "equip-jelly-light", "equip-ocean-sign");
+  // 施設棟と古代棟
+  ids.push("shop-store-1", "stocker-1", "stocker-2");
+  ids.push("restaurant-kitchen-1", "restaurant-kitchen-2", "server-1", "server-2", "busser-1", "busser-2");
+  ids.push("waiter-4", "robot-4", "equip-terrarium-heat", "equip-night-terrarium");
+  for (let i = 0; i < 4; i += 1) ids.push(`stove-${6 + i}`, `cook-${6 + i}`);
+  for (let i = 1; i <= 8; i += 1) ids.push(`ancient-crew-${i}`);
+  ids.push("equip-time-tunnel", "equip-fossil-lab", "equip-paleo-dome", "equip-origin-hall");
   return ids;
 };
 
@@ -53,7 +60,7 @@ const run = async () => {
         gacha: [1],
       }),
     );
-  }, { unlocked: unlockedUpTo(17), playTime });
+  }, { unlocked: unlockedUpTo(Number(process.env.LAST_AREA ?? 53)), playTime });
   await page.reload({ waitUntil: "networkidle" });
   const go = page.locator("li.stage-aquarium button.stage-go");
   if (await go.count()) await go.first().click();
