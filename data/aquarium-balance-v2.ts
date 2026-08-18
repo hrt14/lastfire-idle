@@ -144,9 +144,10 @@ if (price) {
   price.basePrice = 140;
   // 旧Lv20上限では中盤以降に収益の伸びしろが消える。
   // Lv40以降も「次地域を開く / 単価を上げる」が同程度の投資判断になるよう、
-  // 強化費の伸びを1.6倍に抑えてLv50まで継続できるようにする。
+  // 強化費の伸びを1.6倍に抑えて継続できるようにする。
+  // 54区画（本館18＋施設棟4＋古代棟32）まで伸びたので上限も Lv64 へ。
   price.growth = 1.6;
-  price.max = 50;
+  price.max = 64;
   price.detail = (n) =>
     `観覧単価 ${Math.round(AQUARIUM_BASE_VALUE * Math.pow(1.4, n)).toLocaleString("ja-JP")}円`;
   price.needServed = 5;
@@ -179,10 +180,17 @@ for (let region = 1; region < aquariumRuntimeDef.areas.length; region += 1) {
 
 // 地域解放も「3番水槽購入」依存を外して来館実績で出す。
 // 進行するほど必要な来館数は増えるが、展示を全部買うことは強制しない。
-const servedForRegion = [
-  0, 10, 24, 42, 64, 90, 120, 154, 192,
-  234, 280, 330, 384, 442, 504, 570, 640, 714,
-];
+/*
+ * 次の区画が候補に出るまでの、のべ来館数。
+ *
+ * 旧データ（0,10,24,42,…,714）は「1区画ごとに必要数が 4人ずつ増える」列
+ * ―― つまり 2n²+8n ―― だった。54区画になっても同じ手ざわりで伸びるよう、
+ * 式のまま延長する（n=17 で 714、n=53 で 6042）。
+ */
+const servedForRegion = Array.from(
+  { length: aquariumRuntimeDef.areas.length },
+  (_, n) => 2 * n * n + 8 * n,
+);
 
 for (let region = 2; region < aquariumRuntimeDef.areas.length; region += 1) {
   const next = area(region);

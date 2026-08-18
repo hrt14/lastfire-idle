@@ -23,7 +23,32 @@ type Habitat =
   | "indian"
   | "open-ocean"
   | "deep-sea"
-  | "world-ocean";
+  | "world-ocean"
+  /* --- 施設棟 --- */
+  | "shop-case"
+  | "dining"
+  | "terrarium"
+  /* --- 古代棟。時代が古いほど、水も岩も違う色になる --- */
+  | "lost-sea"
+  | "holocene"
+  | "ice-sea"
+  | "giant-shark-sea"
+  | "warm-shallow"
+  | "paleo-shore"
+  | "paleo-river"
+  | "mesozoic-sea"
+  | "lagoon"
+  | "dead-sea"
+  | "permian-sea"
+  | "carbon-swamp"
+  | "crinoid-sea"
+  | "devonian"
+  | "silurian"
+  | "ordovician"
+  | "cambrian"
+  | "ediacaran"
+  | "stromatolite-sea"
+  | "hadean";
 
 type Creature =
   | "tiny"
@@ -59,7 +84,58 @@ type Creature =
   | "isopod"
   | "angler"
   | "manta"
-  | "whale-shark";
+  | "whale-shark"
+  /* --- ショップの売り物。泳がずに棚へ並ぶ --- */
+  | "plush"
+  | "trinket"
+  | "fossil"
+  | "mineral"
+  /* --- 両生類・爬虫類 --- */
+  | "frog"
+  | "salamander"
+  | "snake"
+  | "lizard"
+  | "crocodile"
+  /* --- 海の哺乳類・鳥 --- */
+  | "seal"
+  | "seacow"
+  | "diveBird"
+  | "whale"
+  | "serpentWhale"
+  | "dolphin"
+  | "landbeast"
+  /* --- 中生代の海生爬虫類 --- */
+  | "mosasaur"
+  | "plesiosaur"
+  | "pliosaur"
+  | "spinosaur"
+  /* --- 殻をもつもの --- */
+  | "ammonite"
+  | "belemnite"
+  | "orthocone"
+  | "bivalve"
+  /* --- 古生代 --- */
+  | "trilobite"
+  | "eurypterid"
+  | "placoderm"
+  | "earlyshark"
+  | "tetrapod"
+  | "lobefin"
+  | "sturgeon"
+  | "sawfish"
+  | "crinoid"
+  | "horseshoe"
+  | "nymph"
+  | "graptolite"
+  /* --- カンブリア紀とその前 --- */
+  | "anomalocaris"
+  | "opabinia"
+  | "hallucigenia"
+  | "pikaia"
+  | "dickinsonia"
+  | "charnia"
+  | "stromatolite"
+  | "microbe";
 
 type Pattern = "none" | "spots" | "stripes" | "red-belly" | "neon" | "glow";
 
@@ -74,6 +150,13 @@ type ExhibitVisual = {
   heroScale?: number;
   pattern?: Pattern;
   density?: number;
+  /**
+   * 泳がない展示。棚の商品・海底に固定された生きもの・岩は、
+   * 動かして並べると「魚が変な泳ぎ方をしている」ように見えてしまう。
+   */
+  still?: boolean;
+  /** 並べる高さ（still のときだけ）。棚は上寄り、海底は下寄り */
+  stillBase?: number;
 };
 
 const TAU = Math.PI * 2;
@@ -86,8 +169,12 @@ const DARK_OUTLINE = "rgba(5,22,28,0.84)";
 let outlineColor = DARK_OUTLINE;
 
 /**
- * 18地域 × 3展示。名前が変われば必ず別設定を使う。
- * 同地域内でも魚のシルエット・色・匹数・主役サイズの最低2点を変える。
+ * 54区画 × 3展示。名前が変われば必ず別設定を使う。
+ * 同区画内でも生きもののシルエット・色・匹数・主役サイズの最低2点を変える。
+ *
+ * 0〜17  本館（現世の世界の海）
+ * 18〜21 施設棟（ショップ・レストラン・両生類館・爬虫類館）
+ * 22〜53 古代棟（時代をさかのぼり、最後は生命誕生の海）
  */
 const EXHIBITS: ExhibitVisual[][] = [
   [
@@ -180,6 +267,192 @@ const EXHIBITS: ExhibitVisual[][] = [
     { name: "マンタ・大型サメ", habitat: "world-ocean", primary: "manta", secondary: "shark", count: 4, color: "#596f7c", secondaryColor: "#7c939f", heroScale: 2.0 },
     { name: "ジンベエザメ級の巨大魚", habitat: "world-ocean", primary: "whale-shark", secondary: "tiny", count: 8, color: "#557b91", secondaryColor: "#d4e9ec", heroScale: 2.65, pattern: "spots" },
   ],
+
+  /* ==================== 施設棟（18〜21） ==================== */
+  [
+    { name: "ぬいぐるみの棚", habitat: "shop-case", primary: "plush", secondary: "plush", count: 8, color: "#e88fa8", secondaryColor: "#6fc3dd", still: true, stillBase: 4 },
+    { name: "深海グッズの棚", habitat: "shop-case", primary: "trinket", count: 8, color: "#6fe6cf", secondaryColor: "#3a4b58", pattern: "glow", still: true, stillBase: 4 },
+    { name: "化石レプリカの棚", habitat: "shop-case", primary: "fossil", count: 6, color: "#d3bd8b", still: true, stillBase: 4, heroScale: 1.25 },
+  ],
+  [
+    { name: "窓ぎわのテーブル", habitat: "dining", primary: "small", count: 8, color: "#8fd6e0" },
+    { name: "大水槽前のテーブル", habitat: "dining", primary: "small", secondary: "ray", count: 10, color: "#a7e2ea", secondaryColor: "#5b7f8d", heroScale: 1.2 },
+    { name: "水中ダイニング", habitat: "dining", primary: "tiny", secondary: "shark", count: 16, color: "#cbeef5", secondaryColor: "#6d8fa0", heroScale: 1.5, density: 1.15 },
+  ],
+  [
+    { name: "ヤドクガエルの森", habitat: "terrarium", primary: "frog", count: 5, color: "#3fc86a", secondaryColor: "#ffd34a", pattern: "spots" },
+    { name: "イモリとサンショウウオ", habitat: "terrarium", primary: "salamander", secondary: "salamander", count: 5, color: "#4d5c46", secondaryColor: "#c9553a", pattern: "red-belly" },
+    { name: "オオサンショウウオ", habitat: "terrarium", primary: "salamander", count: 1, color: "#6d6a52", heroScale: 2.5, pattern: "spots" },
+  ],
+  [
+    { name: "ミズガメの池", habitat: "terrarium", primary: "turtle", count: 3, color: "#5f7a4a", heroScale: 1.25 },
+    { name: "ウミヘビとトカゲ", habitat: "terrarium", primary: "snake", secondary: "lizard", count: 4, color: "#c9b05a", secondaryColor: "#6f8f4e", pattern: "stripes" },
+    { name: "イリエワニ", habitat: "terrarium", primary: "crocodile", count: 1, color: "#5c6647", heroScale: 2.3 },
+  ],
+
+  /* ==================== 古代棟（22〜53） ====================
+   * 1区画さかのぼるごとに、主役の形が今の魚から離れていく。
+   */
+  [
+    { name: "ニホンアシカ", habitat: "lost-sea", primary: "seal", count: 2, color: "#5c4f42", heroScale: 1.35 },
+    { name: "クニマス", habitat: "lost-sea", primary: "trout", count: 6, color: "#5e6a6f", pattern: "spots" },
+    { name: "ステラーカイギュウ", habitat: "lost-sea", primary: "seacow", count: 1, color: "#6b6154", heroScale: 2.3 },
+  ],
+  [
+    { name: "オオウミガラス", habitat: "holocene", primary: "diveBird", count: 4, color: "#2c3238", secondaryColor: "#f0f0e6" },
+    { name: "巨大チョウザメ", habitat: "holocene", primary: "sturgeon", count: 2, color: "#7d8570", secondaryColor: "#c9c3a6", heroScale: 1.7 },
+    { name: "縄文の内湾", habitat: "holocene", primary: "small", secondary: "bivalve", count: 11, color: "#9dc7b4", secondaryColor: "#b9a582" },
+  ],
+  [
+    { name: "氷の下のタラ", habitat: "ice-sea", primary: "small", count: 15, color: "#b9cbd4", density: 1.2 },
+    { name: "タテゴトアザラシ", habitat: "ice-sea", primary: "seal", count: 3, color: "#e2e8ec", secondaryColor: "#4c5a63", pattern: "spots" },
+    { name: "ホッキョククジラ", habitat: "ice-sea", primary: "whale", count: 1, color: "#3d4a56", heroScale: 2.4 },
+  ],
+  [
+    { name: "メガロドンの歯", habitat: "giant-shark-sea", primary: "fossil", count: 5, color: "#d9cbaa", still: true, heroScale: 1.2 },
+    { name: "古代のホホジロザメ", habitat: "giant-shark-sea", primary: "shark", count: 3, color: "#71818c", heroScale: 1.45 },
+    { name: "メガロドン", habitat: "giant-shark-sea", primary: "shark", secondary: "tiny", count: 6, color: "#4d5a63", secondaryColor: "#cfe4ea", heroScale: 2.7 },
+  ],
+  [
+    { name: "アクロフィセター", habitat: "giant-shark-sea", primary: "dolphin", count: 3, color: "#5d6b74" },
+    { name: "古代のイルカ", habitat: "giant-shark-sea", primary: "dolphin", count: 7, color: "#8fa3ad" },
+    { name: "リヴィアタン", habitat: "giant-shark-sea", primary: "whale", count: 1, color: "#43505a", heroScale: 2.5 },
+  ],
+  [
+    { name: "デスモスチルス", habitat: "warm-shallow", primary: "landbeast", count: 2, color: "#6f6250" },
+    { name: "パレオパラドキシア", habitat: "warm-shallow", primary: "landbeast", count: 3, color: "#7d7057", pattern: "spots" },
+    { name: "ケントリオドンの群れ", habitat: "warm-shallow", primary: "dolphin", count: 10, color: "#7f97a4", heroScale: 1.5 },
+  ],
+  [
+    { name: "巨大ペンギン", habitat: "ice-sea", primary: "diveBird", count: 5, color: "#2f3a43", secondaryColor: "#f2efe4", heroScale: 1.4 },
+    { name: "アエティオケタス", habitat: "ice-sea", primary: "whale", count: 2, color: "#57646d", heroScale: 1.6 },
+    { name: "原始のカイギュウ", habitat: "ice-sea", primary: "seacow", count: 2, color: "#75695a", heroScale: 2.0 },
+  ],
+  [
+    { name: "ドルドン", habitat: "giant-shark-sea", primary: "whale", count: 3, color: "#5b6a72" },
+    { name: "原始のマナティー", habitat: "giant-shark-sea", primary: "seacow", count: 2, color: "#7a6d5d" },
+    { name: "バシロサウルス", habitat: "giant-shark-sea", primary: "serpentWhale", count: 1, color: "#3f4c55", heroScale: 2.6 },
+  ],
+  [
+    { name: "パキケトゥス", habitat: "paleo-shore", primary: "landbeast", count: 3, color: "#7c6a4c" },
+    { name: "アンブロケトゥス", habitat: "paleo-shore", primary: "landbeast", count: 2, color: "#6a5c42", heroScale: 1.55 },
+    { name: "ロドケトゥス", habitat: "paleo-shore", primary: "landbeast", secondary: "small", count: 5, color: "#5e5340", secondaryColor: "#9fc0a8", heroScale: 2.2 },
+  ],
+  [
+    { name: "巨大ガー", habitat: "paleo-river", primary: "sturgeon", count: 4, color: "#6d7a55", secondaryColor: "#b6b98d", heroScale: 1.45 },
+    { name: "カルボネミス", habitat: "paleo-river", primary: "turtle", count: 2, color: "#5b5a41", heroScale: 1.85 },
+    { name: "ティタノボア", habitat: "paleo-river", primary: "snake", count: 1, color: "#4f5b3b", heroScale: 2.6, pattern: "spots" },
+  ],
+  [
+    { name: "最後のアンモナイト", habitat: "mesozoic-sea", primary: "ammonite", count: 7, color: "#c2a877", secondaryColor: "#7a6242" },
+    { name: "プログナトドン", habitat: "mesozoic-sea", primary: "mosasaur", count: 2, color: "#4c6069", heroScale: 1.5 },
+    { name: "モササウルス", habitat: "mesozoic-sea", primary: "mosasaur", secondary: "ammonite", count: 5, color: "#3b525f", secondaryColor: "#b39a68", heroScale: 2.6 },
+  ],
+  [
+    { name: "ヘスペロルニス", habitat: "mesozoic-sea", primary: "diveBird", count: 5, color: "#465049", secondaryColor: "#cfd6c4" },
+    { name: "クシファクティヌス", habitat: "mesozoic-sea", primary: "tuna", count: 2, color: "#8a9aa2", heroScale: 1.9 },
+    { name: "アーケロン", habitat: "mesozoic-sea", primary: "turtle", count: 1, color: "#59604b", heroScale: 2.6 },
+  ],
+  [
+    { name: "イノセラムス", habitat: "mesozoic-sea", primary: "bivalve", count: 8, color: "#b6a684", still: true },
+    { name: "スティクソサウルス", habitat: "mesozoic-sea", primary: "plesiosaur", count: 2, color: "#54677a", heroScale: 1.45 },
+    { name: "エラスモサウルス", habitat: "mesozoic-sea", primary: "plesiosaur", count: 1, color: "#405568", heroScale: 2.4 },
+  ],
+  [
+    { name: "オンコプリスティス", habitat: "paleo-river", primary: "sawfish", count: 3, color: "#7d7f61" },
+    { name: "マウソニア", habitat: "paleo-river", primary: "lobefin", count: 2, color: "#5f6b56", heroScale: 1.55 },
+    { name: "スピノサウルス", habitat: "paleo-river", primary: "spinosaur", count: 1, color: "#6a5b46", heroScale: 2.4, pattern: "stripes" },
+  ],
+  [
+    { name: "レプトレピス", habitat: "mesozoic-sea", primary: "tiny", count: 18, color: "#c5d8de", density: 1.25 },
+    { name: "メトリオリンクス", habitat: "mesozoic-sea", primary: "mosasaur", count: 3, color: "#4e5f52" },
+    { name: "リオプレウロドン", habitat: "mesozoic-sea", primary: "pliosaur", count: 1, color: "#3d4f5c", heroScale: 2.5 },
+  ],
+  [
+    { name: "ベレムナイト", habitat: "mesozoic-sea", primary: "belemnite", count: 10, color: "#9fb2b6" },
+    { name: "アンモナイトの群れ", habitat: "mesozoic-sea", primary: "ammonite", count: 9, color: "#c9ad78", secondaryColor: "#7a6242" },
+    { name: "イクチオサウルス", habitat: "mesozoic-sea", primary: "dolphin", count: 2, color: "#4f6470", heroScale: 2.1 },
+  ],
+  [
+    { name: "古代のカブトガニ", habitat: "lagoon", primary: "horseshoe", count: 4, color: "#8a7248" },
+    { name: "アスピドリンクス", habitat: "lagoon", primary: "small", count: 9, color: "#c3c3a3" },
+    { name: "ゾルンホーフェンの潟", habitat: "lagoon", primary: "fossil", secondary: "ammonite", count: 7, color: "#ded6b8", secondaryColor: "#b8a271", still: true, heroScale: 1.35 },
+  ],
+  [
+    { name: "タニストロフェウス", habitat: "mesozoic-sea", primary: "plesiosaur", count: 2, color: "#63705c", heroScale: 1.35 },
+    { name: "プラコダス", habitat: "mesozoic-sea", primary: "turtle", count: 4, color: "#7a6b4e" },
+    { name: "ショニサウルス", habitat: "mesozoic-sea", primary: "dolphin", secondary: "tiny", count: 8, color: "#44545f", secondaryColor: "#cfe1e6", heroScale: 2.9 },
+  ],
+  [
+    { name: "ヘノドゥス", habitat: "lagoon", primary: "turtle", count: 3, color: "#8a7a55" },
+    { name: "ノトサウルス", habitat: "lagoon", primary: "plesiosaur", count: 3, color: "#6b7355" },
+    { name: "よみがえる礁", habitat: "lagoon", primary: "small", secondary: "ammonite", count: 13, color: "#e0a76a", secondaryColor: "#b39a68", heroScale: 1.2 },
+  ],
+  [
+    { name: "クラライアの海底", habitat: "dead-sea", primary: "bivalve", count: 13, color: "#8b7b74", still: true, density: 1.3 },
+    { name: "最後の三葉虫", habitat: "dead-sea", primary: "trilobite", count: 1, color: "#7a5f58", heroScale: 1.9 },
+    { name: "酸欠の海", habitat: "dead-sea", primary: "microbe", count: 16, color: "#c99ac2", secondaryColor: "#f0c8ea", pattern: "glow", heroScale: 1.2 },
+  ],
+  [
+    { name: "ゴニアタイト", habitat: "permian-sea", primary: "ammonite", count: 8, color: "#a89468", secondaryColor: "#6b5a3c" },
+    { name: "メソサウルス", habitat: "permian-sea", primary: "plesiosaur", count: 4, color: "#5f6b52" },
+    { name: "ヘリコプリオン", habitat: "permian-sea", primary: "earlyshark", count: 1, color: "#5c6a6c", heroScale: 2.5 },
+  ],
+  [
+    { name: "巨大なヤゴ", habitat: "carbon-swamp", primary: "nymph", count: 5, color: "#6b7248" },
+    { name: "プロテロギリヌス", habitat: "carbon-swamp", primary: "tetrapod", count: 3, color: "#5b6440" },
+    { name: "エオギリヌス", habitat: "carbon-swamp", primary: "tetrapod", count: 1, color: "#48543a", heroScale: 2.5, pattern: "stripes" },
+  ],
+  [
+    { name: "ウミユリの森", habitat: "crinoid-sea", primary: "crinoid", count: 8, color: "#d8c9a4", secondaryColor: "#8a7a58", still: true, stillBase: 6 },
+    { name: "ファルカタス", habitat: "crinoid-sea", primary: "earlyshark", count: 6, color: "#7e8d84" },
+    { name: "ステタカントゥス", habitat: "crinoid-sea", primary: "earlyshark", count: 2, color: "#5f7069", heroScale: 2.0 },
+  ],
+  [
+    { name: "ボスリオレピス", habitat: "devonian", primary: "placoderm", count: 5, color: "#7a7357", secondaryColor: "#a89b74" },
+    { name: "クラドセラケ", habitat: "devonian", primary: "earlyshark", count: 5, color: "#8b8f7e" },
+    { name: "ダンクルオステウス", habitat: "devonian", primary: "placoderm", count: 1, color: "#5c6350", secondaryColor: "#9aa383", heroScale: 2.8 },
+  ],
+  [
+    { name: "ハイネリア", habitat: "paleo-shore", primary: "lobefin", count: 2, color: "#6a6b4a", heroScale: 1.65 },
+    { name: "ティクターリク", habitat: "paleo-shore", primary: "tetrapod", count: 2, color: "#7b7550" },
+    { name: "イクチオステガ", habitat: "paleo-shore", primary: "tetrapod", count: 1, color: "#6e6845", heroScale: 2.4, pattern: "spots" },
+  ],
+  [
+    { name: "ケファラスピス", habitat: "silurian", primary: "placoderm", count: 6, color: "#8a7a54", secondaryColor: "#b5a377" },
+    { name: "最初のサンゴ礁", habitat: "silurian", primary: "crinoid", secondary: "trilobite", count: 9, color: "#d3b47f", secondaryColor: "#7d6a4e", still: true, stillBase: 6 },
+    { name: "プテリゴトゥス", habitat: "silurian", primary: "eurypterid", count: 1, color: "#6d5236", heroScale: 2.5 },
+  ],
+  [
+    { name: "三葉虫の群れ", habitat: "ordovician", primary: "trilobite", count: 11, color: "#6f6350", density: 1.15 },
+    { name: "筆石の帯", habitat: "ordovician", primary: "graptolite", count: 9, color: "#4f5a5e" },
+    { name: "カメロケラス", habitat: "ordovician", primary: "orthocone", count: 1, color: "#b09a6a", secondaryColor: "#6b5a3c", heroScale: 2.6 },
+  ],
+  [
+    { name: "ウィワクシア", habitat: "cambrian", primary: "hallucigenia", count: 6, color: "#a08553" },
+    { name: "ハルキゲニア", habitat: "cambrian", primary: "hallucigenia", count: 8, color: "#c0a06a", pattern: "stripes" },
+    { name: "アノマロカリス", habitat: "cambrian", primary: "anomalocaris", count: 1, color: "#c2603f", secondaryColor: "#f4d9a8", heroScale: 2.4 },
+  ],
+  [
+    { name: "マルレラ", habitat: "cambrian", primary: "trilobite", count: 12, color: "#8d7a5f", density: 1.25 },
+    { name: "オパビニア", habitat: "cambrian", primary: "opabinia", count: 4, color: "#c98a5a", secondaryColor: "#f0d3a4" },
+    { name: "ピカイア", habitat: "cambrian", primary: "pikaia", count: 10, color: "#d6c69a", secondaryColor: "#7d6a4a", heroScale: 1.7 },
+  ],
+  [
+    { name: "スプリギナ", habitat: "ediacaran", primary: "dickinsonia", count: 6, color: "#c98f6a" },
+    { name: "カルニア", habitat: "ediacaran", primary: "charnia", count: 5, color: "#b7845f", secondaryColor: "#8a6a4a", still: true, stillBase: 6 },
+    { name: "ディッキンソニア", habitat: "ediacaran", primary: "dickinsonia", count: 3, color: "#d29a6b", heroScale: 2.2, pattern: "stripes" },
+  ],
+  [
+    { name: "シアノバクテリアの膜", habitat: "stromatolite-sea", primary: "microbe", count: 18, color: "#7fae5c", secondaryColor: "#c8e88a", density: 1.3 },
+    { name: "縞状鉄鉱層", habitat: "stromatolite-sea", primary: "mineral", count: 6, color: "#9c5f45", secondaryColor: "#e0b088", still: true },
+    { name: "ストロマトライト", habitat: "stromatolite-sea", primary: "stromatolite", count: 4, color: "#8e7d52", secondaryColor: "#d6c48a", still: true, stillBase: 6, heroScale: 1.8 },
+  ],
+  [
+    { name: "熱水の煙突", habitat: "hadean", primary: "mineral", count: 3, color: "#4c3a38", secondaryColor: "#ff9a5c", still: true, stillBase: 8, heroScale: 1.6 },
+    { name: "最初の膜", habitat: "hadean", primary: "microbe", count: 13, color: "#ffb27a", secondaryColor: "#ffe0b4", pattern: "glow" },
+    { name: "生命誕生の海", habitat: "hadean", primary: "microbe", secondary: "stromatolite", count: 20, color: "#ffc78f", secondaryColor: "#6a5340", pattern: "glow", heroScale: 2.2 },
+  ],
 ];
 
 const HABITAT_COLORS: Record<Habitat, [string, string, string]> = {
@@ -201,6 +474,33 @@ const HABITAT_COLORS: Record<Habitat, [string, string, string]> = {
   "open-ocean": ["#4c9dcc", "#12527c", "#163e5c"],
   "deep-sea": ["#1b365d", "#07152e", "#101a31"],
   "world-ocean": ["#66c5e5", "#176f9e", "#2a657d"],
+
+  /* 施設棟。水ではないので、青ではなく灯りの色にする */
+  "shop-case": ["#5a4633", "#2f2519", "#7a5f3c"],
+  dining: ["#7fd0dd", "#2b6d84", "#8a6a44"],
+  terrarium: ["#cfe8c4", "#5c8a63", "#6d7a45"],
+
+  /* 古代棟。近い時代ほど今の海に近く、古いほど色が離れていく */
+  "lost-sea": ["#a9c4c9", "#4c6d78", "#6d6a5c"],
+  holocene: ["#b7d8c4", "#4f8272", "#8b8261"],
+  "ice-sea": ["#dcf1fa", "#5a86a5", "#7d8b96"],
+  "giant-shark-sea": ["#63a8cd", "#154f76", "#2c4c5e"],
+  "warm-shallow": ["#a9d6ba", "#3f7d76", "#8a8560"],
+  "paleo-shore": ["#d8d09a", "#7d8a5e", "#9c8a5c"],
+  "paleo-river": ["#9db866", "#3f5c39", "#5c4c2e"],
+  "mesozoic-sea": ["#5fb0c4", "#12475f", "#3d5147"],
+  lagoon: ["#e2dfb4", "#8ba07a", "#cbc296"],
+  "dead-sea": ["#a887b4", "#3d2740", "#4f3b3a"],
+  "permian-sea": ["#8fb0a6", "#2f5450", "#5e6250"],
+  "carbon-swamp": ["#8fae6a", "#2f4a2b", "#3f3a23"],
+  "crinoid-sea": ["#9dc2b0", "#33665c", "#7d7a5a"],
+  devonian: ["#9db28a", "#3d5546", "#6b6a4c"],
+  silurian: ["#c8b47c", "#5c6a4a", "#8a7448"],
+  ordovician: ["#8fb0bc", "#2f5566", "#6b6a5c"],
+  cambrian: ["#8d8fb0", "#2d3050", "#5c5548"],
+  ediacaran: ["#e0bd94", "#8a6a52", "#b08f63"],
+  "stromatolite-sea": ["#cfd08a", "#6f7a40", "#8a7a4c"],
+  hadean: ["#5c2f2f", "#150a10", "#3a2a2c"],
 };
 
 const rr = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
@@ -626,6 +926,1073 @@ const drawCreature = (
       ctx.beginPath(); ctx.moveTo(3 * scale, -3 * scale); ctx.quadraticCurveTo(6 * scale, -9 * scale, 8 * scale, -6 * scale); ctx.stroke();
       ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(8 * scale, -6 * scale, 1.8 * scale, 0, TAU); ctx.fill();
       break;
+
+    /* ============ ショップの売り物 ============
+     * 泳がない。棚に並んだ「もの」として、輪郭をはっきり描く。
+     */
+    case "plush": {
+      // 魚のぬいぐるみ。丸くして、目を大きくする。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.ellipse(0, 0, 4.6 * scale, 3.6 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-3.6 * scale, 0);
+      ctx.lineTo(-7 * scale, -3 * scale);
+      ctx.lineTo(-7 * scale, 3 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#fdfdf7";
+      ctx.beginPath(); ctx.arc(2 * scale, -0.8 * scale, 1.5 * scale, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#14202a";
+      ctx.beginPath(); ctx.arc(2.3 * scale, -0.8 * scale, 0.8 * scale, 0, TAU); ctx.fill();
+      break;
+    }
+    case "trinket": {
+      // 光るグッズ。瓶の形にして、中に光をためる。
+      ctx.fillStyle = "rgba(20,32,40,0.7)";
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      rr(ctx, -2.6 * scale, -4 * scale, 5.2 * scale, 8 * scale, 1.6 * scale);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(0, 0.6 * scale, 1.9 * scale, 0, TAU); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.beginPath(); ctx.arc(-0.7 * scale, -0.2 * scale, 0.6 * scale, 0, TAU); ctx.fill();
+      ctx.fillStyle = accent;
+      ctx.fillRect(-2.6 * scale, -5.2 * scale, 5.2 * scale, 1.4 * scale);
+      break;
+    }
+    case "fossil": {
+      // 石板に浮き出た化石。渦巻きと石の輪郭で「標本」と読ませる。
+      ctx.fillStyle = "rgba(58,52,42,0.85)";
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      rr(ctx, -5 * scale, -4.4 * scale, 10 * scale, 8.8 * scale, 1.2 * scale);
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.1 * scale;
+      ctx.beginPath();
+      for (let i = 0; i <= 24; i += 1) {
+        const a = (i / 24) * TAU * 1.6;
+        const r = 0.5 * scale + a * 0.62 * scale;
+        const px = Math.cos(a) * r * 0.55;
+        const py = Math.sin(a) * r * 0.55;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      break;
+    }
+    case "mineral": {
+      // 岩・鉱物・煙突。積み上がった塊として描く。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(-5 * scale, 5 * scale);
+      ctx.lineTo(-3.4 * scale, -4.4 * scale);
+      ctx.lineTo(0.6 * scale, -6.2 * scale);
+      ctx.lineTo(4.4 * scale, -3 * scale);
+      ctx.lineTo(5.2 * scale, 5 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.6;
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-4.6 * scale, i * 1.9 * scale);
+        ctx.lineTo(4.8 * scale, i * 1.9 * scale + 0.6 * scale);
+        ctx.stroke();
+      }
+      break;
+    }
+
+    /* ============ 両生類・爬虫類 ============ */
+    case "frog": {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.ellipse(0, 0, 4.2 * scale, 3 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      // 後ろ足をたたんだ形。カエルだと一目で分かる輪郭にする。
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath();
+        ctx.moveTo(-1 * scale, side * 2.2 * scale);
+        ctx.quadraticCurveTo(-5.4 * scale, side * 5.4 * scale, -1.4 * scale, side * 4.6 * scale);
+        ctx.quadraticCurveTo(1.6 * scale, side * 4 * scale, 1.2 * scale, side * 2 * scale);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+      ctx.fillStyle = "#fbfdf6";
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.arc(3 * scale, side * 1.5 * scale - 1.2 * scale, 1.3 * scale, 0, TAU); ctx.fill();
+      }
+      ctx.fillStyle = "#101a12";
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.arc(3.3 * scale, side * 1.5 * scale - 1.2 * scale, 0.7 * scale, 0, TAU); ctx.fill();
+      }
+      applyPattern(ctx, 0, 0, 4.2 * scale, 3 * scale, pattern, d, accent);
+      break;
+    }
+    case "salamander": {
+      // 太い胴とひらたい頭、4本の短い足。魚と混ざらない形。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(7.4 * scale, 0);
+      ctx.quadraticCurveTo(6 * scale, -2.6 * scale, 2 * scale, -2.2 * scale);
+      ctx.quadraticCurveTo(-4 * scale, -2 * scale, -9.4 * scale, -1 * scale + wag * 6 * scale);
+      ctx.quadraticCurveTo(-4 * scale, 0.4 * scale, 2 * scale, 2.2 * scale);
+      ctx.quadraticCurveTo(6 * scale, 2.6 * scale, 7.4 * scale, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1.2 * scale;
+      ctx.strokeStyle = color;
+      for (const [lx, ly] of [[3.4, 2.4], [3.4, -2.4], [-3, 2.4], [-3, -2.4]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(lx * scale, ly * scale * 0.6);
+        ctx.lineTo(lx * scale - 1.4 * scale, ly * scale * 1.9);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#0e1a16";
+      ctx.beginPath(); ctx.arc(6 * scale, -1 * scale, 0.7 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, 6 * scale, 2.2 * scale, pattern, d, accent);
+      break;
+    }
+    case "snake": {
+      // 体をS字にくねらせる。頭だけ少し太い。
+      ctx.strokeStyle = color;
+      ctx.lineCap = "round";
+      const len = 22 * scale;
+      for (const [w, col] of [[3.4, outlineColor], [2.4, color]] as const) {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = w * scale;
+        ctx.beginPath();
+        for (let i = 0; i <= 16; i += 1) {
+          const t = i / 16;
+          const px = len * 0.5 - t * len;
+          const py = Math.sin(t * 5.6 + wag * 5) * 3.4 * scale * (0.3 + t * 0.9);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.lineCap = "butt";
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.ellipse(len * 0.53, Math.sin(wag * 5) * 1 * scale, 2.6 * scale, 1.8 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#f7f4dc";
+      ctx.beginPath(); ctx.arc(len * 0.58, -0.5 * scale, 0.6 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, 8 * scale, 2.4 * scale, pattern, d, accent);
+      break;
+    }
+    case "lizard": {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(5.6 * scale, 0);
+      ctx.quadraticCurveTo(3 * scale, -2 * scale, -1 * scale, -1.6 * scale);
+      ctx.quadraticCurveTo(-6 * scale, -1.2 * scale, -11 * scale, wag * 8 * scale);
+      ctx.quadraticCurveTo(-6 * scale, 0.6 * scale, -1 * scale, 1.6 * scale);
+      ctx.quadraticCurveTo(3 * scale, 2 * scale, 5.6 * scale, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 1 * scale;
+      for (const [lx, ly] of [[2.6, 1], [2.6, -1], [-2.6, 1], [-2.6, -1]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(lx * scale, ly * 1.4 * scale);
+        ctx.lineTo(lx * scale - 1.6 * scale, ly * 4 * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#0f1710";
+      ctx.beginPath(); ctx.arc(4.4 * scale, -0.8 * scale, 0.6 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, 5 * scale, 1.8 * scale, pattern, d, accent);
+      break;
+    }
+    case "crocodile": {
+      // 長い口と背中のうろこ列。水面すれすれのシルエット。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(11 * scale, 0.6 * scale);
+      ctx.lineTo(4.4 * scale, -1.4 * scale);
+      ctx.quadraticCurveTo(-2 * scale, -3 * scale, -8 * scale, -1.6 * scale);
+      ctx.quadraticCurveTo(-13 * scale, -0.6 * scale, -16 * scale, wag * 7 * scale);
+      ctx.quadraticCurveTo(-12 * scale, 1.4 * scale, -8 * scale, 2.4 * scale);
+      ctx.quadraticCurveTo(-2 * scale, 3.6 * scale, 4.4 * scale, 1.8 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = color;
+      for (let i = 0; i < 6; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo((-7 + i * 2.2) * scale, -2.2 * scale);
+        ctx.lineTo((-6.2 + i * 2.2) * scale, -4.4 * scale);
+        ctx.lineTo((-5.2 + i * 2.2) * scale, -2.2 * scale);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.2 * scale;
+      for (const [lx, ly] of [[1, 1], [-6, 1]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(lx * scale, ly * 2 * scale);
+        ctx.lineTo(lx * scale - 2 * scale, ly * 5.4 * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#f6f0cf";
+      ctx.beginPath(); ctx.arc(5 * scale, -2.4 * scale, 0.9 * scale, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#10160f";
+      ctx.beginPath(); ctx.arc(5.2 * scale, -2.5 * scale, 0.45 * scale, 0, TAU); ctx.fill();
+      break;
+    }
+
+    /* ============ 海の哺乳類と鳥 ============ */
+    case "seal":
+    case "seacow": {
+      const long = kind === "seacow" ? 12 : 8.6;
+      const tall = kind === "seacow" ? 4.2 : 3;
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.ellipse(0, 0, long * scale, tall * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      // 頭。丸くして、魚のようにとがらせない。
+      ctx.beginPath(); ctx.ellipse(long * 0.86 * scale, -0.6 * scale, tall * 0.78 * scale, tall * 0.72 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      // ひれ足
+      ctx.beginPath();
+      ctx.ellipse(long * 0.2 * scale, tall * 0.85 * scale, long * 0.24 * scale, tall * 0.3 * scale, 0.5 * d, 0, TAU);
+      ctx.fill();
+      // 尾。アシカは縦、カイギュウは横に広い。
+      ctx.beginPath();
+      ctx.moveTo(-long * 0.92 * scale, 0);
+      ctx.lineTo(-long * 1.4 * scale, -tall * (kind === "seacow" ? 1.5 : 0.9) * scale + wag * 4 * scale);
+      ctx.lineTo(-long * 1.4 * scale, tall * (kind === "seacow" ? 1.5 : 0.9) * scale + wag * 4 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#101a1c";
+      ctx.beginPath(); ctx.arc(long * 1.02 * scale, -1.1 * scale, 0.7 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, long * scale, tall * scale, pattern, d, accent);
+      break;
+    }
+    case "diveBird": {
+      // 潜る鳥。体は紡錘、頭に細いくちばし、腹は白。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.ellipse(0, 0, 6.4 * scale, 3.2 * scale, -0.12 * d, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.ellipse(-0.6 * scale, 1.4 * scale, 5 * scale, 1.7 * scale, -0.08 * d, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.ellipse(6 * scale, -1.6 * scale, 2.2 * scale, 1.9 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(7.6 * scale, -1.8 * scale);
+      ctx.lineTo(11.4 * scale, -1.2 * scale);
+      ctx.lineTo(7.6 * scale, -0.4 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 翼をたたんで、水をかく足。
+      ctx.strokeStyle = color; ctx.lineWidth = 1.3 * scale;
+      ctx.beginPath();
+      ctx.moveTo(-3.4 * scale, 2.4 * scale);
+      ctx.lineTo(-6.4 * scale, 5.6 * scale + wag * 3 * scale);
+      ctx.stroke();
+      ctx.fillStyle = "#f7fbf2";
+      ctx.beginPath(); ctx.arc(6.6 * scale, -2.2 * scale, 0.6 * scale, 0, TAU); ctx.fill();
+      break;
+    }
+    case "whale":
+    case "serpentWhale": {
+      const long = kind === "serpentWhale" ? 17 : 11.5;
+      const tall = kind === "serpentWhale" ? 2.6 : 4.4;
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(long * scale, 0);
+      ctx.quadraticCurveTo(long * 0.5 * scale, -tall * scale, 0, -tall * 0.86 * scale);
+      ctx.quadraticCurveTo(-long * 0.6 * scale, -tall * 0.6 * scale, -long * scale, wag * 5 * scale);
+      ctx.quadraticCurveTo(-long * 0.6 * scale, tall * 0.6 * scale, 0, tall * 0.86 * scale);
+      ctx.quadraticCurveTo(long * 0.5 * scale, tall * scale, long * scale, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 水平の尾びれ。魚の縦尾と必ず見分けがつくようにする。
+      ctx.beginPath();
+      ctx.moveTo(-long * 0.94 * scale, wag * 5 * scale);
+      ctx.quadraticCurveTo(-long * 1.3 * scale, -tall * 0.9 * scale + wag * 5 * scale, -long * 1.42 * scale, -tall * 0.2 * scale + wag * 5 * scale);
+      ctx.quadraticCurveTo(-long * 1.2 * scale, wag * 5 * scale, -long * 1.42 * scale, tall * 0.2 * scale + wag * 5 * scale);
+      ctx.quadraticCurveTo(-long * 1.3 * scale, tall * 0.9 * scale + wag * 5 * scale, -long * 0.94 * scale, wag * 5 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 胸びれ
+      ctx.beginPath();
+      ctx.ellipse(long * 0.18 * scale, tall * 0.7 * scale, long * 0.22 * scale, tall * 0.22 * scale, 0.6 * d, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "#0d161c";
+      ctx.beginPath(); ctx.arc(long * 0.78 * scale, -tall * 0.34 * scale, 0.7 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, long * scale, tall * scale, pattern, d, accent);
+      break;
+    }
+    case "dolphin": {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(9.4 * scale, -0.4 * scale);
+      ctx.quadraticCurveTo(4 * scale, -3.4 * scale, -1 * scale, -2.8 * scale);
+      ctx.quadraticCurveTo(-6 * scale, -2.2 * scale, -9 * scale, wag * 5 * scale);
+      ctx.quadraticCurveTo(-6 * scale, 2.2 * scale, -1 * scale, 2.8 * scale);
+      ctx.quadraticCurveTo(4 * scale, 3 * scale, 9.4 * scale, 0.6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 背びれ
+      ctx.beginPath();
+      ctx.moveTo(-0.6 * scale, -2.6 * scale);
+      ctx.quadraticCurveTo(1.4 * scale, -6.4 * scale, 3.6 * scale, -2.4 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 水平尾びれ
+      ctx.beginPath();
+      ctx.moveTo(-8.4 * scale, wag * 5 * scale);
+      ctx.lineTo(-12 * scale, -2.4 * scale + wag * 5 * scale);
+      ctx.lineTo(-10 * scale, wag * 5 * scale);
+      ctx.lineTo(-12 * scale, 2.4 * scale + wag * 5 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#0e161c";
+      ctx.beginPath(); ctx.arc(7 * scale, -1.4 * scale, 0.6 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, 8 * scale, 2.8 * scale, pattern, d, accent);
+      break;
+    }
+    case "landbeast": {
+      // 水辺を歩く獣。4本の足と、水面から出た背中。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.ellipse(0, 0, 7.4 * scale, 3.6 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(7.6 * scale, -1.8 * scale, 3 * scale, 2.2 * scale, -0.2 * d, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.6 * scale;
+      for (const lx of [-4.6, -1.4, 2.2, 5] as const) {
+        ctx.beginPath();
+        ctx.moveTo(lx * scale, 2.6 * scale);
+        ctx.lineTo(lx * scale - 0.8 * scale, 7.4 * scale + Math.sin(wag * 6 + lx) * 0.8 * scale);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4 * scale;
+      ctx.beginPath();
+      ctx.moveTo(-7 * scale, -0.6 * scale);
+      ctx.quadraticCurveTo(-11 * scale, -1.4 * scale, -12.6 * scale, 1.4 * scale + wag * 4 * scale);
+      ctx.stroke();
+      ctx.fillStyle = "#0f1712";
+      ctx.beginPath(); ctx.arc(9 * scale, -2.4 * scale, 0.6 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, 7 * scale, 3.4 * scale, pattern, d, accent);
+      break;
+    }
+
+    /* ============ 中生代の海生爬虫類 ============ */
+    case "mosasaur": {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(12.6 * scale, 0.4 * scale);
+      ctx.quadraticCurveTo(6 * scale, -3.6 * scale, 0, -3.2 * scale);
+      ctx.quadraticCurveTo(-7 * scale, -2.6 * scale, -13 * scale, wag * 6 * scale);
+      ctx.quadraticCurveTo(-7 * scale, 2.6 * scale, 0, 3.2 * scale);
+      ctx.quadraticCurveTo(6 * scale, 3.4 * scale, 12.6 * scale, 1.6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 尾びれは下へ落ちる。魚とも首長竜とも違う形。
+      ctx.beginPath();
+      ctx.moveTo(-12 * scale, wag * 6 * scale);
+      ctx.lineTo(-17 * scale, -3.4 * scale + wag * 6 * scale);
+      ctx.lineTo(-16 * scale, wag * 6 * scale);
+      ctx.lineTo(-17.4 * scale, 4.6 * scale + wag * 6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 4枚のひれ
+      for (const [fx, fy] of [[4, 3], [-3, 3], [4, -3], [-3, -3]] as const) {
+        ctx.beginPath();
+        ctx.ellipse(fx * scale, fy * 1.35 * scale, 3.2 * scale, 1.1 * scale, fy > 0 ? 0.5 * d : -0.5 * d, 0, TAU);
+        ctx.fill();
+      }
+      // 歯ののぞく口
+      ctx.strokeStyle = "rgba(246,240,216,0.9)"; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(8 * scale, 1 * scale); ctx.lineTo(12 * scale, 0.8 * scale); ctx.stroke();
+      ctx.fillStyle = "#f4efd6";
+      ctx.beginPath(); ctx.arc(10.4 * scale, -1.4 * scale, 0.8 * scale, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#101812";
+      ctx.beginPath(); ctx.arc(10.6 * scale, -1.4 * scale, 0.4 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, 9 * scale, 3 * scale, pattern, d, accent);
+      break;
+    }
+    case "plesiosaur":
+    case "pliosaur": {
+      const neck = kind === "plesiosaur" ? 15 : 5;
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.9;
+      const bodyW = kind === "plesiosaur" ? 7 : 10;
+      const bodyH = kind === "plesiosaur" ? 3.4 : 4.6;
+      ctx.beginPath(); ctx.ellipse(0, 0, bodyW * scale, bodyH * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      // 首。首長竜はここが主役なので、太さを変えながら曲げる。
+      ctx.strokeStyle = color;
+      ctx.lineWidth = (kind === "plesiosaur" ? 2 : 3.6) * scale;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(bodyW * 0.7 * scale, -1 * scale);
+      ctx.quadraticCurveTo(
+        (bodyW + neck * 0.5) * scale,
+        -neck * 0.42 * scale,
+        (bodyW + neck * 0.86) * scale,
+        -neck * 0.2 * scale + Math.sin(wag * 4) * scale,
+      );
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      // 頭
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.ellipse((bodyW + neck * 0.94) * scale, -neck * 0.2 * scale + Math.sin(wag * 4) * scale, 2.4 * scale, 1.4 * scale, -0.2 * d, 0, TAU);
+      ctx.fill(); ctx.stroke();
+      // 4枚のひれ。左右で位相をずらすと、羽ばたいて見える。
+      for (const [i, [fx, fy]] of ([[3.4, 1], [-3.4, 1], [3.4, -1], [-3.4, -1]] as const).entries()) {
+        ctx.save();
+        ctx.translate(fx * scale, fy * bodyH * 0.9 * scale);
+        ctx.rotate(fy * (0.5 + Math.sin(wag * 5 + i) * 0.22) * d);
+        ctx.beginPath(); ctx.ellipse(0, 0, 5.2 * scale, 1.5 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      // 短い尾
+      ctx.beginPath();
+      ctx.moveTo(-bodyW * 0.9 * scale, 0);
+      ctx.lineTo(-(bodyW + 5) * scale, -1.6 * scale + wag * 4 * scale);
+      ctx.lineTo(-(bodyW + 5) * scale, 1.6 * scale + wag * 4 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#0f1a1c";
+      ctx.beginPath();
+      ctx.arc((bodyW + neck * 0.98) * scale, -neck * 0.2 * scale - 0.3 * scale + Math.sin(wag * 4) * scale, 0.5 * scale, 0, TAU);
+      ctx.fill();
+      applyPattern(ctx, 0, 0, bodyW * scale, bodyH * scale, pattern, d, accent);
+      break;
+    }
+    case "spinosaur": {
+      // 帆と長い口。水につかった二足歩行のシルエット。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(2 * scale, -4 * scale);
+      ctx.quadraticCurveTo(-2 * scale, -11 * scale, -8 * scale, -3.6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(-1 * scale, 0, 8 * scale, 3.4 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 2 * scale; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(6 * scale, -1.4 * scale);
+      ctx.quadraticCurveTo(9 * scale, -4.6 * scale, 12 * scale, -4 * scale);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(11 * scale, -5 * scale);
+      ctx.lineTo(18 * scale, -3.2 * scale);
+      ctx.lineTo(11 * scale, -2.2 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.8 * scale;
+      ctx.beginPath();
+      ctx.moveTo(-8 * scale, 0.6 * scale);
+      ctx.quadraticCurveTo(-14 * scale, 1 * scale, -18 * scale, 3.4 * scale + wag * 5 * scale);
+      ctx.stroke();
+      for (const lx of [-3, 1] as const) {
+        ctx.beginPath();
+        ctx.moveTo(lx * scale, 2.4 * scale);
+        ctx.lineTo(lx * scale - 1 * scale, 7 * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#f6f0d4";
+      ctx.beginPath(); ctx.arc(11.6 * scale, -4.4 * scale, 0.7 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, -1 * scale, 0, 7 * scale, 3 * scale, pattern, d, accent);
+      break;
+    }
+
+    /* ============ 殻をもつもの ============ */
+    case "ammonite": {
+      // 渦巻きの殻と、そこから出る触手。
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(0, 0, 4.4 * scale, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      for (let i = 0; i <= 22; i += 1) {
+        const a = (i / 22) * TAU * 1.8;
+        const r = (0.4 + a * 0.42) * scale;
+        const px = Math.cos(a) * r;
+        const py = Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 0.8 * scale;
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(4 * scale, i * 1.1 * scale);
+        ctx.quadraticCurveTo(7 * scale, i * 1.6 * scale, 8.6 * scale, i * 2.2 * scale + Math.sin(wag * 6 + i) * scale);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "belemnite": {
+      // 弾丸のような殻。まっすぐ進む。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(5.6 * scale, 0);
+      ctx.lineTo(-2 * scale, -1.6 * scale);
+      ctx.lineTo(-2 * scale, 1.6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(-3.4 * scale, 0, 2.4 * scale, 1.7 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 0.6 * scale;
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-5.2 * scale, i * 0.7 * scale);
+        ctx.lineTo(-9 * scale, i * 1.5 * scale + wag * 3 * scale);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "orthocone": {
+      // まっすぐな殻。仕切りの線を入れて、細長い筒に見せる。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(6 * scale, -3.4 * scale);
+      ctx.lineTo(-17 * scale, -1 * scale);
+      ctx.lineTo(-17 * scale, 1 * scale);
+      ctx.lineTo(6 * scale, 3.4 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.55;
+      for (let i = 0; i < 7; i += 1) {
+        const t = i / 7;
+        const x = 5 * scale - t * 21 * scale;
+        const h = (3.2 - t * 2.3) * scale;
+        ctx.beginPath(); ctx.moveTo(x, -h); ctx.lineTo(x, h); ctx.stroke();
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 0.9 * scale;
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(6 * scale, i * 1.3 * scale);
+        ctx.quadraticCurveTo(9.4 * scale, i * 1.8 * scale, 11.4 * scale, i * 2.4 * scale + Math.sin(wag * 5 + i) * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#f4eeda";
+      ctx.beginPath(); ctx.arc(5.6 * scale, -1.4 * scale, 0.8 * scale, 0, TAU); ctx.fill();
+      break;
+    }
+    case "bivalve": {
+      // 二枚貝。海底にすこし開いて立つ。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath();
+        ctx.moveTo(0, 3.4 * scale);
+        ctx.quadraticCurveTo(side * 4.4 * scale, 1.6 * scale, side * 3.4 * scale, -3 * scale);
+        ctx.quadraticCurveTo(side * 1.4 * scale, -1 * scale, 0, -0.6 * scale);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.45;
+      for (let i = 1; i <= 3; i += 1) {
+        ctx.beginPath();
+        ctx.arc(0, 3.4 * scale, i * 1.1 * scale, Math.PI * 1.12, Math.PI * 1.88);
+        ctx.stroke();
+      }
+      break;
+    }
+
+    /* ============ 古生代 ============ */
+    case "trilobite": {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.ellipse(0, 0, 5.4 * scale, 3.2 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      // 頭の半円。三葉虫の顔はここで決まる。
+      ctx.beginPath(); ctx.ellipse(3.6 * scale, 0, 2.6 * scale, 3.1 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.5;
+      for (let i = -3; i <= 2; i += 1) {
+        ctx.beginPath(); ctx.moveTo(i * 1.5 * scale, -2.6 * scale); ctx.lineTo(i * 1.5 * scale, 2.6 * scale); ctx.stroke();
+      }
+      // 三葉の名のとおり、縦に3つに割れて見える線。
+      ctx.beginPath(); ctx.moveTo(-5 * scale, -1.3 * scale); ctx.lineTo(5 * scale, -1.3 * scale); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-5 * scale, 1.3 * scale); ctx.lineTo(5 * scale, 1.3 * scale); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 0.8 * scale;
+      ctx.beginPath(); ctx.moveTo(-4.6 * scale, 0); ctx.lineTo(-8 * scale, wag * 5 * scale); ctx.stroke();
+      ctx.fillStyle = "#101614";
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.arc(4.6 * scale, side * 1.5 * scale, 0.5 * scale, 0, TAU); ctx.fill();
+      }
+      break;
+    }
+    case "eurypterid": {
+      // ウミサソリ。節のある胴と、はさみ、とがった尾。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(5.4 * scale, -3.6 * scale);
+      ctx.lineTo(-8 * scale, -1.4 * scale);
+      ctx.lineTo(-13 * scale, wag * 5 * scale);
+      ctx.lineTo(-8 * scale, 1.4 * scale);
+      ctx.lineTo(5.4 * scale, 3.6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(6.4 * scale, 0, 3.4 * scale, 3.6 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.5;
+      for (let i = 0; i < 5; i += 1) {
+        const x = (3 - i * 2.4) * scale;
+        const h = (3.4 - i * 0.5) * scale;
+        ctx.beginPath(); ctx.moveTo(x, -h); ctx.lineTo(x, h); ctx.stroke();
+      }
+      // はさみ
+      ctx.strokeStyle = color; ctx.lineWidth = 1.1 * scale;
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath();
+        ctx.moveTo(8 * scale, side * 2 * scale);
+        ctx.lineTo(12.4 * scale, side * 3.4 * scale + Math.sin(wag * 6) * scale);
+        ctx.stroke();
+      }
+      // 泳ぐための平たい後ろ足
+      for (const side of [-1, 1] as const) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(0.4 * scale, side * 4.4 * scale, 3.6 * scale, 1.2 * scale, side * 0.4 * d, 0, TAU);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#0f1610";
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.arc(8 * scale, side * 1.4 * scale, 0.6 * scale, 0, TAU); ctx.fill();
+      }
+      break;
+    }
+    case "placoderm": {
+      // 甲冑魚。頭だけ骨の板でできていて、境目に段差がある。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(2 * scale, -4.4 * scale);
+      ctx.quadraticCurveTo(-6 * scale, -3.6 * scale, -10 * scale, -1 * scale);
+      ctx.quadraticCurveTo(-13 * scale, 0, -10 * scale, 1 * scale);
+      ctx.quadraticCurveTo(-6 * scale, 3.6 * scale, 2 * scale, 4.4 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-9.6 * scale, -0.6 * scale);
+      ctx.lineTo(-15.4 * scale, -4.4 * scale + wag * 6 * scale);
+      ctx.lineTo(-14 * scale, 0.4 * scale + wag * 6 * scale);
+      ctx.lineTo(-15.4 * scale, 4 * scale + wag * 6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 装甲の頭。色を変えて板だと分かるようにする。
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.moveTo(9.6 * scale, 0.4 * scale);
+      ctx.quadraticCurveTo(8 * scale, -4.6 * scale, 2.6 * scale, -4.6 * scale);
+      ctx.lineTo(2 * scale, 4.6 * scale);
+      ctx.quadraticCurveTo(7.4 * scale, 4.6 * scale, 9.6 * scale, 0.4 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 板でできた歯
+      ctx.fillStyle = "#f2ecd2";
+      ctx.beginPath();
+      ctx.moveTo(9.4 * scale, 0.8 * scale);
+      ctx.lineTo(5 * scale, 1.4 * scale);
+      ctx.lineTo(5 * scale, 3 * scale);
+      ctx.lineTo(9 * scale, 2 * scale);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#f6f2df";
+      ctx.beginPath(); ctx.arc(6.4 * scale, -2.2 * scale, 0.9 * scale, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#121a14";
+      ctx.beginPath(); ctx.arc(6.6 * scale, -2.2 * scale, 0.45 * scale, 0, TAU); ctx.fill();
+      // 胸びれ
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.ellipse(0.6 * scale, 4 * scale, 3.4 * scale, 1.2 * scale, 0.4 * d, 0, TAU); ctx.fill();
+      break;
+    }
+    case "earlyshark": {
+      // 古いサメ。背びれが2枚、尾は上葉が長い。
+      fishBody(ctx, 0, 0, 7.4 * scale, 2.8 * scale, color, d, { wag: wag * 0.8, dorsal: 0, fork: 0.2, tail: false });
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(-6.4 * scale, 0);
+      ctx.lineTo(-12.6 * scale, -5.4 * scale + wag * 6 * scale);
+      ctx.lineTo(-10.4 * scale, 0.6 * scale + wag * 6 * scale);
+      ctx.lineTo(-12 * scale, 2.8 * scale + wag * 6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      for (const [bx, h] of [[0.4, 4.6], [-4, 3]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(bx * scale - 1.6 * scale, -2.2 * scale);
+        ctx.lineTo(bx * scale, -(2.2 + h) * scale);
+        ctx.lineTo(bx * scale + 2.2 * scale, -2.2 * scale);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+      ctx.beginPath(); ctx.ellipse(1.4 * scale, 3 * scale, 3.6 * scale, 1.1 * scale, 0.4 * d, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, 7 * scale, 2.6 * scale, pattern, d, accent);
+      break;
+    }
+    case "tetrapod": {
+      // 四足の両生類。ひらたい頭、太い胴、水をかく足。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(8.6 * scale, 0.4 * scale);
+      ctx.quadraticCurveTo(4 * scale, -3.4 * scale, -2 * scale, -3 * scale);
+      ctx.quadraticCurveTo(-9 * scale, -2.4 * scale, -14 * scale, -0.6 * scale + wag * 6 * scale);
+      ctx.quadraticCurveTo(-9 * scale, 1.6 * scale, -2 * scale, 3 * scale);
+      ctx.quadraticCurveTo(4 * scale, 3.6 * scale, 8.6 * scale, 1.6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 尾のひれ。まだ魚だったころの名残。
+      ctx.beginPath();
+      ctx.moveTo(-11 * scale, -1.4 * scale + wag * 6 * scale);
+      ctx.quadraticCurveTo(-15 * scale, -4.4 * scale + wag * 6 * scale, -16.4 * scale, wag * 6 * scale);
+      ctx.quadraticCurveTo(-15 * scale, 3 * scale + wag * 6 * scale, -11 * scale, 1.4 * scale + wag * 6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5 * scale;
+      for (const [lx, ly] of [[3.4, 1], [-4, 1], [3.4, -1], [-4, -1]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(lx * scale, ly * 2.4 * scale);
+        ctx.lineTo(lx * scale - 1.6 * scale, ly * 6.2 * scale + Math.sin(wag * 6 + lx) * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#f6f2dc";
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.arc(6 * scale, side * 1.4 * scale - 1.4 * scale, 0.9 * scale, 0, TAU); ctx.fill();
+      }
+      ctx.fillStyle = "#121a12";
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.arc(6.2 * scale, side * 1.4 * scale - 1.4 * scale, 0.45 * scale, 0, TAU); ctx.fill();
+      }
+      applyPattern(ctx, 0, 0, 7 * scale, 2.8 * scale, pattern, d, accent);
+      break;
+    }
+    case "lobefin": {
+      // 肉鰭魚。ひれの付け根が太く、そこに骨が入っている。
+      fishBody(ctx, 0, 0, 8 * scale, 3.4 * scale, color, d, { wag: wag * 0.8, dorsal: 0.35, fork: 0.15, pectoral: false });
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      for (const [fx, fy] of [[1.4, 1], [-4, 1], [1.4, -1], [-4, -1]] as const) {
+        ctx.save();
+        ctx.translate(fx * scale, fy * 2.8 * scale);
+        ctx.rotate(fy * (0.5 + Math.sin(wag * 5 + fx) * 0.16) * d);
+        ctx.beginPath(); ctx.ellipse(0, 0, 3.2 * scale, 1.5 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      applyPattern(ctx, 0, 0, 8 * scale, 3.4 * scale, pattern, d, accent);
+      break;
+    }
+    case "sturgeon": {
+      // 硬い鱗の列を背に持つ長い魚。吻がとがる。
+      fishBody(ctx, 0, 0, 8.6 * scale, 2.4 * scale, color, d, { wag, dorsal: 0.3, fork: 0.7 });
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(7.6 * scale, -1.4 * scale);
+      ctx.lineTo(13.4 * scale, -0.4 * scale);
+      ctx.lineTo(7.6 * scale, 1 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = accent;
+      for (let i = 0; i < 6; i += 1) {
+        ctx.beginPath();
+        ctx.arc((5 - i * 2.4) * scale, -2.2 * scale, 0.7 * scale, 0, TAU);
+        ctx.fill();
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 0.5 * scale;
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath();
+        ctx.moveTo(9 * scale, side * 0.6 * scale);
+        ctx.lineTo(11.4 * scale, side * 2.4 * scale);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "sawfish": {
+      fishBody(ctx, 0, 0, 8 * scale, 2.6 * scale, color, d, { wag, dorsal: 0.5, fork: 0.5 });
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(7 * scale, -1 * scale);
+      ctx.lineTo(15.4 * scale, -0.8 * scale);
+      ctx.lineTo(15.4 * scale, 0.6 * scale);
+      ctx.lineTo(7 * scale, 1 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "rgba(246,242,220,0.9)"; ctx.lineWidth = 0.55;
+      for (let i = 0; i < 7; i += 1) {
+        const x = (8.4 + i) * scale;
+        ctx.beginPath(); ctx.moveTo(x, -1 * scale); ctx.lineTo(x, -2.6 * scale); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, 0.8 * scale); ctx.lineTo(x, 2.4 * scale); ctx.stroke();
+      }
+      break;
+    }
+    case "crinoid": {
+      // ウミユリ。茎の先に腕を開く。動かないので海底の林になる。
+      ctx.strokeStyle = color; ctx.lineWidth = 1.2 * scale;
+      ctx.beginPath();
+      ctx.moveTo(0, 9 * scale);
+      ctx.quadraticCurveTo(1.4 * scale, 2 * scale, 0, -4 * scale);
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.ellipse(0, -4.4 * scale, 2 * scale, 1.6 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 0.7 * scale;
+      for (let i = 0; i < 7; i += 1) {
+        const a = -Math.PI + (i / 6) * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(0, -5 * scale);
+        ctx.quadraticCurveTo(Math.cos(a) * 3 * scale, -8.4 * scale, Math.cos(a) * 5.4 * scale, -9.4 * scale + Math.sin(i) * 0.6 * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = accent;
+      ctx.beginPath(); ctx.ellipse(0, 9.4 * scale, 3 * scale, 1.2 * scale, 0, 0, TAU); ctx.fill();
+      break;
+    }
+    case "horseshoe": {
+      // カブトガニ。半円の甲羅と一本の尾。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(-1 * scale, -4.6 * scale);
+      ctx.quadraticCurveTo(5.6 * scale, -4.4 * scale, 5.6 * scale, 0);
+      ctx.quadraticCurveTo(5.6 * scale, 4.4 * scale, -1 * scale, 4.6 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-1 * scale, -3.4 * scale);
+      ctx.lineTo(-5.4 * scale, -2.4 * scale);
+      ctx.lineTo(-5.4 * scale, 2.4 * scale);
+      ctx.lineTo(-1 * scale, 3.4 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 0.9 * scale;
+      ctx.beginPath(); ctx.moveTo(-5.2 * scale, 0); ctx.lineTo(-12 * scale, wag * 4 * scale); ctx.stroke();
+      ctx.fillStyle = "#101812";
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.arc(2.6 * scale, side * 2 * scale, 0.5 * scale, 0, TAU); ctx.fill();
+      }
+      break;
+    }
+    case "nymph": {
+      // 巨大トンボの幼虫。節のある腹と、たたんだ脚。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.ellipse(0, 0, 5.6 * scale, 2.4 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(5.6 * scale, 0, 2.4 * scale, 2 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.45;
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath(); ctx.moveTo(i * 1.7 * scale, -2.2 * scale); ctx.lineTo(i * 1.7 * scale, 2.2 * scale); ctx.stroke();
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 0.7 * scale;
+      for (const [lx, ly] of [[3, 1], [1, 1], [-1, 1], [3, -1], [1, -1], [-1, -1]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(lx * scale, ly * 1.8 * scale);
+        ctx.lineTo(lx * scale + 1.6 * scale, ly * 4.6 * scale + Math.sin(wag * 6 + lx) * 0.6 * scale);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(-5.4 * scale, 0);
+      ctx.lineTo(-8.4 * scale, -1.4 * scale + wag * 4 * scale);
+      ctx.lineTo(-8.4 * scale, 1.4 * scale + wag * 4 * scale);
+      ctx.closePath();
+      ctx.fillStyle = color; ctx.fill();
+      ctx.fillStyle = "#121a10";
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.arc(6.4 * scale, side * 1.2 * scale, 0.7 * scale, 0, TAU); ctx.fill();
+      }
+      break;
+    }
+    case "graptolite": {
+      // 筆石。のこぎりの歯のような群体が漂う。
+      ctx.strokeStyle = color; ctx.lineWidth = 0.9 * scale;
+      ctx.beginPath();
+      ctx.moveTo(-7 * scale, -5 * scale);
+      ctx.quadraticCurveTo(0, 0, -5 * scale, 6 * scale);
+      ctx.stroke();
+      ctx.fillStyle = color;
+      for (let i = 0; i < 9; i += 1) {
+        const t = i / 8;
+        const px = -7 * scale + Math.sin(t * 3.1) * 6 * scale;
+        const py = (-5 + t * 11) * scale;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(px + 3 * scale, py - 1 * scale);
+        ctx.lineTo(px + 2.6 * scale, py + 1.2 * scale);
+        ctx.closePath(); ctx.fill();
+      }
+      break;
+    }
+
+    /* ============ カンブリア紀とその前 ============ */
+    case "anomalocaris": {
+      // アノマロカリス。前の2本の触手と、体の横にならぶひれ。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(6.4 * scale, -3 * scale);
+      ctx.quadraticCurveTo(-2 * scale, -3.4 * scale, -9 * scale, -1.6 * scale);
+      ctx.lineTo(-9 * scale, 1.6 * scale);
+      ctx.quadraticCurveTo(-2 * scale, 3.4 * scale, 6.4 * scale, 3 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 体の横のひれ。ここが動くと、いかにも古い生きものに見える。
+      for (const side of [-1, 1] as const) {
+        for (let i = 0; i < 6; i += 1) {
+          ctx.beginPath();
+          ctx.ellipse(
+            (4 - i * 2.4) * scale,
+            side * (3 + Math.sin(wag * 6 + i * 0.7) * 0.7) * scale,
+            2 * scale,
+            1.1 * scale,
+            side * 0.35 * d,
+            0,
+            TAU,
+          );
+          ctx.fill();
+        }
+      }
+      // 尾のひれ
+      ctx.beginPath();
+      ctx.moveTo(-8.6 * scale, 0);
+      ctx.lineTo(-13 * scale, -3.4 * scale + wag * 4 * scale);
+      ctx.lineTo(-11.4 * scale, wag * 4 * scale);
+      ctx.lineTo(-13 * scale, 3.4 * scale + wag * 4 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 2本の触手
+      ctx.strokeStyle = color; ctx.lineWidth = 1.2 * scale;
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath();
+        ctx.moveTo(6 * scale, side * 1.2 * scale);
+        ctx.quadraticCurveTo(11 * scale, side * 2.6 * scale, 12.4 * scale, side * 0.6 * scale + Math.sin(wag * 5) * scale);
+        ctx.stroke();
+      }
+      // 大きな複眼。柄の先についている。
+      ctx.fillStyle = accent;
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.ellipse(6.6 * scale, side * 3.6 * scale, 1.8 * scale, 1.3 * scale, 0, 0, TAU); ctx.fill();
+      }
+      ctx.fillStyle = "#12100f";
+      for (const side of [-1, 1] as const) {
+        ctx.beginPath(); ctx.arc(6.8 * scale, side * 3.6 * scale, 0.6 * scale, 0, TAU); ctx.fill();
+      }
+      break;
+    }
+    case "opabinia": {
+      // オパビニア。5つの目と、前へ伸びるホースのような口。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.ellipse(0, 0, 5.4 * scale, 2 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.45;
+      for (let i = -3; i <= 3; i += 1) {
+        ctx.beginPath(); ctx.moveTo(i * 1.4 * scale, -1.8 * scale); ctx.lineTo(i * 1.4 * scale, 1.8 * scale); ctx.stroke();
+      }
+      ctx.fillStyle = color;
+      for (const side of [-1, 1] as const) {
+        for (let i = 0; i < 5; i += 1) {
+          ctx.beginPath();
+          ctx.ellipse((3 - i * 2) * scale, side * (2.2 + Math.sin(wag * 6 + i) * 0.4) * scale, 1.5 * scale, 0.8 * scale, 0, 0, TAU);
+          ctx.fill();
+        }
+      }
+      ctx.strokeStyle = color; ctx.lineWidth = 0.9 * scale;
+      ctx.beginPath();
+      ctx.moveTo(5 * scale, -0.6 * scale);
+      ctx.quadraticCurveTo(9 * scale, -3 * scale, 11.4 * scale, -0.6 * scale + Math.sin(wag * 5) * scale);
+      ctx.stroke();
+      ctx.fillStyle = "#1b1410";
+      for (let i = 0; i < 5; i += 1) {
+        ctx.beginPath(); ctx.arc((3.4 + (i % 3) * 0.9) * scale, (-2.2 + i * 0.9) * scale, 0.5 * scale, 0, TAU); ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.moveTo(-5.2 * scale, 0);
+      ctx.lineTo(-8.4 * scale, -2.4 * scale + wag * 4 * scale);
+      ctx.lineTo(-8.4 * scale, 2.4 * scale + wag * 4 * scale);
+      ctx.closePath();
+      ctx.fillStyle = color; ctx.fill(); ctx.stroke();
+      break;
+    }
+    case "hallucigenia": {
+      // 背中に棘、腹に細い脚。上下がどちらか分からなかった生きもの。
+      ctx.strokeStyle = color; ctx.lineWidth = 1.8 * scale;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-6 * scale, 1.4 * scale);
+      ctx.quadraticCurveTo(0, -0.6 * scale, 6.4 * scale, 0.6 * scale);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      ctx.lineWidth = 0.7 * scale;
+      for (let i = 0; i < 7; i += 1) {
+        const x = (-5.4 + i * 1.9) * scale;
+        ctx.beginPath(); ctx.moveTo(x, -0.4 * scale); ctx.lineTo(x + 0.6 * scale, -5.4 * scale); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, 1.6 * scale);
+        ctx.lineTo(x - 0.4 * scale, 5 * scale + Math.sin(wag * 6 + i) * 0.5 * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(6.8 * scale, 0.4 * scale, 1.6 * scale, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#171009";
+      ctx.beginPath(); ctx.arc(7.4 * scale, 0.2 * scale, 0.5 * scale, 0, TAU); ctx.fill();
+      applyPattern(ctx, 0, 0, 5 * scale, 1.4 * scale, pattern, d, accent);
+      break;
+    }
+    case "pikaia": {
+      // ピカイア。背に一本の筋（脊索）を通す。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(5.4 * scale, 0);
+      ctx.quadraticCurveTo(1 * scale, -1.9 * scale, -2 * scale, -1.3 * scale);
+      ctx.quadraticCurveTo(-5.4 * scale, -0.8 * scale, -7.4 * scale, wag * 6 * scale);
+      ctx.quadraticCurveTo(-5.4 * scale, 0.8 * scale, -2 * scale, 1.3 * scale);
+      ctx.quadraticCurveTo(1 * scale, 1.9 * scale, 5.4 * scale, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(4.4 * scale, -0.2 * scale);
+      ctx.lineTo(-6.4 * scale, wag * 5 * scale);
+      ctx.stroke();
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath(); ctx.moveTo(i * 1.7 * scale, -1.3 * scale); ctx.lineTo(i * 1.7 * scale, 1.3 * scale); ctx.stroke();
+      }
+      break;
+    }
+    case "dickinsonia": {
+      // ディッキンソニア。左右に細かく割れた楕円。目も口もない。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.ellipse(0, 0, 6.4 * scale, 3.6 * scale, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "rgba(60,38,24,0.5)"; ctx.lineWidth = 0.45;
+      ctx.beginPath(); ctx.moveTo(-6 * scale, 0); ctx.lineTo(6 * scale, 0); ctx.stroke();
+      for (let i = 0; i < 11; i += 1) {
+        const t = -0.86 + (i / 10) * 1.72;
+        const x = t * 6 * scale;
+        const h = Math.sqrt(Math.max(0, 1 - t * t)) * 3.4 * scale;
+        ctx.beginPath();
+        ctx.moveTo(x, -h);
+        ctx.lineTo(x + 0.8 * scale, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      applyPattern(ctx, 0, 0, 6 * scale, 3.4 * scale, pattern, d, accent);
+      break;
+    }
+    case "charnia": {
+      // カルニア。羽根のような体を砂に立てる。動かない。
+      ctx.strokeStyle = color; ctx.lineWidth = 1.4 * scale;
+      ctx.beginPath();
+      ctx.moveTo(0, 9 * scale);
+      ctx.quadraticCurveTo(1 * scale, 2 * scale, 0, -9 * scale);
+      ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 0.9 * scale;
+      for (let i = 0; i < 9; i += 1) {
+        const y = (7 - i * 2) * scale;
+        const w = (5.4 - Math.abs(i - 3) * 0.6) * scale;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.quadraticCurveTo(w * 0.7, y - 1.6 * scale, w, y - 3 * scale);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.quadraticCurveTo(-w * 0.7, y - 1.6 * scale, -w, y - 3 * scale);
+        ctx.stroke();
+      }
+      ctx.fillStyle = accent;
+      ctx.beginPath(); ctx.ellipse(0, 9.4 * scale, 3.4 * scale, 1.3 * scale, 0, 0, TAU); ctx.fill();
+      break;
+    }
+    case "stromatolite": {
+      // ストロマトライト。層が積み上がった岩。35億年、同じ形。
+      ctx.fillStyle = color;
+      ctx.strokeStyle = outlineColor; ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(-5.4 * scale, 8 * scale);
+      ctx.quadraticCurveTo(-4.4 * scale, -6 * scale, 0, -7.4 * scale);
+      ctx.quadraticCurveTo(4.4 * scale, -6 * scale, 5.4 * scale, 8 * scale);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 0.5;
+      for (let i = 0; i < 6; i += 1) {
+        const y = (6 - i * 2.4) * scale;
+        const w = (5 - i * 0.5) * scale;
+        ctx.beginPath();
+        ctx.moveTo(-w, y);
+        ctx.quadraticCurveTo(0, y - 1.6 * scale, w, y);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "microbe": {
+      // 細胞・膜・気泡。輪郭のある丸と、内側の光。
+      ctx.strokeStyle = color; ctx.lineWidth = 0.7 * scale;
+      ctx.beginPath(); ctx.arc(0, 0, 2.8 * scale, 0, TAU); ctx.stroke();
+      ctx.fillStyle = pattern === "glow" ? accent : color;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.arc(0, 0, 2.4 * scale, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(0.7 * scale, -0.6 * scale, 0.9 * scale, 0, TAU); ctx.fill();
+      break;
+    }
   }
   ctx.restore();
 };
@@ -644,8 +2011,21 @@ const drawHabitat = (ctx: CanvasRenderingContext2D, habitat: Habitat, seed: numb
   ctx.moveTo(-38, 12); ctx.quadraticCurveTo(-10, 6 + seeded(seed, 1) * 6, 8, 13); ctx.quadraticCurveTo(26, 18, 38, 10); ctx.lineTo(38, 21); ctx.lineTo(-38, 21); ctx.closePath();
   ctx.fill();
 
-  const roots = habitat === "mekong" || habitat === "flooded-forest" || habitat === "amazon" || habitat === "amazon-giant";
-  const rocky = habitat === "mountain" || habitat === "africa" || habitat === "japan-sea" || habitat === "cold-sea";
+  const roots =
+    habitat === "mekong" ||
+    habitat === "flooded-forest" ||
+    habitat === "amazon" ||
+    habitat === "amazon-giant" ||
+    habitat === "paleo-river" ||
+    habitat === "carbon-swamp";
+  const rocky =
+    habitat === "mountain" ||
+    habitat === "africa" ||
+    habitat === "japan-sea" ||
+    habitat === "cold-sea" ||
+    habitat === "devonian" ||
+    habitat === "permian-sea" ||
+    habitat === "ordovician";
   const coral = habitat === "okinawa" || habitat === "seasia" || habitat === "great-reef";
   if (roots) {
     ctx.strokeStyle = habitat === "flooded-forest" ? "#382d22" : "#57452f";
@@ -684,9 +2064,137 @@ const drawHabitat = (ctx: CanvasRenderingContext2D, habitat: Habitat, seed: numb
     ctx.strokeStyle = "#5d9270"; ctx.lineWidth = 1.5;
     for (let i = 0; i < 4; i += 1) { const x = -28 + i * 17; ctx.beginPath(); ctx.moveTo(x, 15); ctx.quadraticCurveTo(x + 2, 5, x - 1, 1); ctx.stroke(); }
   }
-  if (habitat === "open-ocean" || habitat === "indian" || habitat === "world-ocean") {
+  if (
+    habitat === "open-ocean" ||
+    habitat === "indian" ||
+    habitat === "world-ocean" ||
+    habitat === "giant-shark-sea" ||
+    habitat === "mesozoic-sea"
+  ) {
     ctx.strokeStyle = "rgba(220,248,255,0.2)"; ctx.lineWidth = 2;
     for (let i = 0; i < 3; i += 1) { ctx.beginPath(); ctx.moveTo(-31 + i * 24, -18); ctx.lineTo(-18 + i * 24, 18); ctx.stroke(); }
+  }
+
+  /* ---- 施設棟。水槽ではないので、水面ではなく灯りと棚を描く ---- */
+  if (habitat === "shop-case") {
+    // ケースの背板と、上からのスポット。
+    ctx.fillStyle = "rgba(255,214,150,0.14)";
+    ctx.beginPath();
+    ctx.moveTo(-30, -19); ctx.lineTo(30, -19); ctx.lineTo(20, 21); ctx.lineTo(-20, 21);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(120,92,56,0.55)"; ctx.lineWidth = 1.4;
+    for (const x of [-19, 19]) { ctx.beginPath(); ctx.moveTo(x, -19); ctx.lineTo(x, 21); ctx.stroke(); }
+  }
+  if (habitat === "dining") {
+    // 席側のあかりが、水槽のガラスに映り込む。
+    ctx.fillStyle = "rgba(255,196,116,0.16)";
+    ctx.fillRect(-38, 8, 76, 13);
+    ctx.strokeStyle = "rgba(255,226,176,0.3)"; ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i += 1) {
+      ctx.beginPath(); ctx.moveTo(-30 + i * 20, 10); ctx.lineTo(-26 + i * 20, 20); ctx.stroke();
+    }
+  }
+  if (habitat === "terrarium") {
+    // 左が陸、右が水。段差と植物で、水槽と別ものだと分かるようにする。
+    ctx.fillStyle = "rgba(104,120,70,0.94)";
+    ctx.beginPath();
+    ctx.moveTo(-38, 4); ctx.quadraticCurveTo(-18, -2, 2, 5); ctx.lineTo(2, 21); ctx.lineTo(-38, 21);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(56,80,52,0.8)";
+    for (let i = 0; i < 5; i += 1) {
+      const x = -34 + i * 8;
+      ctx.beginPath(); ctx.ellipse(x, -1 + seeded(seed, i) * 3, 4.4, 2, -0.5 + i * 0.2, 0, TAU); ctx.fill();
+    }
+    ctx.strokeStyle = "#6b5738"; ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.moveTo(-24, 2); ctx.quadraticCurveTo(-4, -12, 26, -6); ctx.stroke();
+    // 霧吹きの水滴
+    ctx.fillStyle = "rgba(226,250,240,0.4)";
+    for (let i = 0; i < 6; i += 1) {
+      ctx.beginPath(); ctx.arc(-30 + seeded(seed, i + 40) * 62, -16 + seeded(seed, i + 50) * 10, 0.9, 0, TAU); ctx.fill();
+    }
+  }
+
+  /* ---- 古代棟 ---- */
+  if (habitat === "ice-sea") {
+    // 天井の氷。ここが水面のかわりになる。
+    ctx.fillStyle = "rgba(236,250,255,0.92)";
+    ctx.beginPath();
+    ctx.moveTo(-38, -19); ctx.lineTo(38, -19); ctx.lineTo(38, -12);
+    ctx.quadraticCurveTo(16, -7, -4, -12); ctx.quadraticCurveTo(-22, -16, -38, -11);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(146,196,222,0.7)"; ctx.lineWidth = 0.8;
+    for (let i = 0; i < 4; i += 1) {
+      const x = -28 + i * 18;
+      ctx.beginPath(); ctx.moveTo(x, -19); ctx.lineTo(x + 3, -11); ctx.stroke();
+    }
+  }
+  if (habitat === "paleo-shore" || habitat === "lagoon" || habitat === "ediacaran") {
+    // 浅い砂底の波紋。まだ体の小さい時代の海。
+    ctx.strokeStyle = "rgba(255,248,220,0.35)"; ctx.lineWidth = 0.9;
+    for (let i = 0; i < 5; i += 1) {
+      const y = 8 + i * 2.6;
+      ctx.beginPath();
+      ctx.moveTo(-36, y);
+      ctx.quadraticCurveTo(-10, y - 2.4, 6, y);
+      ctx.quadraticCurveTo(22, y + 2.4, 36, y - 1);
+      ctx.stroke();
+    }
+  }
+  if (habitat === "crinoid-sea" || habitat === "silurian") {
+    // 海底に築かれたばかりの礁。まだ低く、丸い。
+    for (let i = 0; i < 6; i += 1) {
+      ctx.fillStyle = i % 2 ? "rgba(148,132,92,0.7)" : "rgba(184,166,116,0.65)";
+      ctx.beginPath();
+      ctx.ellipse(-31 + i * 13, 14 - (i % 2) * 2, 8, 4.4, 0, Math.PI, TAU);
+      ctx.fill();
+    }
+  }
+  if (habitat === "dead-sea") {
+    // 酸素の消えた海。紫の靄を一枚かけて、生きている海と区別する。
+    ctx.fillStyle = "rgba(96,44,104,0.34)";
+    rr(ctx, -38, -19, 76, 40, 12); ctx.fill();
+    ctx.strokeStyle = "rgba(214,168,222,0.24)"; ctx.lineWidth = 1.2;
+    for (let i = 0; i < 4; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(-34 + i * 20, 20);
+      ctx.quadraticCurveTo(-30 + i * 20, 4, -34 + i * 20, -18);
+      ctx.stroke();
+    }
+  }
+  if (habitat === "cambrian") {
+    // 光がまだ弱い海。奥をわずかに暗く落とす。
+    ctx.fillStyle = "rgba(24,22,44,0.28)";
+    rr(ctx, -38, -19, 76, 40, 12); ctx.fill();
+  }
+  if (habitat === "stromatolite-sea") {
+    // 岩の上を覆う緑の膜と、水面に浮く酸素の泡。
+    ctx.fillStyle = "rgba(126,168,74,0.5)";
+    ctx.beginPath();
+    ctx.moveTo(-38, 11); ctx.quadraticCurveTo(-12, 6, 8, 12); ctx.quadraticCurveTo(26, 17, 38, 9);
+    ctx.lineTo(38, 21); ctx.lineTo(-38, 21); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(236,255,214,0.55)";
+    for (let i = 0; i < 9; i += 1) {
+      ctx.beginPath();
+      ctx.arc(-33 + i * 8.4, -14 + seeded(seed, i + 60) * 5, 1 + seeded(seed, i + 70) * 0.9, 0, TAU);
+      ctx.fill();
+    }
+  }
+  if (habitat === "hadean") {
+    // 生命誕生の海。ほとんど真っ暗な水に、熱水の光だけがある。
+    ctx.fillStyle = "rgba(8,4,10,0.6)";
+    rr(ctx, -38, -19, 76, 40, 12); ctx.fill();
+    const heat = ctx.createRadialGradient(0, 16, 1, 0, 16, 30);
+    heat.addColorStop(0, "rgba(255,150,72,0.5)");
+    heat.addColorStop(0.5, "rgba(214,84,54,0.16)");
+    heat.addColorStop(1, "rgba(214,84,54,0)");
+    ctx.fillStyle = heat;
+    ctx.beginPath(); ctx.ellipse(0, 16, 30, 22, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(255,196,132,0.5)";
+    for (let i = 0; i < 8; i += 1) {
+      ctx.beginPath();
+      ctx.arc(-28 + seeded(seed, i + 80) * 56, -16 + seeded(seed, i + 90) * 32, 0.6 + seeded(seed, i + 100) * 0.8, 0, TAU);
+      ctx.fill();
+    }
   }
   if (habitat === "deep-sea") {
     ctx.fillStyle = "rgba(6,12,28,0.55)"; rr(ctx, -38, -19, 76, 40, 12); ctx.fill();
@@ -705,6 +2213,22 @@ const BOTTOM_DWELLERS = new Set<Creature>([
   "rockfish",
   "catfish",
   "angler",
+  // 底を歩く・這う・立つもの
+  "trilobite",
+  "eurypterid",
+  "horseshoe",
+  "nymph",
+  "salamander",
+  "lizard",
+  "crocodile",
+  "landbeast",
+  "tetrapod",
+  "placoderm",
+  "hallucigenia",
+  "dickinsonia",
+  "sawfish",
+  "spinosaur",
+  "frog",
 ]);
 
 /** ゆっくり往復する大物。群れと同じ速さで泳ぐと迫力が出ない */
@@ -718,6 +2242,20 @@ const SLOW_SWIMMERS = new Set<Creature>([
   "turtle",
   "catfish",
   "ray",
+  // 大きいものは、群れと同じ速さで泳ぐと迫力が出ない
+  "whale",
+  "serpentWhale",
+  "seacow",
+  "seal",
+  "mosasaur",
+  "plesiosaur",
+  "pliosaur",
+  "orthocone",
+  "snake",
+  "anomalocaris",
+  "sturgeon",
+  "lobefin",
+  "earlyshark",
 ]);
 
 type Swim = { x: number; y: number; dir: number; wag: number };
@@ -771,6 +2309,31 @@ const swimOf = (
   };
 };
 
+/**
+ * 泳がない展示の置き場所。
+ * 棚の商品も、海底に固定された生きものも、格子に並べて置く。
+ * 1列に収まらないぶんは上の段へ。
+ */
+const stillSpot = (
+  seed: number,
+  i: number,
+  count: number,
+  base: number,
+  bandShift: number,
+): Swim => {
+  const perRow = Math.min(count, 5);
+  const row = Math.floor(i / perRow);
+  const col = i % perRow;
+  const span = 60;
+  const x = perRow <= 1 ? 0 : -span / 2 + (col * span) / (perRow - 1);
+  return {
+    x: x + (seeded(seed, i + 700) - 0.5) * 4,
+    y: base + bandShift - row * 12,
+    dir: seeded(seed, i + 720) > 0.5 ? 1 : -1,
+    wag: 0,
+  };
+};
+
 const drawSchool = (
   ctx: CanvasRenderingContext2D,
   visual: ExhibitVisual,
@@ -785,13 +2348,17 @@ const drawSchool = (
   const primaryCount = visual.secondary ? Math.max(1, Math.round(count * 0.72)) : count;
   const accent = visual.secondaryColor ?? "rgba(244,248,237,0.8)";
   const bandHeight = 22 / density;
+  const still = visual.still === true;
+  const stillBase = visual.stillBase ?? 11;
 
   for (let i = 0; i < primaryCount; i += 1) {
     const isHero = i === 0 && hero > 1.35;
     const s = (isHero ? hero : 0.78 + seeded(seed, i + 4) * 0.32)
       * (count > 20 ? 0.72 : count > 14 ? 0.82 : 1)
       * sizeBoost;
-    const swim = swimOf(visual.primary, seed, i, time, 58, -11 + bandShift, bandHeight, isHero);
+    const swim = still
+      ? stillSpot(seed, i, primaryCount, stillBase, bandShift)
+      : swimOf(visual.primary, seed, i, time, 58, -11 + bandShift, bandHeight, isHero);
     drawCreature(
       ctx,
       visual.primary,
@@ -812,7 +2379,9 @@ const drawSchool = (
       const s = (0.9 + seeded(seed, i + 180) * 0.25)
         * (visual.heroScale && visual.heroScale > 1.4 ? 1.15 : 1)
         * sizeBoost;
-      const swim = swimOf(visual.secondary, seed, i + 60, time, 50, -9 + bandShift, 18, false);
+      const swim = still
+        ? stillSpot(seed, i + 3, secondaryCount, stillBase - 12, bandShift)
+        : swimOf(visual.secondary, seed, i + 60, time, 50, -9 + bandShift, 18, false);
       drawCreature(
         ctx,
         visual.secondary,

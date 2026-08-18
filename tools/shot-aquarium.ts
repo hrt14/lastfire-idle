@@ -6,7 +6,7 @@
  *   npx tsx tools/shot-aquarium.ts
  *
  * Playwright でゲーム画面を開き、区画と水槽を開けた状態にしてから
- * キャンバスを png に落とす。区画は 5×4 のグリッドなので、
+ * キャンバスを png に落とす。区画は 9×6 のグリッドなので、
  * 上下左右に歩かせて何枚か撮る。
  */
 import { chromium } from "playwright";
@@ -30,6 +30,23 @@ const unlockedUpTo = (lastArea: number) => {
   if (lastArea >= 4) ids.push("stove-2", "cook-2");
   if (lastArea >= 8) ids.push("stove-3", "cook-3");
   if (lastArea >= 12) ids.push("equip-night", "equip-jelly-light", "equip-ocean-sign");
+  // 施設棟。倉庫と厨房がないと、棚とテーブルが開かない。
+  if (lastArea >= 18) ids.push("shop-store-1", "stocker-1", "stocker-2");
+  if (lastArea >= 19) {
+    ids.push("restaurant-kitchen-1", "restaurant-kitchen-2", "server-1", "server-2", "busser-1", "busser-2");
+  }
+  if (lastArea >= 20) ids.push("waiter-4", "equip-terrarium-heat");
+  if (lastArea >= 21) ids.push("robot-4", "equip-night-terrarium");
+  // 古代棟の発券と案内。
+  for (const [i, area] of [22, 30, 38, 46].entries()) {
+    if (lastArea >= area) ids.push(`stove-${6 + i}`, `cook-${6 + i}`);
+  }
+  for (const [i, area] of [24, 27, 31, 35, 39, 43, 47, 51].entries()) {
+    if (lastArea >= area) ids.push(`ancient-crew-${i + 1}`);
+  }
+  for (const [area, id] of [[25, "time-tunnel"], [33, "fossil-lab"], [41, "paleo-dome"], [49, "origin-hall"]] as const) {
+    if (lastArea >= area) ids.push(`equip-${id}`);
+  }
   return ids;
 };
 
@@ -93,6 +110,59 @@ const SCENES: {
     money: 33_900_000_000_000,
     playTime: 325,
     walk: [],
+  },
+  {
+    // 施設棟。ショップ・レストラン・両生類館・爬虫類館
+    name: "06-facility",
+    label: "施設棟",
+    lastArea: 21,
+    money: 9e14,
+    playTime: 120,
+    walk: [
+      { key: "ArrowUp", hold: 5200 },
+      { key: "ArrowLeft", hold: 2600 },
+      { key: "ArrowUp", hold: 2600 },
+    ],
+  },
+  {
+    // 古代棟のはじまり。時代をさかのぼる入口
+    name: "07-ancient-early",
+    label: "古代棟（新しい時代）",
+    lastArea: 33,
+    money: 9e17,
+    playTime: 120,
+    walk: [
+      { key: "ArrowUp", hold: 6400 },
+      { key: "ArrowRight", hold: 3200 },
+      { key: "ArrowUp", hold: 2600 },
+    ],
+  },
+  {
+    // 古生代とカンブリア紀
+    name: "08-paleozoic",
+    label: "古生代〜カンブリア紀",
+    lastArea: 50,
+    money: 9e19,
+    playTime: 120,
+    walk: [
+      { key: "ArrowUp", hold: 8000 },
+      { key: "ArrowLeft", hold: 8000 },
+      { key: "ArrowDown", hold: 5200 },
+    ],
+  },
+  {
+    // 生命誕生の海。入口のとなりの扉
+    name: "09-origin",
+    label: "生命誕生の海",
+    lastArea: 53,
+    money: 9e20,
+    playTime: 120,
+    walk: [
+      { key: "ArrowUp", hold: 8000 },
+      { key: "ArrowLeft", hold: 8000 },
+      { key: "ArrowDown", hold: 8000 },
+      { key: "ArrowRight", hold: 3000 },
+    ],
   },
 ];
 

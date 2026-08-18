@@ -12,13 +12,17 @@ const AREA_H = 420;
 
 type ExhibitLayout = { x: number; y: number };
 
+/** 館の節目。ここだけ3展示のレイアウトを崩して、1つの大水槽へ収束させる */
+const HERO_AREAS = new Set([17, 53]);
+
 const layoutForArea = (area: number): ExhibitLayout[] => {
   const y0 = area * AREA_H;
 
-  // 最終区画だけは通常の3展示レイアウトを崩す。
+  // 本館の終着点（WORLD OCEAN）と、館ぜんたいの終着点（生命誕生の海）だけは
+  // 通常の3展示レイアウトを崩す。
   // 中央上側に約5倍の大水槽、手前左右に2つの強化展示を置き、
   // 「3つの小水槽」ではなく「1つのランドマークへ収束する」構図にする。
-  if (area === 17) {
+  if (HERO_AREAS.has(area)) {
     return [
       { x: 82, y: y0 + 344 },
       { x: 278, y: y0 + 344 },
@@ -59,7 +63,7 @@ for (let region = 0; region < aquariumRuntimeDef.areas.length; region += 1) {
     if (exhibit) {
       exhibit.pos = { x: p.x, y: p.y };
       exhibit.zone =
-        region === 17 && index === 3
+        HERO_AREAS.has(region) && index === 3
           ? {
               // 巨大水槽本体の占有範囲。通常展示の約5倍の見た目に合わせ、
               // 中央の床をしっかりランドマークとして使う。
@@ -77,12 +81,12 @@ for (let region = 0; region < aquariumRuntimeDef.areas.length; region += 1) {
     }
 
     if (viewing) {
-      if (region === 17 && index === 3) {
+      if (HERO_AREAS.has(region) && index === 3) {
         // プレイヤーと客が「水槽の中」ではなく、その手前の観覧デッキに立つ構図。
         viewing.pos = { x: 180, y: region * AREA_H + 382 };
         viewing.serve = { x: 180, y: region * AREA_H + 350 };
         viewing.tray = { x: 180, y: region * AREA_H + 366 };
-      } else if (region === 17) {
+      } else if (HERO_AREAS.has(region)) {
         // 左右の2展示は大水槽の強化ポイントとして手前の隅へ寄せる。
         viewing.pos = { x: p.x, y: p.y + 48 };
         viewing.serve = { x: p.x, y: p.y + 21 };

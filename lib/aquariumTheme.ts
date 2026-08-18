@@ -25,7 +25,26 @@ type Mood =
   | "indian"
   | "open-ocean"
   | "deep-sea"
-  | "world-ocean";
+  | "world-ocean"
+  /* --- 施設棟 --- */
+  | "facility-shop"
+  | "facility-dining"
+  | "facility-terrarium"
+  /* --- 古代棟 --- */
+  | "recent-past"
+  | "glacial"
+  | "giant-sea"
+  | "cetacean"
+  | "paleo-shore"
+  | "paleo-swamp"
+  | "mesozoic"
+  | "lagoon-shallow"
+  | "dead-water"
+  | "primordial"
+  | "crinoid-forest"
+  | "armored"
+  | "stromatolite-shore"
+  | "origin";
 
 type Theme = {
   name: string;
@@ -41,10 +60,23 @@ type Theme = {
   light: string;
   /** 淡水館は明るい昼の照明、海水館は暗い青の照明 */
   warm?: boolean;
+  /**
+   * 展示室の作り。
+   * hall = 大窓のある展示室（本館・古代棟）
+   * shop / dining / terrarium = 施設棟。大窓のかわりに壁そのものが変わる
+   */
+  kind?: "hall" | "shop" | "dining" | "terrarium";
+  /** 古代棟。天井を岩肌にして、本館と手ざわりを変える */
+  stone?: boolean;
+  /**
+   * 太陽の光が届かない海。
+   * 水面から差す光も、光の網も出さない。ここだけ光源が水槽の中にある。
+   */
+  sunless?: boolean;
 };
 
 /*
- * 18地域。淡水館は明るく緑がかった昼の館内、
+ * 54区画。本館の淡水館は明るく緑がかった昼、
  * 海水館は暗くして水槽の青を主役にする。
  * 隣り合う地域どうしで色が必ずずれるように選んである。
  */
@@ -67,6 +99,46 @@ const THEMES: Theme[] = [
   { name: "外洋", chapter: "OCEAN · OPEN OCEAN", mood: "open-ocean", waterTop: "#1c6ba8", waterBottom: "#031c33", floorTop: "#274b5e", floorBottom: "#0b1d2a", accent: "#67c8ff", light: "#e4f9ff" },
   { name: "深海", chapter: "OCEAN · DEEP SEA", mood: "deep-sea", waterTop: "#101c3c", waterBottom: "#02040f", floorTop: "#151d33", floorBottom: "#05070f", accent: "#8f8cff", light: "#d5dbff" },
   { name: "世界の大海", chapter: "WORLD OCEAN · GRAND FINALE", mood: "world-ocean", waterTop: "#31b5da", waterBottom: "#032b46", floorTop: "#2d5d70", floorBottom: "#0b2531", accent: "#8df2ff", light: "#edffff" },
+
+  /* 施設棟。水の青をやめて、灯りの色にする。順路のなかの「息つぎ」 */
+  { name: "ミュージアムショップ", chapter: "FACILITY · MUSEUM SHOP", mood: "facility-shop", waterTop: "#f3dcae", waterBottom: "#8a6a44", floorTop: "#c9ab7f", floorBottom: "#6d5535", accent: "#e8b667", light: "#fff0cf", warm: true, kind: "shop" },
+  { name: "オーシャンレストラン", chapter: "FACILITY · RESTAURANT", mood: "facility-dining", waterTop: "#8fd8e4", waterBottom: "#22647d", floorTop: "#b09070", floorBottom: "#5f4630", accent: "#ffcf8a", light: "#fff2d8", warm: true, kind: "dining" },
+  { name: "両生類館", chapter: "AMPHIBIAN HOUSE", mood: "facility-terrarium", waterTop: "#cfe8c4", waterBottom: "#4d7a55", floorTop: "#8a9a72", floorBottom: "#4a5940", accent: "#8fe08a", light: "#f0ffe4", warm: true, kind: "terrarium" },
+  { name: "爬虫類館", chapter: "REPTILE HOUSE", mood: "facility-terrarium", waterTop: "#e2d9a8", waterBottom: "#7a6a3c", floorTop: "#9a8a5c", floorBottom: "#54432f", accent: "#e0c46a", light: "#fff6d4", warm: true, kind: "terrarium" },
+
+  /* 古代棟。天井が岩になり、時代が古いほど水も岩も今から離れていく */
+  { name: "失われた100年の海", chapter: "TIME TUNNEL · 1900s", mood: "recent-past", waterTop: "#b6ccd0", waterBottom: "#3f6270", floorTop: "#7a7a6c", floorBottom: "#40403a", accent: "#9fc0c8", light: "#e6f4f7", stone: true },
+  { name: "完新世の入り江", chapter: "HOLOCENE · 1万年前", mood: "recent-past", waterTop: "#c2ddc8", waterBottom: "#3f7566", floorTop: "#8a8468", floorBottom: "#4a4738", accent: "#96d6b4", light: "#eafff2", warm: true, stone: true },
+  { name: "氷河時代の海", chapter: "PLEISTOCENE · 10万年前", mood: "glacial", waterTop: "#e6f6ff", waterBottom: "#3f6a8a", floorTop: "#7d8d9a", floorBottom: "#404c58", accent: "#bfe8ff", light: "#f2fdff", stone: true },
+  { name: "巨鮫の海", chapter: "PLEISTOCENE · 300万年前", mood: "giant-sea", waterTop: "#6fb4d8", waterBottom: "#0d3f63", floorTop: "#40606e", floorBottom: "#1d2f3c", accent: "#7fd0f0", light: "#e2f8ff", stone: true },
+  { name: "鮮新世の海", chapter: "PLIOCENE · 500万年前", mood: "giant-sea", waterTop: "#66aac4", waterBottom: "#0f4356", floorTop: "#3d5a62", floorBottom: "#1c2c33", accent: "#8ad6e2", light: "#e4faff", stone: true },
+  { name: "中新世の内海", chapter: "MIOCENE · 1500万年前", mood: "cetacean", waterTop: "#b2ddba", waterBottom: "#367a70", floorTop: "#8a8a62", floorBottom: "#4a4a34", accent: "#9ce4c0", light: "#effff4", warm: true, stone: true },
+  { name: "漸新世の海", chapter: "OLIGOCENE · 3000万年前", mood: "glacial", waterTop: "#cfe8f2", waterBottom: "#33627e", floorTop: "#5f7580", floorBottom: "#2e3c46", accent: "#a6dcf0", light: "#eafaff", stone: true },
+  { name: "くじらの海", chapter: "EOCENE · 4000万年前", mood: "cetacean", waterTop: "#7cbcd4", waterBottom: "#13475f", floorTop: "#456068", floorBottom: "#203038", accent: "#8fdcea", light: "#e6fbff", stone: true },
+  { name: "海へ帰る岸", chapter: "EOCENE · 5000万年前", mood: "paleo-shore", waterTop: "#e4dca6", waterBottom: "#7a8452", floorTop: "#a89a68", floorBottom: "#5c5334", accent: "#d8d478", light: "#fbffd8", warm: true, stone: true },
+  { name: "暁新世の大河", chapter: "PALEOCENE · 6000万年前", mood: "paleo-swamp", waterTop: "#b6cc72", waterBottom: "#3f5c33", floorTop: "#7a7448", floorBottom: "#403c24", accent: "#c2e084", light: "#f2ffd2", warm: true, stone: true },
+  { name: "白亜紀 最後の海", chapter: "LATE CRETACEOUS · 6600万年前", mood: "mesozoic", waterTop: "#68b6cc", waterBottom: "#0c4054", floorTop: "#3a5a5e", floorBottom: "#1a2e31", accent: "#84e0ea", light: "#e2fbff", stone: true },
+  { name: "白亜紀の外洋", chapter: "CRETACEOUS · 8000万年前", mood: "mesozoic", waterTop: "#5aa8c8", waterBottom: "#0a3c58", floorTop: "#365662", floorBottom: "#182c34", accent: "#78d4ee", light: "#e0f8ff", stone: true },
+  { name: "白亜紀の内海", chapter: "CRETACEOUS · 9500万年前", mood: "mesozoic", waterTop: "#7cc4cc", waterBottom: "#14505c", floorTop: "#40625e", floorBottom: "#1e3230", accent: "#96eae2", light: "#e8fffb", stone: true },
+  { name: "白亜紀前期の湖", chapter: "EARLY CRETACEOUS · 1億2000万年前", mood: "paleo-swamp", waterTop: "#c2d47e", waterBottom: "#4a6634", floorTop: "#8a8450", floorBottom: "#484429", accent: "#d2e88e", light: "#f6ffdc", warm: true, stone: true },
+  { name: "ジュラ紀の外洋", chapter: "JURASSIC · 1億5000万年前", mood: "mesozoic", waterTop: "#54a6c4", waterBottom: "#093a52", floorTop: "#33525c", floorBottom: "#16282e", accent: "#6ecce8", light: "#dcf6ff", stone: true },
+  { name: "ジュラ紀の浅い海", chapter: "JURASSIC · 1億6500万年前", mood: "mesozoic", waterTop: "#7ecec8", waterBottom: "#17575a", floorTop: "#436260", floorBottom: "#1f3230", accent: "#96f0e4", light: "#e8fffa", stone: true },
+  { name: "ジュラ紀のラグーン", chapter: "JURASSIC · 1億5500万年前", mood: "lagoon-shallow", waterTop: "#f0eec4", waterBottom: "#96a072", floorTop: "#c4bc90", floorBottom: "#6e6848", accent: "#e6dd94", light: "#fffde4", warm: true, stone: true },
+  { name: "三畳紀の外洋", chapter: "TRIASSIC · 2億2000万年前", mood: "mesozoic", waterTop: "#5c9ab4", waterBottom: "#0c3446", floorTop: "#374e58", floorBottom: "#1a262d", accent: "#78c6e0", light: "#dff4ff", stone: true },
+  { name: "三畳紀の岩礁", chapter: "TRIASSIC · 2億4500万年前", mood: "lagoon-shallow", waterTop: "#e0d8a4", waterBottom: "#7e8258", floorTop: "#a89a6c", floorBottom: "#5a5238", accent: "#dcc880", light: "#fff8dc", warm: true, stone: true },
+  { name: "ペルム紀末 死の海", chapter: "END PERMIAN · 2億5200万年前", mood: "dead-water", waterTop: "#b490bc", waterBottom: "#341f3c", floorTop: "#5c4448", floorBottom: "#2c1f24", accent: "#d2a6dc", light: "#f0dcf4", stone: true, sunless: true },
+  { name: "ペルム紀の海", chapter: "PERMIAN · 2億7000万年前", mood: "primordial", waterTop: "#9cc0b4", waterBottom: "#26504a", floorTop: "#5e6250", floorBottom: "#2e3228", accent: "#a8e0cc", light: "#e8fff4", stone: true },
+  { name: "石炭紀の湿地", chapter: "CARBONIFEROUS · 3億1000万年前", mood: "paleo-swamp", waterTop: "#a6c470", waterBottom: "#2c4626", floorTop: "#5c6440", floorBottom: "#2e3422", accent: "#b6e07c", light: "#eeffd0", warm: true, stone: true },
+  { name: "石炭紀の海", chapter: "CARBONIFEROUS · 3億3000万年前", mood: "crinoid-forest", waterTop: "#a6ccbc", waterBottom: "#2a5c52", floorTop: "#7a7a56", floorBottom: "#3e3e2c", accent: "#b0e8cc", light: "#eafff4", stone: true },
+  { name: "デボン紀 甲冑魚の海", chapter: "DEVONIAN · 3億7000万年前", mood: "armored", waterTop: "#a8bc92", waterBottom: "#33503f", floorTop: "#6c6c4c", floorBottom: "#363628", accent: "#b6d49a", light: "#eefade", stone: true },
+  { name: "デボン紀 上陸の岸", chapter: "DEVONIAN · 3億6500万年前", mood: "paleo-shore", waterTop: "#dcd898", waterBottom: "#727c4a", floorTop: "#9c9660", floorBottom: "#4e4a2e", accent: "#d4d078", light: "#fbffd4", warm: true, stone: true },
+  { name: "シルル紀 ウミサソリの海", chapter: "SILURIAN · 4億2000万年前", mood: "crinoid-forest", waterTop: "#d8c288", waterBottom: "#5c6640", floorTop: "#8e7c4e", floorBottom: "#4a4028", accent: "#dcc26e", light: "#fff4cc", warm: true, stone: true },
+  { name: "オルドビス紀の海", chapter: "ORDOVICIAN · 4億5000万年前", mood: "primordial", waterTop: "#9cbcc8", waterBottom: "#274c5c", floorTop: "#66665a", floorBottom: "#32322c", accent: "#a4dcec", light: "#e6f8ff", stone: true },
+  { name: "カンブリア紀の海", chapter: "CAMBRIAN · 5億2000万年前", mood: "primordial", waterTop: "#9a9cc0", waterBottom: "#26284a", floorTop: "#5c5648", floorBottom: "#2e2a24", accent: "#b0aef0", light: "#e8e6ff", stone: true },
+  { name: "カンブリア爆発", chapter: "CAMBRIAN EXPLOSION · 5億3500万年前", mood: "primordial", waterTop: "#a89ec0", waterBottom: "#2e2650", floorTop: "#605448", floorBottom: "#302a24", accent: "#c4aef0", light: "#f0e8ff", stone: true },
+  { name: "エディアカラ紀の浅瀬", chapter: "EDIACARAN · 5億7500万年前", mood: "lagoon-shallow", waterTop: "#eec99c", waterBottom: "#8a6a52", floorTop: "#b08e64", floorBottom: "#5c4834", accent: "#e8b47e", light: "#fff0dc", warm: true, stone: true },
+  { name: "ストロマトライトの海", chapter: "PROTEROZOIC · 20億年前", mood: "stromatolite-shore", waterTop: "#dcdc94", waterBottom: "#6a7440", floorTop: "#9a8a54", floorBottom: "#4e4630", accent: "#d2dc76", light: "#fbffd0", warm: true, stone: true },
+  { name: "生命誕生の海", chapter: "HADEAN OCEAN · 40億年前", mood: "origin", waterTop: "#3a1b20", waterBottom: "#06030a", floorTop: "#3a2a2c", floorBottom: "#170f14", accent: "#ff9a5c", light: "#ffd8b4", stone: true, sunless: true },
 ];
 
 const REGION_NOTES = [
@@ -88,6 +160,44 @@ const REGION_NOTES = [
   "水平線のない青",
   "暗闇・熱水・発光",
   "世界の海がひとつになる",
+  // 施設棟
+  "見た生きものを持って帰る",
+  "ガラスの向こうで魚が泳ぐ",
+  "水から出てきたものたち",
+  "鱗と、岩と、水ぎわ",
+  // 古代棟
+  "100年前まで、いた",
+  "貝塚に残る海",
+  "氷の裏側の海",
+  "歯だけが残った",
+  "クジラを食べるクジラ",
+  "浅い海を歩く獣",
+  "羽と歯のあいだ",
+  "足がひれになった",
+  "陸から水へ戻る",
+  "恐竜のいない川",
+  "最後のアンモナイト",
+  "歯のある海鳥",
+  "首だけで体の半分",
+  "帆を背負って泳ぐ",
+  "短い首の巨大な顎",
+  "渦巻きが漂う",
+  "石灰の海に沈む",
+  "史上最大の魚竜",
+  "礁がもどってきた",
+  "酸素の消えた海",
+  "渦巻きの歯",
+  "石炭になる森の水",
+  "海底に立つ花",
+  "骨の板でできた顎",
+  "ひれの中に肘がある",
+  "海のいちばん強いもの",
+  "まっすぐな殻が6メートル",
+  "目と触手のはじまり",
+  "体の設計がまだ自由",
+  "動かない、最初の動物",
+  "酸素が生まれる浅瀬",
+  "ここから、すべて",
 ];
 
 /** 大窓の上下。ここが「巨大水槽をのぞいている」帯になる */
@@ -274,7 +384,11 @@ const drawCeiling = (ctx: CanvasRenderingContext2D, rect: AquariumArea["rect"], 
   const w = rect.x1 - rect.x0;
   const bright = theme.warm === true;
   const slab = ctx.createLinearGradient(0, rect.y0, 0, rect.y0 + WINDOW_TOP);
-  if (bright) {
+  if (theme.stone) {
+    // 古代棟は天井が岩肌。本館のパネル天井と、見上げた瞬間に違うと分かる。
+    slab.addColorStop(0, bright ? "#2e2820" : "#1a1720");
+    slab.addColorStop(1, bright ? "#4a4132" : "#2c2734");
+  } else if (bright) {
     slab.addColorStop(0, "#3a4438");
     slab.addColorStop(1, "#54604b");
   } else if (index >= 16) {
@@ -287,14 +401,35 @@ const drawCeiling = (ctx: CanvasRenderingContext2D, rect: AquariumArea["rect"], 
   ctx.fillStyle = slab;
   ctx.fillRect(rect.x0, rect.y0, w, WINDOW_TOP);
 
-  // 天井のレール。館内が一本につながっている感じを出す
-  ctx.strokeStyle = bright ? "rgba(148,132,101,0.5)" : "rgba(73,116,132,0.4)";
-  ctx.lineWidth = 2;
-  for (const y of [rect.y0 + 8, rect.y0 + 19]) {
+  if (theme.stone) {
+    // 掘り抜いた岩の凹凸。まっすぐな線をなくして、洞のように見せる。
+    ctx.fillStyle = bright ? "rgba(20,16,10,0.32)" : "rgba(8,6,14,0.4)";
+    for (let i = 0; i < 7; i += 1) {
+      const x = rect.x0 + 14 + i * ((w - 28) / 6);
+      ctx.beginPath();
+      ctx.moveTo(x - 24, rect.y0);
+      ctx.quadraticCurveTo(x, rect.y0 + WINDOW_TOP * (0.5 + (i % 3) * 0.22), x + 24, rect.y0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.strokeStyle = bright ? "rgba(188,164,112,0.28)" : "rgba(150,132,180,0.24)";
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(rect.x0, y);
-    ctx.lineTo(rect.x1, y);
+    ctx.moveTo(rect.x0, rect.y0 + WINDOW_TOP - 3);
+    for (let x = rect.x0; x <= rect.x1; x += 24) {
+      ctx.lineTo(x, rect.y0 + WINDOW_TOP - 3 - ((x / 24) % 3) * 2);
+    }
     ctx.stroke();
+  } else {
+    // 天井のレール。館内が一本につながっている感じを出す
+    ctx.strokeStyle = bright ? "rgba(148,132,101,0.5)" : "rgba(73,116,132,0.4)";
+    ctx.lineWidth = 2;
+    for (const y of [rect.y0 + 8, rect.y0 + 19]) {
+      ctx.beginPath();
+      ctx.moveTo(rect.x0, y);
+      ctx.lineTo(rect.x1, y);
+      ctx.stroke();
+    }
   }
 
   // 照明が落とす光の三角。ここまでは動かないので焼き込んでおく
@@ -876,6 +1011,519 @@ const drawHabitatScene = (
       }
       break;
     }
+
+    /* ==================== 施設棟 ====================
+     * ショップと両生類・爬虫類館は壁そのものを別に描くので、
+     * ここへ来るのはレストランだけ。大水槽が食堂の壁になっている。
+     */
+    case "facility-dining": {
+      drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
+      // 席のあかりが、ガラスの内側へにじむ。
+      const warmth = ctx.createLinearGradient(0, y1 - 70, 0, y1);
+      warmth.addColorStop(0, "rgba(255,196,116,0)");
+      warmth.addColorStop(1, "rgba(255,190,110,0.26)");
+      ctx.fillStyle = warmth;
+      ctx.fillRect(x0, y1 - 70, w, 70);
+      for (let i = 0; i < 9; i += 1) {
+        fishShadow(ctx, x0 + 20 + i * 38, y0 + 40 + (i % 4) * 26, 0.34 + (i % 3) * 0.1, 0.15, i % 2 ? 1 : -1, "#dff8ff");
+      }
+      // 頭上を横切る大きな影。食事中に見上げると、これが通る。
+      fishShadow(ctx, x0 + 120, y0 + 30, 1.2, 0.13, -1, "#dff8ff");
+      break;
+    }
+    case "facility-shop":
+    case "facility-terrarium":
+      break;
+
+    /* ==================== 古代棟 ==================== */
+    case "recent-past": {
+      // つい最近まであった海。岸の岩と、沈んだ杭。
+      drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
+      ctx.fillStyle = "rgba(74,84,74,0.5)";
+      ctx.beginPath();
+      ctx.moveTo(x0, y1 - 34);
+      ctx.bezierCurveTo(x0 + 90, y1 - 56, x0 + 160, y1 - 20, x0 + 240, y1 - 44);
+      ctx.bezierCurveTo(x0 + 300, y1 - 60, x0 + 330, y1 - 26, x1, y1 - 40);
+      ctx.lineTo(x1, y1 + 4);
+      ctx.lineTo(x0, y1 + 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(58,52,42,0.6)";
+      ctx.lineWidth = 4;
+      for (let i = 0; i < 5; i += 1) {
+        const x = x0 + 34 + i * 74;
+        ctx.beginPath();
+        ctx.moveTo(x, y1 - 6);
+        ctx.lineTo(x + (i % 2 ? 4 : -3), y1 - 52 - (i % 3) * 12);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 5; i += 1) drawRock(ctx, x0 + 24 + i * 78, y1 - 12, 17, 8, "rgba(96,100,88,0.5)", i * 0.2);
+      break;
+    }
+    case "glacial": {
+      // 氷河期。水面が氷でふさがり、下から光の筋だけが差す。
+      drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
+      ctx.fillStyle = "rgba(238,250,255,0.92)";
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y0);
+      ctx.lineTo(x1, y0 + 26);
+      for (let i = 6; i >= 0; i -= 1) {
+        const x = x0 + (w / 6) * i;
+        ctx.lineTo(x, y0 + 18 + ((i % 3) * 9));
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(126,178,206,0.7)";
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 7; i += 1) {
+        const x = x0 + 20 + i * (w / 7);
+        ctx.beginPath();
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x + 8, y0 + 24);
+        ctx.stroke();
+      }
+      // 沈んだ氷塊
+      ctx.fillStyle = "rgba(214,238,250,0.34)";
+      for (let i = 0; i < 3; i += 1) {
+        const x = x0 + 60 + i * 110;
+        ctx.beginPath();
+        ctx.moveTo(x - 26, y0 + 26);
+        ctx.lineTo(x + 22, y0 + 26);
+        ctx.lineTo(x + 4, y0 + 96 + i * 12);
+        ctx.closePath();
+        ctx.fill();
+      }
+      break;
+    }
+    case "giant-sea": {
+      // 何もない外洋。大きさを比べるものが影しかないので、逆に巨大に見える。
+      drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
+      const deep = ctx.createLinearGradient(0, y0, 0, y1);
+      deep.addColorStop(0, "rgba(96,180,214,0.14)");
+      deep.addColorStop(1, "rgba(4,26,44,0.5)");
+      ctx.fillStyle = deep;
+      ctx.fillRect(x0, y0, w, y1 - y0);
+      fishShadow(ctx, x0 + w * 0.62, y0 + (y1 - y0) * 0.52, 2.5, 0.17, -1, "#d8f2ff");
+      for (let i = 0; i < 5; i += 1) {
+        fishShadow(ctx, x0 + 30 + i * 74, y0 + 34 + (i % 3) * 30, 0.3, 0.1, i % 2 ? 1 : -1, "#d8f2ff");
+      }
+      break;
+    }
+    case "cetacean": {
+      // 浅い内海。海草の草原の上を、大きな体がゆっくり通る。
+      drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
+      ctx.fillStyle = "rgba(74,118,84,0.42)";
+      ctx.beginPath();
+      ctx.moveTo(x0, y1 - 26);
+      ctx.bezierCurveTo(x0 + 100, y1 - 44, x0 + 200, y1 - 14, x1, y1 - 34);
+      ctx.lineTo(x1, y1 + 4);
+      ctx.lineTo(x0, y1 + 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(108,158,110,0.5)";
+      ctx.lineWidth = 2.6;
+      for (let i = 0; i < 16; i += 1) {
+        const x = x0 + 10 + i * 22;
+        ctx.beginPath();
+        ctx.moveTo(x, y1 - 6);
+        ctx.quadraticCurveTo(x + 10, y1 - 34, x + 2, y1 - 58 - (i % 3) * 8);
+        ctx.stroke();
+      }
+      fishShadow(ctx, x0 + w * 0.4, y0 + (y1 - y0) * 0.42, 1.6, 0.15, 1, theme.warm ? "#2f4a42" : "#dff8ff");
+      break;
+    }
+    case "paleo-shore": {
+      // 陸と水のさかい目。倒木と浅瀬。ここで生きものが上陸する。
+      const sky = ctx.createLinearGradient(0, y0, 0, y1);
+      sky.addColorStop(0, "rgba(255,246,196,0.3)");
+      sky.addColorStop(1, "rgba(96,104,58,0.24)");
+      ctx.fillStyle = sky;
+      ctx.fillRect(x0, y0, w, y1 - y0);
+      // 奥の岸
+      ctx.fillStyle = "rgba(96,102,58,0.6)";
+      ctx.beginPath();
+      ctx.moveTo(x0, y0 + 70);
+      ctx.bezierCurveTo(x0 + 90, y0 + 46, x0 + 190, y0 + 84, x1, y0 + 58);
+      ctx.lineTo(x1, y1 + 4);
+      ctx.lineTo(x0, y1 + 4);
+      ctx.closePath();
+      ctx.fill();
+      // シダと倒木
+      ctx.strokeStyle = "rgba(62,72,38,0.75)";
+      ctx.lineWidth = 5;
+      for (let i = 0; i < 4; i += 1) {
+        const x = x0 + 40 + i * 88;
+        ctx.beginPath();
+        ctx.moveTo(x, y0 + 96);
+        ctx.lineTo(x + (i % 2 ? 12 : -10), y0 + 40);
+        ctx.stroke();
+        for (let k = 0; k < 5; k += 1) {
+          leaf(ctx, x + (i % 2 ? 8 : -7), y0 + 44 + k * 8, 20, 5, -0.7 + k * 0.3, "rgba(88,108,46,0.8)");
+        }
+      }
+      ctx.fillStyle = "rgba(58,50,30,0.7)";
+      ctx.beginPath();
+      ctx.ellipse(x0 + w * 0.62, y1 - 22, 84, 7, -0.06, 0, Math.PI * 2);
+      ctx.fill();
+      // 波打ちぎわ
+      ctx.fillStyle = "rgba(226,236,178,0.4)";
+      ctx.fillRect(x0, y1 - 14, w, 18);
+      break;
+    }
+    case "paleo-swamp": {
+      // 石炭になる森。太い幹が水に立ち、上は緑で閉じている。
+      const canopy = ctx.createLinearGradient(0, y0, 0, y1);
+      canopy.addColorStop(0, "rgba(52,74,34,0.62)");
+      canopy.addColorStop(1, "rgba(20,36,22,0.34)");
+      ctx.fillStyle = canopy;
+      ctx.fillRect(x0, y0, w, y1 - y0);
+      for (let i = 0; i < 5; i += 1) {
+        const x = x0 + 16 + i * 76;
+        const tw = 13 + (i % 3) * 5;
+        // 幹。奥の水より確実に濃くして、シルエットとして立たせる。
+        ctx.fillStyle = i % 2 ? "rgba(24,32,14,0.94)" : "rgba(34,44,20,0.94)";
+        ctx.fillRect(x, y0 + 12, tw, y1 - y0 - 12);
+        // 幹の左側に光を1本。丸い柱に見せる。
+        ctx.fillStyle = "rgba(158,186,104,0.3)";
+        ctx.fillRect(x, y0 + 12, 2.4, y1 - y0 - 12);
+        // 幹の鱗模様。石炭紀の木は、ここが特徴になる。
+        ctx.strokeStyle = "rgba(120,146,74,0.42)";
+        ctx.lineWidth = 1;
+        for (let k = 0; k < 9; k += 1) {
+          ctx.beginPath();
+          ctx.moveTo(x, y0 + 22 + k * 16);
+          ctx.lineTo(x + tw, y0 + 26 + k * 16);
+          ctx.stroke();
+        }
+      }
+      for (let i = 0; i < 10; i += 1) {
+        leaf(ctx, x0 + 10 + i * 38, y0 + 22 + (i % 3) * 14, 30, 7, -0.5 + (i % 4) * 0.28, "rgba(86,124,48,0.7)");
+      }
+      // 水面に浮く葉
+      ctx.fillStyle = "rgba(126,162,74,0.4)";
+      for (let i = 0; i < 8; i += 1) {
+        ctx.beginPath();
+        ctx.ellipse(x0 + 24 + i * 44, y1 - 18 - (i % 2) * 6, 15, 4, 0.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
+    case "mesozoic": {
+      // 中生代の海。アンモナイトの渦が奥に浮かび、首長竜の影が横切る。
+      drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
+      ctx.strokeStyle = "rgba(226,244,250,0.16)";
+      ctx.lineWidth = 2.2;
+      for (let i = 0; i < 6; i += 1) {
+        const cx = x0 + 26 + i * 62;
+        const cy = y0 + 40 + (i % 3) * 40;
+        const r = 9 + (i % 3) * 4;
+        ctx.beginPath();
+        for (let k = 0; k <= 26; k += 1) {
+          const a = (k / 26) * Math.PI * 3.2;
+          const rr = 1.4 + (a / (Math.PI * 3.2)) * r;
+          const px = cx + Math.cos(a) * rr;
+          const py = cy + Math.sin(a) * rr;
+          if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      // 首の長い影。中生代の海だと一目で分かるシルエット。
+      ctx.save();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = "#dff8ff";
+      const ny = y0 + (y1 - y0) * 0.46;
+      const nx = x0 + w * 0.36;
+      ctx.beginPath();
+      ctx.ellipse(nx, ny, 44, 13, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#dff8ff";
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(nx + 34, ny - 4);
+      ctx.quadraticCurveTo(nx + 92, ny - 34, nx + 120, ny - 16);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(nx + 126, ny - 15, 11, 5, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(nx - 40, ny);
+      ctx.lineTo(nx - 74, ny - 10);
+      ctx.lineTo(nx - 74, ny + 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+    case "lagoon-shallow": {
+      // 白い石灰の潟。浅く、明るく、水がほとんど動かない。
+      const pale = ctx.createLinearGradient(0, y0, 0, y1);
+      pale.addColorStop(0, "rgba(255,252,214,0.4)");
+      pale.addColorStop(1, "rgba(174,168,116,0.34)");
+      ctx.fillStyle = pale;
+      ctx.fillRect(x0, y0, w, y1 - y0);
+      ctx.fillStyle = "rgba(226,220,168,0.7)";
+      for (let i = 0; i < 5; i += 1) {
+        ctx.beginPath();
+        ctx.ellipse(x0 + 34 + i * 76, y1 - 20 - (i % 2) * 10, 46, 15, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.strokeStyle = "rgba(255,255,226,0.5)";
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 7; i += 1) {
+        const y = y1 - 60 + i * 9;
+        ctx.beginPath();
+        ctx.moveTo(x0, y);
+        ctx.quadraticCurveTo(x0 + w * 0.4, y - 7, x0 + w * 0.7, y + 2);
+        ctx.quadraticCurveTo(x0 + w * 0.9, y + 7, x1, y - 2);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 6; i += 1) drawRock(ctx, x0 + 20 + i * 66, y1 - 8, 21, 8, "rgba(206,196,144,0.6)", i * 0.14);
+      break;
+    }
+    case "dead-water": {
+      // 大絶滅の海。紫の靄と、白くなった骨だけが残る。
+      const smother = ctx.createLinearGradient(0, y0, 0, y1);
+      smother.addColorStop(0, "rgba(150,104,164,0.4)");
+      smother.addColorStop(1, "rgba(34,18,40,0.7)");
+      ctx.fillStyle = smother;
+      ctx.fillRect(x0, y0, w, y1 - y0);
+      ctx.strokeStyle = "rgba(226,196,236,0.22)";
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 5; i += 1) {
+        const x = x0 + 30 + i * 72;
+        ctx.beginPath();
+        ctx.moveTo(x, y1 + 4);
+        ctx.bezierCurveTo(x + 20, y1 - 44, x - 18, y0 + 62, x + 8, y0 + 12);
+        ctx.stroke();
+      }
+      // 海底に沈んだ背骨
+      ctx.strokeStyle = "rgba(240,232,236,0.34)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x0 + 42, y1 - 16);
+      ctx.quadraticCurveTo(x0 + 150, y1 - 30, x0 + 258, y1 - 12);
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 12; i += 1) {
+        const t = i / 11;
+        const px = x0 + 42 + t * 216;
+        const py = y1 - 16 - Math.sin(t * Math.PI) * 14;
+        ctx.beginPath();
+        ctx.moveTo(px, py - 9);
+        ctx.lineTo(px, py + 9);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "primordial": {
+      // 古生代の海。まだ背の高いものがなく、海底が近い。
+      drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
+      ctx.fillStyle = "rgba(60,62,54,0.45)";
+      ctx.beginPath();
+      ctx.moveTo(x0, y1 - 24);
+      ctx.bezierCurveTo(x0 + 80, y1 - 40, x0 + 190, y1 - 12, x1, y1 - 30);
+      ctx.lineTo(x1, y1 + 4);
+      ctx.lineTo(x0, y1 + 4);
+      ctx.closePath();
+      ctx.fill();
+      // まっすぐな殻の影。古生代の海の目印。
+      ctx.save();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = "#e2f4ff";
+      for (let i = 0; i < 3; i += 1) {
+        const cy = y0 + 40 + i * 44;
+        const cx = x0 + 40 + i * 96;
+        ctx.beginPath();
+        ctx.moveTo(cx + 46, cy - 9);
+        ctx.lineTo(cx - 44, cy - 2);
+        ctx.lineTo(cx - 44, cy + 2);
+        ctx.lineTo(cx + 46, cy + 9);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+      for (let i = 0; i < 9; i += 1) drawRock(ctx, x0 + 14 + i * 42, y1 - 10, 14, 6, "rgba(84,86,74,0.5)", i * 0.2);
+      break;
+    }
+    case "crinoid-forest": {
+      // ウミユリの林。細い茎が海底から立ち、先で腕を開く。
+      drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
+      ctx.fillStyle = "rgba(120,110,74,0.42)";
+      ctx.beginPath();
+      ctx.moveTo(x0, y1 - 20);
+      ctx.bezierCurveTo(x0 + 110, y1 - 34, x0 + 220, y1 - 10, x1, y1 - 26);
+      ctx.lineTo(x1, y1 + 4);
+      ctx.lineTo(x0, y1 + 4);
+      ctx.closePath();
+      ctx.fill();
+      for (let i = 0; i < 13; i += 1) {
+        const x = x0 + 14 + i * 26;
+        const top = y0 + 40 + (i % 4) * 20;
+        ctx.strokeStyle = "rgba(214,200,158,0.6)";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(x, y1 - 8);
+        ctx.quadraticCurveTo(x + 8, (y1 + top) / 2, x + 2, top);
+        ctx.stroke();
+        ctx.lineWidth = 1.4;
+        for (let k = -3; k <= 3; k += 1) {
+          ctx.beginPath();
+          ctx.moveTo(x + 2, top);
+          ctx.quadraticCurveTo(x + 2 + k * 5, top - 10, x + 2 + k * 9, top - 16);
+          ctx.stroke();
+        }
+      }
+      break;
+    }
+    case "armored": {
+      // デボン紀。緑がかった濁った海に、装甲の板が沈んでいる。
+      drawOpenWater(ctx, x0, x1, y0, y1, time, theme.light);
+      const murk = ctx.createLinearGradient(0, y0, 0, y1);
+      murk.addColorStop(0, "rgba(140,166,110,0.2)");
+      murk.addColorStop(1, "rgba(34,52,38,0.5)");
+      ctx.fillStyle = murk;
+      ctx.fillRect(x0, y0, w, y1 - y0);
+      ctx.fillStyle = "rgba(112,116,84,0.5)";
+      for (let i = 0; i < 4; i += 1) {
+        const x = x0 + 34 + i * 84;
+        ctx.beginPath();
+        ctx.moveTo(x - 22, y1 - 8);
+        ctx.lineTo(x - 12, y1 - 30 - (i % 2) * 8);
+        ctx.lineTo(x + 16, y1 - 26);
+        ctx.lineTo(x + 24, y1 - 8);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // 巨大な顎の影
+      ctx.save();
+      ctx.globalAlpha = 0.17;
+      ctx.fillStyle = "#eefade";
+      const jy = y0 + (y1 - y0) * 0.44;
+      ctx.beginPath();
+      ctx.moveTo(x0 + w * 0.7, jy - 26);
+      ctx.quadraticCurveTo(x0 + w * 0.4, jy - 20, x0 + w * 0.24, jy);
+      ctx.quadraticCurveTo(x0 + w * 0.4, jy + 20, x0 + w * 0.7, jy + 26);
+      ctx.quadraticCurveTo(x0 + w * 0.82, jy, x0 + w * 0.7, jy - 26);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+    case "stromatolite-shore": {
+      // 20億年前の浅瀬。岩のドームが並び、水面に酸素の泡が浮く。
+      const shallow = ctx.createLinearGradient(0, y0, 0, y1);
+      shallow.addColorStop(0, "rgba(255,250,190,0.36)");
+      shallow.addColorStop(1, "rgba(122,124,64,0.4)");
+      ctx.fillStyle = shallow;
+      ctx.fillRect(x0, y0, w, y1 - y0);
+      for (let i = 0; i < 9; i += 1) {
+        const x = x0 + 20 + i * 40;
+        const h = 34 + (i % 4) * 16;
+        ctx.fillStyle = i % 2 ? "rgba(126,112,66,0.85)" : "rgba(150,134,80,0.85)";
+        ctx.beginPath();
+        ctx.moveTo(x - 17, y1 + 4);
+        ctx.quadraticCurveTo(x - 14, y1 - h, x, y1 - h - 6);
+        ctx.quadraticCurveTo(x + 14, y1 - h, x + 17, y1 + 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "rgba(214,206,140,0.4)";
+        ctx.lineWidth = 1;
+        for (let k = 0; k < 4; k += 1) {
+          const ly = y1 - 6 - k * (h / 4);
+          ctx.beginPath();
+          ctx.moveTo(x - 15 + k * 2, ly);
+          ctx.quadraticCurveTo(x, ly - 6, x + 15 - k * 2, ly);
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = "rgba(240,255,208,0.5)";
+      for (let i = 0; i < 22; i += 1) {
+        ctx.beginPath();
+        ctx.arc(x0 + 12 + ((i * 37) % w), y0 + 12 + ((i * 23) % 70), 1.6 + (i % 3), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
+    case "origin": {
+      // 40億年前。光のない海の底に、熱水の煙突だけが立っている。
+      const black = ctx.createLinearGradient(0, y0, 0, y1);
+      black.addColorStop(0, "rgba(30,14,20,0.85)");
+      black.addColorStop(1, "rgba(4,2,6,0.95)");
+      ctx.fillStyle = black;
+      ctx.fillRect(x0, y0, w, y1 - y0);
+
+      // 煙突。太いものを中央に、細いものを左右に。
+      const chimneys: [number, number, number][] = [
+        [x0 + w * 0.5, 132, 20],
+        [x0 + w * 0.22, 88, 13],
+        [x0 + w * 0.78, 96, 14],
+        [x0 + w * 0.36, 58, 9],
+        [x0 + w * 0.66, 62, 9],
+      ];
+      for (const [cx, h, cw] of chimneys) {
+        // 煙突の後ろに熱の膜。真っ黒な柱が、真っ黒な水に沈まないようにする。
+        const back = ctx.createRadialGradient(cx, y1 - h * 0.6, 2, cx, y1 - h * 0.6, h * 0.9);
+        back.addColorStop(0, "rgba(255,122,54,0.34)");
+        back.addColorStop(1, "rgba(255,122,54,0)");
+        ctx.fillStyle = back;
+        ctx.beginPath();
+        ctx.arc(cx, y1 - h * 0.6, h * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(14,7,10,0.99)";
+        ctx.beginPath();
+        ctx.moveTo(cx - cw, y1 + 4);
+        ctx.lineTo(cx - cw * 0.42, y1 - h);
+        ctx.lineTo(cx + cw * 0.42, y1 - h);
+        ctx.lineTo(cx + cw, y1 + 4);
+        ctx.closePath();
+        ctx.fill();
+        // 煙突のふちに熱の照り返し。輪郭を1本入れて形を読ませる。
+        ctx.strokeStyle = "rgba(255,150,80,0.5)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(cx - cw, y1 + 4);
+        ctx.lineTo(cx - cw * 0.42, y1 - h);
+        ctx.lineTo(cx + cw * 0.42, y1 - h);
+        ctx.lineTo(cx + cw, y1 + 4);
+        ctx.stroke();
+        // 噴き出し口の熱
+        const heat = ctx.createRadialGradient(cx, y1 - h, 1, cx, y1 - h, cw * 3.4);
+        heat.addColorStop(0, "rgba(255,168,88,0.6)");
+        heat.addColorStop(1, "rgba(255,120,60,0)");
+        ctx.fillStyle = heat;
+        ctx.beginPath();
+        ctx.arc(cx, y1 - h, cw * 3.4, 0, Math.PI * 2);
+        ctx.fill();
+        // 立ちのぼる黒い煙
+        ctx.fillStyle = "rgba(16,10,14,0.5)";
+        for (let k = 0; k < 5; k += 1) {
+          ctx.beginPath();
+          ctx.arc(cx + (k % 2 ? 6 : -5) * (1 + k * 0.3), y1 - h - 12 - k * 16, cw * 0.5 + k * 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // 海底の割れ目から漏れる光
+      ctx.strokeStyle = "rgba(255,142,74,0.4)";
+      ctx.lineWidth = 2.4;
+      for (let i = 0; i < 4; i += 1) {
+        const x = x0 + 30 + i * 84;
+        ctx.beginPath();
+        ctx.moveTo(x, y1 + 2);
+        ctx.lineTo(x + 22, y1 - 12 - (i % 2) * 8);
+        ctx.stroke();
+      }
+
+      // 漂う最初の膜
+      ctx.fillStyle = "rgba(255,198,140,0.4)";
+      for (let i = 0; i < 26; i += 1) {
+        ctx.beginPath();
+        ctx.arc(x0 + 10 + ((i * 53) % w), y0 + 8 + ((i * 41) % (y1 - y0 - 16)), 1 + (i % 3) * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
   }
 };
 
@@ -911,7 +1559,10 @@ const drawGreatWindow = (
   ctx.clip();
   drawHabitatScene(ctx, x0, x1, y0, y1, theme, 0);
   // 水面から差す光。淡水館は白っぽく、海水館は青く。
-  drawWaterRays(ctx, x0, x1, y0, y1, 0, theme.warm ? 5 : 7, theme.warm ? 0.09 : 0.13);
+  // 太陽の届かない海には出さない ―― 出すと、ただの暗い水槽になる。
+  if (!theme.sunless) {
+    drawWaterRays(ctx, x0, x1, y0, y1, 0, theme.warm ? 5 : 7, theme.warm ? 0.09 : 0.13);
+  }
   ctx.restore();
 
   // ガラスと枠。厚みのある設備として見せる。
@@ -944,6 +1595,175 @@ const drawGreatWindow = (
   ctx.stroke();
 };
 
+/**
+ * ミュージアムショップの壁。大窓のかわりに、商品の並んだ棚が壁一面に立つ。
+ * 「ここは展示室ではない」が、名前を読まなくても分かることを狙う。
+ */
+const drawShopWall = (
+  ctx: CanvasRenderingContext2D,
+  rect: AquariumArea["rect"],
+  theme: Theme,
+) => {
+  const { x0, x1, y0, y1 } = windowRect(rect);
+  const w = x1 - x0;
+  const h = y1 - y0;
+
+  const wall = ctx.createLinearGradient(0, y0, 0, y1);
+  wall.addColorStop(0, "#4a3a28");
+  wall.addColorStop(1, "#6b543a");
+  ctx.fillStyle = wall;
+  rounded(ctx, x0, y0, w, h, 8);
+  ctx.fill();
+
+  ctx.save();
+  rounded(ctx, x0, y0, w, h, 8);
+  ctx.clip();
+
+  // 3列の棚。段の板と、その上に並ぶ商品。
+  const bays = 3;
+  for (let b = 0; b < bays; b += 1) {
+    const bx = x0 + 10 + b * ((w - 20) / bays);
+    const bw = (w - 20) / bays - 8;
+    ctx.fillStyle = "rgba(28,20,12,0.55)";
+    rounded(ctx, bx, y0 + 12, bw, h - 26, 5);
+    ctx.fill();
+    // 棚の中のあかり
+    const lamp = ctx.createLinearGradient(0, y0 + 12, 0, y1 - 14);
+    lamp.addColorStop(0, "rgba(255,214,150,0.3)");
+    lamp.addColorStop(1, "rgba(255,214,150,0.04)");
+    ctx.fillStyle = lamp;
+    rounded(ctx, bx, y0 + 12, bw, h - 26, 5);
+    ctx.fill();
+
+    for (let shelf = 0; shelf < 4; shelf += 1) {
+      const sy = y0 + 30 + shelf * ((h - 52) / 3);
+      ctx.fillStyle = "rgba(160,124,74,0.95)";
+      ctx.fillRect(bx + 4, sy, bw - 8, 3);
+      // 商品。段ごとに形と色を変えて、同じ模様の繰り返しに見せない。
+      for (let i = 0; i < 4; i += 1) {
+        const gx = bx + 12 + i * ((bw - 24) / 3);
+        const tone = (b + shelf + i) % 4;
+        ctx.fillStyle = ["#e0899f", "#6fc3dd", "#e8c46a", "#8fd6a0"][tone];
+        if (tone === 0) {
+          ctx.beginPath();
+          ctx.ellipse(gx, sy - 6, 5, 4.4, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (tone === 1) {
+          rounded(ctx, gx - 4, sy - 12, 8, 12, 2);
+          ctx.fill();
+        } else if (tone === 2) {
+          ctx.beginPath();
+          ctx.moveTo(gx, sy - 12);
+          ctx.lineTo(gx + 5, sy);
+          ctx.lineTo(gx - 5, sy);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          ctx.fillRect(gx - 5, sy - 9, 10, 9);
+        }
+      }
+    }
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = "rgba(122,90,52,0.9)";
+  ctx.lineWidth = 5;
+  rounded(ctx, x0, y0, w, h, 8);
+  ctx.stroke();
+  ctx.strokeStyle = `${theme.accent}aa`;
+  ctx.lineWidth = 1.4;
+  rounded(ctx, x0 + 1, y0 + 1, w - 2, h - 2, 7);
+  ctx.stroke();
+};
+
+/**
+ * 両生類館・爬虫類館の壁。ひとつの大窓ではなく、
+ * 陸と水が半分ずつ入った小さなケージが横に並ぶ。
+ */
+const drawTerrariumWall = (
+  ctx: CanvasRenderingContext2D,
+  rect: AquariumArea["rect"],
+  theme: Theme,
+) => {
+  const { x0, x1, y0, y1 } = windowRect(rect);
+  const w = x1 - x0;
+  const h = y1 - y0;
+
+  ctx.fillStyle = theme.warm ? "#2f3a26" : "#1d2a22";
+  rounded(ctx, x0, y0, w, h, 8);
+  ctx.fill();
+
+  const cages = 4;
+  for (let c = 0; c < cages; c += 1) {
+    const cw = (w - 18) / cages - 6;
+    const cx = x0 + 9 + c * ((w - 18) / cages);
+    const cy = y0 + 10;
+    const ch = h - 20;
+
+    ctx.save();
+    rounded(ctx, cx, cy, cw, ch, 5);
+    ctx.clip();
+    const air = ctx.createLinearGradient(0, cy, 0, cy + ch);
+    air.addColorStop(0, theme.waterTop);
+    air.addColorStop(1, theme.waterBottom);
+    ctx.fillStyle = air;
+    ctx.fillRect(cx, cy, cw, ch);
+
+    // 下半分が水、上半分が陸と枝。
+    ctx.fillStyle = "rgba(58,86,52,0.9)";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + ch * 0.52);
+    ctx.quadraticCurveTo(cx + cw * 0.5, cy + ch * 0.44, cx + cw, cy + ch * 0.56);
+    ctx.lineTo(cx + cw, cy + ch);
+    ctx.lineTo(cx, cy + ch);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(126,182,214,0.36)";
+    ctx.fillRect(cx, cy + ch * 0.72, cw, ch * 0.28);
+    ctx.strokeStyle = "#6b5738";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx + 4, cy + ch * 0.34);
+    ctx.quadraticCurveTo(cx + cw * 0.5, cy + ch * 0.16, cx + cw - 4, cy + ch * 0.3);
+    ctx.stroke();
+    for (let i = 0; i < 4; i += 1) {
+      leaf(ctx, cx + 8 + i * (cw / 4), cy + ch * (0.2 + (i % 2) * 0.12), 9, 4, -0.5 + i * 0.3, "#5f9a58");
+    }
+    // ケージの主。1匹だけ、輪郭のはっきりした影を置く。
+    ctx.fillStyle = "rgba(24,32,22,0.72)";
+    ctx.beginPath();
+    ctx.ellipse(cx + cw * 0.5, cy + ch * (0.62 + (c % 2) * 0.08), cw * 0.2, ch * 0.05, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 保温ランプ。爬虫類館らしい暖色の点光源。
+    const lamp = ctx.createRadialGradient(cx + cw * 0.5, cy + 6, 1, cx + cw * 0.5, cy + 6, 26);
+    lamp.addColorStop(0, "rgba(255,196,120,0.5)");
+    lamp.addColorStop(1, "rgba(255,196,120,0)");
+    ctx.fillStyle = lamp;
+    ctx.fillRect(cx, cy, cw, 40);
+
+    ctx.strokeStyle = "rgba(70,84,50,0.95)";
+    ctx.lineWidth = 4;
+    rounded(ctx, cx, cy, cw, ch, 5);
+    ctx.stroke();
+    ctx.strokeStyle = `${theme.accent}88`;
+    ctx.lineWidth = 1.1;
+    rounded(ctx, cx + 1, cy + 1, cw - 2, ch - 2, 4);
+    ctx.stroke();
+    // 上辺の通気網
+    ctx.strokeStyle = "rgba(210,226,190,0.4)";
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < 8; i += 1) {
+      const gx = cx + 4 + i * ((cw - 8) / 7);
+      ctx.beginPath();
+      ctx.moveTo(gx, cy + 2);
+      ctx.lineTo(gx, cy + 8);
+      ctx.stroke();
+    }
+  }
+};
+
 /** ガラスの反射。魚より手前に来る一筋 */
 const drawGlassSheen = (ctx: CanvasRenderingContext2D, rect: AquariumArea["rect"]) => {
   const { x0, y0, y1 } = windowRect(rect);
@@ -972,19 +1792,30 @@ const drawWindowMotion = (
   time: number,
 ) => {
   const { x0, x1, y0, y1 } = windowRect(rect);
+  if (theme.kind === "shop" || theme.kind === "terrarium") {
+    // 大窓がない棟。奥を横切る魚影のかわりに、灯りだけをゆっくり揺らす。
+    ctx.save();
+    ctx.globalAlpha = 0.1 + Math.abs(Math.sin(time * 0.5)) * 0.06;
+    ctx.fillStyle = theme.light;
+    ctx.fillRect(x0 + 4, y0 + 4, x1 - x0 - 8, 12);
+    ctx.restore();
+    return;
+  }
   ctx.save();
   // 角の丸みは枠の線が隠すので、切り抜きは矩形で足りる（丸角クリップより軽い）
   ctx.beginPath();
   ctx.rect(x0 + 2, y0 + 2, x1 - x0 - 4, y1 - y0 - 4);
   ctx.clip();
-  drawCaustics(ctx, x0 - 10, y0, x1 + 10, y0 + (y1 - y0) * 0.55, time, theme.warm ? 0.13 : 0.17, theme.light, 3);
+  if (!theme.sunless) {
+    drawCaustics(ctx, x0 - 10, y0, x1 + 10, y0 + (y1 - y0) * 0.55, time, theme.warm ? 0.13 : 0.17, theme.light, 3);
+  }
 
   /*
    * 奥を横切る生きもの。地域が進むほど大きく、数を減らす。
    * 「大きい魚がいる = 進んでいる」がひと目で分かるようにする。
    */
   const shade = theme.warm ? "#2c4b45" : "#dff8ff";
-  const alpha = theme.warm ? 0.16 : 0.15;
+  const alpha = theme.sunless ? 0.07 : theme.warm ? 0.16 : 0.15;
   const bigness = 0.5 + index * 0.1;
   const school = index < 8 ? 6 : 5;
   for (let i = 0; i < school; i += 1) {
@@ -1379,12 +2210,134 @@ const drawFloorIdentity = (
       }
       break;
     }
+
+    /* ---- 施設棟。床を見ただけで展示室ではないと分かるようにする ---- */
+    case "facility-shop": {
+      // 板張りの床とレジ前の敷物。
+      ctx.strokeStyle = "rgba(96,72,44,0.35)";
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 9; i += 1) {
+        const x = rect.x0 + 20 + i * ((rect.x1 - rect.x0 - 40) / 8);
+        ctx.beginPath();
+        ctx.moveTo(x, floorTop + 6);
+        ctx.lineTo(x, bottom);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(196,132,88,0.26)";
+      ctx.beginPath();
+      ctx.ellipse(cx + 62, rect.y0 + 356, 52, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case "facility-dining": {
+      // テーブルの丸い影と、天井から下がるペンダントライトの光だまり。
+      for (let i = 0; i < 5; i += 1) {
+        const x = rect.x0 + 46 + i * 68;
+        const y = rect.y0 + 268 + (i % 2) * 62;
+        const glow = ctx.createRadialGradient(x, y, 2, x, y, 34);
+        glow.addColorStop(0, "rgba(255,204,132,0.28)");
+        glow.addColorStop(1, "rgba(255,204,132,0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 34, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(60,40,24,0.3)";
+        ctx.beginPath();
+        ctx.ellipse(x, y + 8, 17, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
+    case "facility-terrarium": {
+      // 落ち葉と踏み石。乾いた通路。
+      for (let i = 0; i < 16; i += 1) {
+        leaf(
+          ctx,
+          rect.x0 + 22 + ((i * 41) % (rect.x1 - rect.x0 - 44)),
+          floorTop + 16 + ((i * 29) % 150),
+          8,
+          3.2,
+          -0.8 + (i % 5) * 0.4,
+          i % 2 ? "rgba(150,124,62,0.4)" : "rgba(110,132,68,0.38)",
+        );
+      }
+      for (let i = 0; i < 5; i += 1) {
+        drawRock(ctx, cx - 60 + i * 30, rect.y0 + 360 + (i % 2) * 10, 15, 6, "rgba(122,116,88,0.45)", i * 0.2);
+      }
+      break;
+    }
+
+    /* ---- 古代棟。床に化石が埋まっていて、年表が引かれている ---- */
+    case "recent-past":
+    case "glacial":
+    case "giant-sea":
+    case "cetacean":
+    case "paleo-shore":
+    case "paleo-swamp":
+    case "mesozoic":
+    case "lagoon-shallow":
+    case "dead-water":
+    case "primordial":
+    case "crinoid-forest":
+    case "armored":
+    case "stromatolite-shore": {
+      // 順路にそって引かれた年表の一本線。古代棟をずっと貫いている。
+      ctx.strokeStyle = `${theme.accent}55`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(rect.x0, rect.y0 + 342);
+      ctx.lineTo(rect.x1, rect.y0 + 342);
+      ctx.stroke();
+      ctx.fillStyle = `${theme.accent}77`;
+      for (let i = 0; i < 7; i += 1) {
+        const x = rect.x0 + 24 + i * ((rect.x1 - rect.x0 - 48) / 6);
+        ctx.fillRect(x - 1, rect.y0 + 336, 2, 12);
+      }
+      // 床に埋め込まれた化石。踏んで歩ける展示。
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.strokeStyle = theme.warm ? "rgba(72,58,34,0.9)" : "rgba(206,220,236,0.85)";
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 3; i += 1) {
+        const fx = rect.x0 + 58 + i * 118;
+        const fy = rect.y0 + 384;
+        ctx.beginPath();
+        for (let k = 0; k <= 22; k += 1) {
+          const a = (k / 22) * Math.PI * 2.6;
+          const r = 1.6 + a * 2.2;
+          const px = fx + Math.cos(a) * r * 0.7;
+          const py = fy + Math.sin(a) * r * 0.45;
+          if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+      break;
+    }
+    case "origin": {
+      // 生命誕生の海。床の割れ目から熱がのぼり、順路の終点だけが光る。
+      const vent = ctx.createRadialGradient(cx, rect.y0 + 300, 4, cx, rect.y0 + 300, 150);
+      vent.addColorStop(0, "rgba(255,148,80,0.3)");
+      vent.addColorStop(1, "rgba(255,120,60,0)");
+      ctx.fillStyle = vent;
+      ctx.fillRect(rect.x0, floorTop, rect.x1 - rect.x0, rect.y1 - floorTop);
+      ctx.strokeStyle = "rgba(255,150,84,0.5)";
+      ctx.lineWidth = 2.4;
+      for (let i = 0; i < 5; i += 1) {
+        const x = rect.x0 + 30 + i * 76;
+        ctx.beginPath();
+        ctx.moveTo(x, bottom);
+        ctx.lineTo(x + 26, floorTop + 24 + (i % 3) * 16);
+        ctx.stroke();
+      }
+      break;
+    }
   }
 };
 
 /**
  * 隣の展示室へつながる通路。ここを開けておかないと、
- * 18個の箱が並んでいるだけに見えてしまう。
+ * 54個の箱が並んでいるだけに見えてしまう。
  */
 const drawDoorways = (
   ctx: CanvasRenderingContext2D,
@@ -1494,10 +2447,16 @@ const drawAmenityLights = (
   }
 };
 
-const heroSpot = (rect: AquariumArea["rect"], index: number) => ({
-  x: rect.x0 + (index % 2 === 1 ? 82 : 278),
-  y: rect.y0 + 258,
-});
+/**
+ * その展示室の「顔」になる3番展示の位置。data/aquarium-visual-v3.ts の配置と合わせる。
+ * 節目の区画（WORLD OCEAN と 生命誕生の海）だけは中央上の大水槽が顔になる。
+ */
+const HERO_AREAS = new Set([17, 53]);
+
+const heroSpot = (rect: AquariumArea["rect"], index: number) =>
+  HERO_AREAS.has(index)
+    ? { x: rect.x0 + 180, y: rect.y0 + 230 }
+    : { x: rect.x0 + (index % 2 === 1 ? 82 : 278), y: rect.y0 + 258 };
 
 /** 各地域の3番展示を照らすランドマーク灯（光だけ。焼き込み側） */
 const drawLandmarkHalo = (ctx: CanvasRenderingContext2D, rect: AquariumArea["rect"], theme: Theme, index: number) => {
@@ -1525,7 +2484,8 @@ const drawLandmarkPlate = (ctx: CanvasRenderingContext2D, rect: AquariumArea["re
   ctx.lineJoin = "round";
   ctx.strokeStyle = "rgba(0,8,12,0.8)";
   ctx.lineWidth = 2.5;
-  const landmarkTag = index === 17 ? "★ GRAND LANDMARK" : "★ LANDMARK";
+  const landmarkTag =
+    index === 53 ? "★ THE FIRST SEA" : index === 17 ? "★ GRAND LANDMARK" : "★ LANDMARK";
   ctx.strokeText(landmarkTag, heroX, heroY - 76);
   ctx.fillText(landmarkTag, heroX, heroY - 76);
   const pulse = 0.45 + Math.abs(Math.sin(time * 1.5)) * 0.25;
@@ -1537,8 +2497,15 @@ const drawLandmarkPlate = (ctx: CanvasRenderingContext2D, rect: AquariumArea["re
 
 /** 手前の植栽・岩。キャラクターの足元に奥行きを足す */
 const drawForeground = (ctx: CanvasRenderingContext2D, rect: AquariumArea["rect"], index: number) => {
-  const ocean = index >= 8;
-  const lush = [0, 1, 3, 4, 6, 7, 10, 11, 12, 13].includes(index);
+  // 施設棟と古代棟にも、それぞれの手前の草木・岩を置く。
+  const ocean = index >= 8 && ![20, 21, 30, 31, 35, 38, 43, 46, 51, 52].includes(index);
+  const lush = [
+    0, 1, 3, 4, 6, 7, 10, 11, 12, 13,
+    // 両生類館・爬虫類館
+    20, 21,
+    // 古代棟の、陸のある時代
+    27, 30, 31, 35, 43, 44, 46, 47, 51, 52,
+  ].includes(index);
   if (lush) {
     const spots = [{ x: rect.x0 + 8, y: rect.y1 - 18, s: 1.25 }, { x: rect.x1 - 8, y: rect.y1 - 26, s: 1.4 }];
     for (const spot of spots) {
@@ -1553,8 +2520,17 @@ const drawForeground = (ctx: CanvasRenderingContext2D, rect: AquariumArea["rect"
       }
     }
   }
-  if ([2, 5, 8, 9, 14, 15, 16, 17].includes(index)) {
-    const rockColor = index === 16 ? "rgba(44,48,71,0.94)" : ocean ? "rgba(41,61,68,0.92)" : "rgba(105,91,67,0.86)";
+  if ([2, 5, 8, 9, 14, 15, 16, 17, 22, 24, 25, 28, 32, 33, 36, 39, 40, 41, 42, 45, 48, 49, 50, 53].includes(index)) {
+    const rockColor =
+      index === 16
+        ? "rgba(44,48,71,0.94)"
+        : index === 53
+          ? "rgba(52,32,34,0.95)"
+          : index >= 22
+            ? "rgba(74,68,56,0.9)"
+            : ocean
+              ? "rgba(41,61,68,0.92)"
+              : "rgba(105,91,67,0.86)";
     drawRock(ctx, rect.x0 + 10, rect.y1 - 11, 28, 11, rockColor, -0.15);
     drawRock(ctx, rect.x1 - 8, rect.y1 - 15, 34, 12, rockColor, 0.12);
   }
@@ -1682,6 +2658,8 @@ const paintHallStatic = (
   // 3. 天井と大窓。館内の主役
   drawCeiling(ctx, rect, theme, index);
   if (index === 0) drawEntranceLobby(ctx, rect);
+  else if (theme.kind === "shop") drawShopWall(ctx, rect, theme);
+  else if (theme.kind === "terrarium") drawTerrariumWall(ctx, rect, theme);
   else {
     drawGreatWindow(ctx, rect, theme);
     drawGlassSheen(ctx, rect);
@@ -1699,9 +2677,11 @@ const paintHallStatic = (
 
   // 5. 展示位置の照明。水槽が床から浮かず、照らされて見えるようにする
   const mirrored = index % 2 === 1;
-  const points = mirrored
-    ? [{ x: rect.x0 + 278, y: rect.y0 + 286 }, { x: rect.x0 + 190, y: rect.y0 + 330 }, { x: rect.x0 + 82, y: rect.y0 + 258 }]
-    : [{ x: rect.x0 + 82, y: rect.y0 + 286 }, { x: rect.x0 + 176, y: rect.y0 + 330 }, { x: rect.x0 + 278, y: rect.y0 + 258 }];
+  const points = HERO_AREAS.has(index)
+    ? [{ x: rect.x0 + 82, y: rect.y0 + 344 }, { x: rect.x0 + 278, y: rect.y0 + 344 }, { x: rect.x0 + 180, y: rect.y0 + 230 }]
+    : mirrored
+      ? [{ x: rect.x0 + 278, y: rect.y0 + 286 }, { x: rect.x0 + 190, y: rect.y0 + 330 }, { x: rect.x0 + 82, y: rect.y0 + 258 }]
+      : [{ x: rect.x0 + 82, y: rect.y0 + 286 }, { x: rect.x0 + 176, y: rect.y0 + 330 }, { x: rect.x0 + 278, y: rect.y0 + 258 }];
   for (let i = 0; i < points.length; i += 1) {
     const p = points[i];
     const radius = i === 2 ? 56 : 40;
@@ -1718,7 +2698,7 @@ const paintHallStatic = (
  * 画面に出るのはせいぜい6区画なので、少数だけ残して使い回す。
  */
 const HALL_BAKE_SCALE = 1.6;
-const HALL_CACHE_LIMIT = 8;
+const HALL_CACHE_LIMIT = 12;
 const hallCache = new Map<number, HTMLCanvasElement>();
 
 const bakedHall = (index: number, theme: Theme, w: number, h: number) => {
