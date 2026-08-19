@@ -48,23 +48,37 @@ const localPos = (area: number, x: number, y: number): Vec => {
   return { x: o.x + x, y: o.y + y };
 };
 
+/*
+ * 解放枠は、必ず「歩ける通路」の上に置く。
+ *
+ * プレイヤーが上へ行ける限界は、開いている区画の上端 + 54（updatePlayer の clamp）。
+ * 上へ進む区画の枠を上端 + 26 に置いていたため、可動限界の 28 上にあり、
+ * 手の届く距離（PAD_RADIUS = 26）に 2 だけ入らなかった。
+ * 見えているのに一生買えない ―― 進行が止まる。
+ *
+ * 通路の帯（床の上端 205 のすぐ下）へ下ろして、どの向きへ進む枠でも必ず届くようにする。
+ * 左右は展示の列（区画ローカルの x 32〜328）から外し、
+ * 上下は展示の間を通る中央へ置く。tools/check-aquarium-pads.ts で全区画を確かめている。
+ */
+const PAD_LANE_Y = 210;
+const PAD_EDGE_X = 26;
+const PAD_CENTER_X = 180;
+
 const padInPreviousArea = (previous: Rect, next: Rect): Vec => {
-  // 横移動は展示のない中段、縦移動は水槽列から離れた角に置く。
+  const lane = previous.y0 + PAD_LANE_Y;
   if (next.x0 === previous.x1) {
-    return { x: previous.x1 - 26, y: previous.y0 + 210 };
+    return { x: previous.x1 - PAD_EDGE_X, y: lane };
   }
   if (next.x1 === previous.x0) {
-    return { x: previous.x0 + 26, y: previous.y0 + 210 };
+    return { x: previous.x0 + PAD_EDGE_X, y: lane };
   }
-  if (next.y1 === previous.y0) {
-    return { x: previous.x0 + 32, y: previous.y0 + 26 };
-  }
-  if (next.y0 === previous.y1) {
-    return { x: previous.x1 - 32, y: previous.y1 - 26 };
+  // 上下へ進むときは、3つの展示のあいだを抜ける通路の中央に置く。
+  if (next.y1 === previous.y0 || next.y0 === previous.y1) {
+    return { x: previous.x0 + PAD_CENTER_X, y: lane };
   }
   return {
     x: (previous.x0 + previous.x1) / 2,
-    y: (previous.y0 + previous.y1) / 2,
+    y: lane,
   };
 };
 
