@@ -21,7 +21,8 @@ export type StageId =
   | "onsen"
   | "fire"
   | "taiga"
-  | "moji";
+  | "moji"
+  | "bronze";
 
 export type StageLabels = {
   /** 運ぶもの */
@@ -117,6 +118,17 @@ export type StageDef = {
   haulers?: boolean;
   /** 棟の壁で当たり判定をするか（AreaSpec.building を使うステージ） */
   walls?: boolean;
+  /**
+   * 横に並べる列の数。
+   *
+   * これまでのステージは、区画を右へ右へと足していく横スクロール。
+   * この数を入れたステージは、決まった本数の列が横に並んだまま、
+   * 区画が下へ下へと積まれる縦スクロールになる（青銅の王国 = 3）。
+   *
+   * エンジン側で変わるのは、客の出入りと行列だけ（lib/shop.ts の columnMode）。
+   * 画面のいちばん下にある「通り」が、上の区画から遠くなってしまうため
+   */
+  columns?: number;
 };
 
 /**
@@ -3639,6 +3651,1012 @@ const mojiUpgrades: Upgrade[] = [
   { id: "price", name: "品定め", detail: (n) => `ひとつ ${Math.round(7 * Math.pow(1.4, n))}印`, pos: { x: 60, y: 480 }, basePrice: 600, growth: 1.75, max: 20, unlockAfter: "count-1", reveal: 11.5 },
 ];
 
+
+/* ==================== ステージ6: 青銅の王国 ====================
+ *
+ * このステージだけ、横スクロールではなく **横三列の縦スクロール**。
+ *
+ *   左の列 … 掘る・採る（銅鉱石・粘土・丸太・錫）
+ *   中の列 … 火にかける（吹く・溶かす・鋳る・研ぐ）
+ *   右の列 … 渡す（谷の市・宮・神殿）
+ *
+ * 一段（区画）が、スマホの画面ちょうど1枚。
+ * 手前の段でひととおり回せるようになったら、下の段をひらく。
+ * 左から右へ流して、上から下へ時代が進む ―― 画面を見れば流れが分かる形にした。
+ *
+ * 新しい遊びは「配合」（lib/bronze.ts）。
+ * 銅は谷で採れるが、錫は隊商でしか来ない。
+ * たくさん掘るだけでは値が上がらず、遠くから錫を通してはじめて青銅になる。
+ */
+
+/** 三列の中心。左＝掘る／中＝火／右＝渡す */
+const FORGE_X = [70, 210, 350] as const;
+/** 一段（区画）の高さ。スマホの画面1枚におさまる高さにしてある */
+const FORGE_STEP = 560;
+/** 一段のなかの、4つの行 */
+const FORGE_ROW = [80, 200, 320, 440] as const;
+
+/** 段のなかの縦位置を、世界の座標に直す */
+const fy = (area: number, y: number) => area * FORGE_STEP + y;
+/** 行番号（0〜3）を、世界の縦位置に直す */
+const frow = (area: number, row: 0 | 1 | 2 | 3) => fy(area, FORGE_ROW[row]);
+/**
+ * 列のなかの横位置。
+ * slot 0 が列の中心（作業場）、-1 が左の枠、+1 が右の枠。
+ * 枠は作業場の少し下（+52）に置くので、上下の行とはぶつからない
+ */
+const fx = (lane: 0 | 1 | 2, slot = 0) => FORGE_X[lane] + slot * 42;
+/** 枠（雇う・設備）を置く縦位置 */
+const fpad = (area: number, row: 0 | 1 | 2 | 3) => frow(area, row) + 52;
+
+const bronzeAreas: AreaSpec[] = [
+  {
+    id: "area-0",
+    label: "銅の谷",
+    price: 0,
+    rect: { x0: 0, y0: fy(0, 0), x1: 420, y1: fy(1, 0) },
+    padPos: { x: 0, y: 0 },
+    // 露天に緑青の吹いた岩肌。赤茶の谷
+    palette: { floor: "#6b4a3a", deep: "#3f2a20", prop: "none" },
+  },
+  {
+    id: "area-1",
+    label: "炭焼きの尾根をひらく",
+    price: 2600,
+    rect: { x0: 0, y0: fy(1, 0), x1: 420, y1: fy(2, 0) },
+    padPos: { x: 210, y: fy(1, 0) - 30 },
+    // 炭を焼く杉の尾根。焦げた土と濃い緑
+    palette: { floor: "#3f4633", deep: "#232a1c", prop: "none" },
+    // 一度でも刃を打ってから。石の炉だけでは、これ以上熱くならないと分かる
+    unlockAfter: "mark-first-cast",
+    reveal: 20,
+  },
+  {
+    id: "area-2",
+    label: "錫の隊商路へ出る",
+    price: 44000,
+    rect: { x0: 0, y0: fy(2, 0), x1: 420, y1: fy(3, 0) },
+    padPos: { x: 210, y: fy(2, 0) - 30 },
+    // 乾いた砂の街道。天幕と荷駄
+    palette: { floor: "#9c8b62", deep: "#665a3e", prop: "none" },
+    unlockAfter: "built-build-forge",
+    reveal: 40,
+  },
+  {
+    id: "area-3",
+    label: "鋳物の工房街をひらく",
+    price: 600000,
+    rect: { x0: 0, y0: fy(3, 0), x1: 420, y1: fy(4, 0) },
+    padPos: { x: 210, y: fy(3, 0) - 30 },
+    // 煤けた土間の並ぶ職人町
+    palette: { floor: "#6a5c50", deep: "#413730", prop: "none" },
+    unlockAfter: "built-build-caravan",
+    reveal: 60,
+  },
+  {
+    id: "area-4",
+    label: "王の宮へのぼる",
+    price: 9000000,
+    rect: { x0: 0, y0: fy(4, 0), x1: 420, y1: fy(5, 0) },
+    padPos: { x: 210, y: fy(4, 0) - 30 },
+    // 磨いた石を敷いた宮。灰白の床
+    palette: { floor: "#8d8878", deep: "#5a564a", prop: "none" },
+    unlockAfter: "built-build-foundry",
+    reveal: 80,
+  },
+  {
+    id: "area-5",
+    label: "大鼎の神殿をひらく",
+    price: 220000000,
+    /*
+     * 最後の段だけ、ふつうの段より 160 ぶん高い。
+     * 大鼎と石段の壇は、ほかの建物の何倍もの大きさで据えるので、
+     * 四つの行のさらに下に、それだけのための場所を取ってある
+     */
+    rect: { x0: 0, y0: fy(5, 0), x1: 420, y1: fy(6, 0) + 160 },
+    padPos: { x: 210, y: fy(5, 0) - 30 },
+    // 白い石段の神域
+    palette: { floor: "#a9a189", deep: "#6e6857", prop: "none" },
+    unlockAfter: "built-build-palace",
+    reveal: 100,
+  },
+];
+
+const bronzeStoves: StoveSpec[] = [
+  /* --- area-0「銅の谷」 工程2 ------------------------------------------
+   *
+   *   銅の露天掘り ─(銅鉱石)─▶ 石の炉 ─(精銅)─▶ 谷の市
+   *
+   * まずここで「掘る → 火にかける → 渡す」の三列を覚える。
+   * 石の金床を買うと工程が1つ延びて、精銅が刃になる
+   */
+  {
+    id: "dig-1",
+    pos: { x: fx(0), y: frow(0, 0) },
+    price: 0,
+    area: 0,
+    item: "ore",
+    art: "adit",
+    label: "銅の露天掘り",
+    // つるはしを振るう手が要る。掘り手を雇うまでは自分で立つ
+    manual: true,
+    work: 0.8,
+    hold: 8,
+  },
+  {
+    id: "dig-2",
+    pos: { x: fx(0), y: frow(0, 1) },
+    price: 240,
+    area: 0,
+    item: "ore",
+    art: "adit",
+    label: "二番の掘り場",
+    manual: true,
+    work: 0.8,
+    hold: 8,
+    reveal: 5,
+  },
+  {
+    id: "pit-1",
+    pos: { x: fx(0), y: frow(0, 2) },
+    price: 3200,
+    area: 0,
+    item: "clay",
+    art: "claypit",
+    label: "谷の粘土穴",
+    manual: true,
+    work: 0.8,
+    hold: 8,
+    reveal: 15,
+  },
+  {
+    id: "hearth-1",
+    pos: { x: fx(1), y: frow(0, 0) },
+    price: 0,
+    area: 0,
+    item: "copper",
+    takes: "ore",
+    art: "stonehearth",
+    label: "石の炉",
+    // 地面に掘った穴に炭を入れただけの炉。とけ湯にはならず、地金までしか出ない
+    work: 1.15,
+  },
+  {
+    id: "hearth-2",
+    pos: { x: fx(1), y: frow(0, 1) },
+    price: 900,
+    area: 0,
+    item: "copper",
+    takes: "ore",
+    art: "stonehearth",
+    label: "二つ目の石の炉",
+    work: 1.15,
+    reveal: 8,
+  },
+  {
+    id: "anvil-1",
+    pos: { x: fx(1), y: frow(0, 2) },
+    price: 7000,
+    area: 0,
+    item: "blade",
+    takes: "copper",
+    art: "anvil",
+    label: "石の金床",
+    // 打って延ばすだけの刃。よく切れないが、これがはじめての「器」になる
+    work: 1.3,
+    reveal: 17,
+  },
+
+  /* --- area-1「炭焼きの尾根」 工程4 --------------------------------------
+   *
+   *   尾根の木立 ─(丸太)─▶ 炭焼き窯 ─(木炭)─┐(火)
+   *   掘り場 ────(銅鉱石)──────────────────┴▶ 溶解炉 ─(とけ湯)─┐
+   *   粘土穴 ────(粘土)──▶ 型場 ─(鋳型)─────────────────────┴▶ 鋳込み台 ─(荒鋳物)─▶ 市
+   *
+   * 炭を入れてはじめて、銅は「とける」。
+   * 石の炉との違いは、ここから先が型でいくらでも増やせること
+   */
+  {
+    id: "grove-1",
+    pos: { x: fx(0), y: frow(1, 0) },
+    price: 2600,
+    area: 1,
+    item: "log",
+    art: "forest",
+    label: "尾根の木立",
+    zone: { x0: 14, y0: frow(1, 0) - 46, x1: 132, y1: frow(1, 0) + 60 },
+    hold: 6,
+    reveal: 21,
+  },
+  {
+    id: "kiln-1",
+    pos: { x: fx(0), y: frow(1, 1) },
+    price: 4200,
+    area: 1,
+    item: "charcoal",
+    takes: "log",
+    art: "charkiln",
+    label: "炭焼き窯",
+    work: 1,
+    reveal: 23,
+  },
+  {
+    id: "dig-3",
+    pos: { x: fx(0), y: frow(1, 2) },
+    price: 9000,
+    area: 1,
+    item: "ore",
+    art: "adit",
+    label: "尾根の掘り場",
+    manual: true,
+    work: 0.75,
+    hold: 10,
+    reveal: 27,
+  },
+  {
+    id: "furnace-1",
+    pos: { x: fx(1), y: frow(1, 0) },
+    price: 6500,
+    area: 1,
+    item: "melt",
+    takes: "ore",
+    fuel: "charcoal",
+    art: "furnace",
+    label: "溶解炉",
+    work: 1.2,
+    reveal: 24,
+  },
+  {
+    id: "mold-1",
+    pos: { x: fx(1), y: frow(1, 1) },
+    price: 9000,
+    area: 1,
+    item: "mold",
+    takes: "clay",
+    art: "moldshop",
+    label: "型場",
+    work: 0.7,
+    reveal: 25,
+  },
+  {
+    id: "cast-1",
+    pos: { x: fx(1), y: frow(1, 2) },
+    price: 14000,
+    area: 1,
+    item: "cast",
+    takes: "melt",
+    fuel: "mold",
+    art: "castpit",
+    label: "鋳込み台",
+    work: 1.1,
+    reveal: 26,
+  },
+  {
+    id: "build-forge",
+    pos: { x: fx(1), y: frow(1, 3) },
+    price: 40000,
+    area: 1,
+    art: "forgehouse",
+    label: "屋根つきの鍛冶場",
+    needs: { log: 8, clay: 6 },
+    gives: { note: "屋根つきの鍛冶場ができた。雨でも火が落ちない" },
+    reveal: 31,
+  },
+
+  /* --- area-2「錫の隊商路」 工程5 ----------------------------------------
+   *
+   *   隊商宿 ─(錫)─┐
+   *   石の炉 ─(精銅)┴▶ 合わせ炉 ─(とけ湯)─▶ 鋳込み台 ─(荒鋳物)─▶ 研ぎ場 ─(青銅の刃)─▶ 市
+   *
+   * ここから「配合」がはじまる。
+   * 合わせ炉は精銅2に錫1でしか動かない ―― 掘るだけでは、もう先へ行けない
+   */
+  {
+    id: "caravan-1",
+    pos: { x: fx(0), y: frow(2, 0) },
+    price: 44000,
+    area: 2,
+    item: "tin",
+    art: "caravan",
+    label: "隊商宿",
+    // 錫は谷では採れない。荷を解いて受け取る人が要るので、ここも人の手が要る
+    manual: true,
+    work: 1.6,
+    hold: 6,
+    reveal: 41,
+  },
+  {
+    id: "grove-2",
+    pos: { x: fx(0), y: frow(2, 1) },
+    price: 30000,
+    area: 2,
+    item: "log",
+    art: "forest",
+    label: "街道の木立",
+    zone: { x0: 14, y0: frow(2, 1) - 46, x1: 132, y1: frow(2, 1) + 60 },
+    hold: 8,
+    reveal: 43,
+  },
+  {
+    id: "kiln-2",
+    pos: { x: fx(0), y: frow(2, 2) },
+    price: 48000,
+    area: 2,
+    item: "charcoal",
+    takes: "log",
+    art: "charkiln",
+    label: "街道の炭窯",
+    work: 0.9,
+    reveal: 44,
+  },
+  {
+    id: "pit-2",
+    pos: { x: fx(0), y: frow(2, 3) },
+    price: 60000,
+    area: 2,
+    item: "clay",
+    art: "claypit",
+    label: "街道の粘土場",
+    manual: true,
+    work: 0.7,
+    hold: 12,
+    reveal: 50,
+  },
+  {
+    id: "alloy-1",
+    pos: { x: fx(1), y: frow(2, 0) },
+    price: 90000,
+    area: 2,
+    item: "melt",
+    recipe: { copper: 2, tin: 1 },
+    fuel: "charcoal",
+    art: "alloyfurnace",
+    label: "合わせ炉",
+    work: 1.25,
+    hold: 10,
+    reveal: 45,
+  },
+  {
+    id: "cast-2",
+    pos: { x: fx(1), y: frow(2, 1) },
+    price: 70000,
+    area: 2,
+    item: "cast",
+    takes: "melt",
+    fuel: "mold",
+    art: "castpit",
+    label: "街道の鋳込み台",
+    work: 1,
+    reveal: 46,
+  },
+  {
+    id: "grind-1",
+    pos: { x: fx(1), y: frow(2, 2) },
+    price: 120000,
+    area: 2,
+    item: "blade",
+    takes: "cast",
+    art: "grindstone",
+    label: "研ぎ場",
+    work: 0.9,
+    reveal: 47,
+  },
+  {
+    id: "build-caravan",
+    pos: { x: fx(1), y: frow(2, 3) },
+    price: 500000,
+    area: 2,
+    art: "caravanserai",
+    label: "隊商の宿場",
+    needs: { log: 12, clay: 10, blade: 6 },
+    gives: { note: "宿場が建った。錫の荷が、待たずに谷まで通るようになった" },
+    reveal: 52,
+  },
+
+  /* --- area-3「鋳物の工房街」 --------------------------------------------
+   *
+   * 刃のほかに、鐘（銅鐸）と鏡が鋳られるようになる。
+   * 同じとけ湯から、型を替えるだけで別のものが出てくる ―― 型が財産になる
+   */
+  {
+    id: "pit-3",
+    pos: { x: fx(0), y: frow(3, 0) },
+    price: 600000,
+    area: 3,
+    item: "clay",
+    art: "claypit",
+    label: "工房の粘土場",
+    manual: true,
+    work: 0.65,
+    hold: 12,
+    reveal: 61,
+  },
+  {
+    id: "mold-2",
+    pos: { x: fx(0), y: frow(3, 1) },
+    price: 900000,
+    area: 3,
+    item: "mold",
+    takes: "clay",
+    art: "moldshop",
+    label: "大型の型場",
+    work: 0.6,
+    hold: 12,
+    reveal: 62,
+  },
+  {
+    id: "kiln-3",
+    pos: { x: fx(0), y: frow(3, 2) },
+    price: 800000,
+    area: 3,
+    item: "charcoal",
+    takes: "log",
+    art: "charkiln",
+    label: "工房の炭窯",
+    work: 0.8,
+    hold: 12,
+    reveal: 63,
+  },
+  {
+    id: "grove-3",
+    pos: { x: fx(0), y: frow(3, 3) },
+    price: 700000,
+    area: 3,
+    item: "log",
+    art: "forest",
+    label: "工房裏の木立",
+    zone: { x0: 14, y0: frow(3, 3) - 46, x1: 132, y1: frow(3, 3) + 56 },
+    hold: 10,
+    reveal: 64,
+  },
+  {
+    id: "alloy-2",
+    pos: { x: fx(1), y: frow(3, 0) },
+    price: 1600000,
+    area: 3,
+    item: "melt",
+    recipe: { copper: 2, tin: 1 },
+    fuel: "charcoal",
+    art: "alloyfurnace",
+    label: "工房の合わせ炉",
+    work: 1,
+    hold: 12,
+    reveal: 65,
+  },
+  {
+    id: "bell-1",
+    pos: { x: fx(1), y: frow(3, 1) },
+    price: 2400000,
+    area: 3,
+    item: "bell",
+    takes: "melt",
+    fuel: "mold",
+    art: "bellpit",
+    label: "鐘の鋳型場",
+    work: 1.5,
+    reveal: 67,
+  },
+  {
+    id: "cast-3",
+    pos: { x: fx(1), y: frow(3, 2) },
+    price: 1800000,
+    area: 3,
+    item: "cast",
+    takes: "melt",
+    fuel: "mold",
+    art: "castpit",
+    label: "工房の鋳込み台",
+    work: 0.85,
+    reveal: 66,
+  },
+  {
+    id: "mirror-1",
+    pos: { x: fx(1), y: frow(3, 3) },
+    price: 3600000,
+    area: 3,
+    item: "mirror",
+    takes: "cast",
+    art: "polish",
+    label: "鏡の磨き場",
+    work: 1.4,
+    reveal: 69,
+  },
+  {
+    id: "build-foundry",
+    pos: { x: fx(2), y: frow(3, 3) + 24 },
+    price: 12000000,
+    area: 3,
+    art: "foundry",
+    label: "大鋳物場",
+    needs: { mold: 14, log: 16, cast: 10 },
+    gives: { note: "大鋳物場が建った。型が壁いちめんに並んでいる" },
+    reveal: 72,
+  },
+
+  /* --- area-4「王の宮」 --------------------------------------------------
+   *
+   * 冠は、とけ湯・鏡・刃がぜんぶそろってはじめて出る。
+   * ここまでの列が三つとも回っていないと、一つも作れない
+   */
+  {
+    id: "caravan-2",
+    pos: { x: fx(0), y: frow(4, 0) },
+    price: 9000000,
+    area: 4,
+    item: "tin",
+    art: "caravan",
+    label: "宮の隊商口",
+    manual: true,
+    work: 1.2,
+    hold: 10,
+    reveal: 81,
+  },
+  {
+    id: "dig-4",
+    pos: { x: fx(0), y: frow(4, 1) },
+    price: 12000000,
+    area: 4,
+    item: "ore",
+    art: "adit",
+    label: "王領の坑道",
+    manual: true,
+    work: 0.6,
+    hold: 14,
+    reveal: 82,
+  },
+  {
+    id: "hearth-3",
+    pos: { x: fx(0), y: frow(4, 2) },
+    price: 16000000,
+    area: 4,
+    item: "copper",
+    takes: "ore",
+    art: "stonehearth",
+    label: "宮の吹き所",
+    work: 0.85,
+    reveal: 83,
+  },
+  {
+    id: "kiln-4",
+    pos: { x: fx(0), y: frow(4, 3) },
+    price: 14000000,
+    area: 4,
+    item: "charcoal",
+    takes: "log",
+    art: "charkiln",
+    label: "宮の炭窯",
+    work: 0.7,
+    hold: 14,
+    reveal: 84,
+  },
+  {
+    id: "alloy-3",
+    pos: { x: fx(1), y: frow(4, 0) },
+    price: 30000000,
+    area: 4,
+    item: "melt",
+    recipe: { copper: 3, tin: 1 },
+    fuel: "charcoal",
+    art: "alloyfurnace",
+    label: "宮の大炉",
+    work: 0.9,
+    hold: 16,
+    reveal: 85,
+  },
+  {
+    id: "grind-2",
+    pos: { x: fx(1), y: frow(4, 1) },
+    price: 24000000,
+    area: 4,
+    item: "blade",
+    takes: "cast",
+    art: "grindstone",
+    label: "宮の研ぎ場",
+    work: 0.7,
+    reveal: 86,
+  },
+  {
+    id: "cast-4",
+    pos: { x: fx(1), y: frow(4, 2) },
+    price: 26000000,
+    area: 4,
+    item: "cast",
+    takes: "melt",
+    fuel: "mold",
+    art: "castpit",
+    label: "宮の鋳込み台",
+    work: 0.75,
+    reveal: 87,
+  },
+  {
+    id: "crown-1",
+    pos: { x: fx(1), y: frow(4, 3) },
+    price: 60000000,
+    area: 4,
+    item: "crown",
+    recipe: { melt: 2, mirror: 1, blade: 1 },
+    fuel: "mold",
+    art: "regalia",
+    label: "冠の細工場",
+    work: 2,
+    hold: 8,
+    reveal: 89,
+  },
+  {
+    id: "build-palace",
+    pos: { x: fx(2), y: frow(4, 3) + 24 },
+    price: 200000000,
+    area: 4,
+    art: "palace",
+    label: "王の鋳物殿",
+    needs: { crown: 4, mirror: 8, mold: 20 },
+    gives: { note: "鋳物殿ができた。王の宝が、ぜんぶこの工房から出ていく" },
+    reveal: 94,
+  },
+
+  /* --- area-5「大鼎の神殿」 ----------------------------------------------
+   *
+   * 締めは大鼎。石段の壇を組んでからでないと、鋳ることさえできない。
+   * 荒鋳物・鋳型・石・冠 ―― 三列ぜんぶの流れがそろって、はじめて立つ
+   */
+  {
+    id: "quarry-1",
+    pos: { x: fx(0), y: frow(5, 0) },
+    price: 220000000,
+    area: 5,
+    item: "stone",
+    art: "quarry",
+    label: "神殿の石切り場",
+    manual: true,
+    work: 0.8,
+    hold: 14,
+    reveal: 101,
+  },
+  {
+    id: "mold-3",
+    pos: { x: fx(0), y: frow(5, 1) },
+    price: 300000000,
+    area: 5,
+    item: "mold",
+    takes: "clay",
+    art: "moldshop",
+    label: "大鼎の型場",
+    work: 0.5,
+    hold: 16,
+    reveal: 102,
+  },
+  {
+    id: "pit-4",
+    pos: { x: fx(0), y: frow(5, 2) },
+    price: 260000000,
+    area: 5,
+    item: "clay",
+    art: "claypit",
+    label: "神域の粘土場",
+    manual: true,
+    work: 0.55,
+    hold: 16,
+    reveal: 103,
+  },
+  {
+    id: "kiln-5",
+    pos: { x: fx(0), y: frow(5, 3) },
+    price: 280000000,
+    area: 5,
+    item: "charcoal",
+    takes: "log",
+    art: "charkiln",
+    label: "神殿の炭窯",
+    work: 0.6,
+    hold: 16,
+    reveal: 104,
+  },
+  {
+    id: "alloy-4",
+    pos: { x: fx(1), y: frow(5, 0) },
+    price: 500000000,
+    area: 5,
+    item: "melt",
+    recipe: { copper: 3, tin: 1 },
+    fuel: "charcoal",
+    art: "alloyfurnace",
+    label: "神殿の大炉",
+    work: 0.8,
+    hold: 20,
+    reveal: 105,
+  },
+  {
+    id: "cast-5",
+    pos: { x: fx(1), y: frow(5, 1) },
+    price: 700000000,
+    area: 5,
+    item: "cast",
+    takes: "melt",
+    fuel: "mold",
+    art: "castpit",
+    label: "神殿の鋳込み台",
+    work: 0.65,
+    reveal: 106,
+  },
+  {
+    id: "bell-2",
+    pos: { x: fx(1), y: frow(5, 2) },
+    price: 900000000,
+    area: 5,
+    item: "bell",
+    takes: "melt",
+    fuel: "mold",
+    art: "bellpit",
+    label: "大鐸の鋳型場",
+    work: 1.2,
+    reveal: 107,
+  },
+  {
+    id: "mirror-2",
+    pos: { x: fx(1), y: frow(5, 3) },
+    price: 1200000000,
+    area: 5,
+    item: "mirror",
+    takes: "cast",
+    art: "polish",
+    label: "神鏡の磨き場",
+    work: 1.1,
+    reveal: 108,
+  },
+  {
+    id: "grove-4",
+    pos: { x: fx(2), y: frow(5, 3) },
+    price: 400000000,
+    area: 5,
+    item: "log",
+    art: "forest",
+    label: "神域の杜",
+    zone: { x0: 288, y0: frow(5, 3) - 46, x1: 414, y1: frow(5, 3) + 56 },
+    hold: 14,
+    reveal: 104.2,
+  },
+  {
+    id: "build-terrace",
+    pos: { x: 90, y: frow(5, 3) + 180 },
+    price: 1200000000,
+    area: 5,
+    art: "terrace",
+    label: "石段の壇",
+    needs: { stone: 16, log: 14 },
+    gives: { note: "石段の壇が組まれた。ここに、鼎を据える" },
+    reveal: 112,
+  },
+  {
+    id: "build-cauldron",
+    pos: { x: 300, y: frow(5, 3) + 180 },
+    price: 8000000000,
+    area: 5,
+    art: "cauldron",
+    label: "大鼎",
+    /*
+     * 荒鋳物を積み、型を組み、石で壇を築き、冠を捧げる。
+     * 掘る列・火の列・渡す列のどれが欠けても立たない
+     */
+    needs: { cast: 30, mold: 24, stone: 20, crown: 6 },
+    gives: {
+      sail: true,
+      note: "大鼎が立った。土から取り出した金属が、国そのものの形になった",
+    },
+    unlockAfter: "built-build-terrace",
+    reveal: 124,
+  },
+];
+
+const bronzeSeats: SeatSpec[] = [
+  /* 第1区画: 谷の市（精銅）と、刃をほしがる猟師 */
+  ...cityRow(0, "copper", 1, "谷の市", "matmarket", [
+    { x: fx(2), y: frow(0, 0), price: 0 },
+    { x: fx(2), y: frow(0, 1), price: 0 },
+    { x: fx(2), y: frow(0, 2), price: 260, reveal: 4 },
+  ]),
+  ...cityRow(0, "blade", 5, "刃をほしがる猟師", "matmarket", [
+    { x: fx(2), y: frow(0, 3) - 24, price: 2600, unlockAfter: "anvil-1", reveal: 18 },
+  ], "b"),
+
+  /* 第2区画: 尾根の市。炭も売れるが、売れば炉の火が細る */
+  ...cityRow(1, "copper", 2.4, "尾根の市", "matmarket", [
+    { x: fx(2), y: frow(1, 0), price: 5000, reveal: 22 },
+  ]),
+  ...cityRow(1, "cast", 7, "荒鋳物の市", "stall", [
+    { x: fx(2), y: frow(1, 1), price: 20000, unlockAfter: "cast-1", reveal: 28 },
+    { x: fx(2), y: frow(1, 2), price: 46000, reveal: 33 },
+  ], "c"),
+  ...cityRow(1, "charcoal", 3, "炭の市", "stall", [
+    { x: fx(2), y: frow(1, 3), price: 12000, reveal: 29 },
+  ], "k"),
+
+  /* 第3区画: 隊商の市。研いだ刃が、ここではじめて値のつくものになる */
+  ...cityRow(2, "copper", 4, "街道の市", "matmarket", [
+    { x: fx(2), y: frow(2, 0), price: 60000, reveal: 42 },
+  ]),
+  ...cityRow(2, "cast", 12, "旅の鍛冶", "stall", [
+    { x: fx(2), y: frow(2, 1), price: 90000, reveal: 49 },
+  ], "c"),
+  ...cityRow(2, "blade", 26, "隊商の刃物市", "stall", [
+    { x: fx(2), y: frow(2, 2), price: 150000, unlockAfter: "grind-1", reveal: 48 },
+    { x: fx(2), y: frow(2, 3), price: 300000, reveal: 53 },
+  ], "b"),
+
+  /* 第4区画: 鐘と鏡。ここから王の名簿が重くなる */
+  ...cityRow(3, "blade", 40, "工房通りの刃物市", "stall", [
+    { x: fx(2), y: frow(3, 0), price: 2000000, reveal: 63.5 },
+  ], "b"),
+  ...cityRow(3, "bell", 120, "鐸を待つ祭主", "altar", [
+    { x: fx(2), y: frow(3, 1), price: 4000000, unlockAfter: "bell-1", reveal: 68 },
+  ], "e"),
+  ...cityRow(3, "mirror", 200, "鏡を待つ貴人", "altar", [
+    { x: fx(2), y: frow(3, 2), price: 7000000, unlockAfter: "mirror-1", reveal: 70 },
+  ], "m"),
+
+  /* 第5区画: 宮。冠は一つで、それまでの何十個ぶんにもなる */
+  ...cityRow(4, "blade", 260, "衛士の刃", "court", [
+    { x: fx(2), y: frow(4, 0), price: 20000000, reveal: 86.5 },
+  ], "b"),
+  ...cityRow(4, "mirror", 700, "宮の宝物庫", "court", [
+    { x: fx(2), y: frow(4, 1), price: 40000000, reveal: 88 },
+  ], "m"),
+  ...cityRow(4, "crown", 2600, "王の受け取り", "court", [
+    { x: fx(2), y: frow(4, 2), price: 90000000, unlockAfter: "crown-1", reveal: 90 },
+  ], "c"),
+
+  /* 第6区画: 神殿。鐸と鏡が、売り物ではなく供物になる */
+  ...cityRow(5, "blade", 900, "参道の市", "matmarket", [
+    { x: fx(2), y: frow(5, 0), price: 600000000, reveal: 106.5 },
+  ], "b"),
+  ...cityRow(5, "bell", 3200, "神殿の供物台", "altar", [
+    { x: fx(2), y: frow(5, 1), price: 1200000000, unlockAfter: "bell-2", reveal: 109 },
+  ], "e"),
+  ...cityRow(5, "mirror", 5200, "神鏡の壇", "altar", [
+    { x: fx(2), y: frow(5, 2), price: 2000000000, unlockAfter: "mirror-2", reveal: 110 },
+  ], "m"),
+];
+
+/**
+ * 雇う順。
+ * 掘る → 運ぶ → 火を見る → 型をとる、と、いま覚えた仕事の次だけを出す。
+ * 掘り手・炉の番・鋳込み手は、それぞれ列がちがうので、
+ * どの列が止まっているかで、次に雇う人が決まる
+ */
+const bronzeHires: HireSpec[] = [
+  /* --- area-0 --- */
+  { id: "digger-1", kind: "splitter", pos: { x: fx(0, -1), y: fpad(0, 0) }, price: 60, label: "掘り手", stoveId: "dig-1", area: 0, reveal: 2 },
+  { id: "waiter-1", kind: "waiter", pos: { x: fx(0, 1), y: fpad(0, 0) }, price: 90, label: "運び手", area: 0, reveal: 3 },
+  { id: "fireman-1", kind: "cook", pos: { x: fx(1, -1), y: fpad(0, 0) }, price: 240, label: "火の番", stoveId: "hearth-1", area: 0, reveal: 4.5 },
+  { id: "digger-2", kind: "splitter", pos: { x: fx(0, -1), y: fpad(0, 1) }, price: 900, label: "二番の掘り手", stoveId: "dig-2", area: 0, unlockAfter: "dig-2", reveal: 6 },
+  { id: "collector-1", kind: "collector", pos: { x: fx(1, 1), y: fpad(0, 0) }, price: 420, label: "拾い手", area: 0, reveal: 7 },
+  { id: "waiter-2", kind: "waiter", pos: { x: fx(0, 1), y: fpad(0, 1) }, price: 800, label: "運び手", area: 0, unlockAfter: "collector-1", reveal: 9 },
+  { id: "fireman-2", kind: "cook", pos: { x: fx(1, -1), y: fpad(0, 1) }, price: 1800, label: "二番の火の番", stoveId: "hearth-2", area: 0, unlockAfter: "hearth-2", reveal: 10.5 },
+  { id: "robot-1", kind: "robot", pos: { x: fx(1, 1), y: fpad(0, 1) }, price: 3000, label: "荷車", area: 0, reveal: 13 },
+  { id: "potter-1", kind: "splitter", pos: { x: fx(0, -1), y: fpad(0, 2) }, price: 4200, label: "粘土掘り", stoveId: "pit-1", area: 0, unlockAfter: "pit-1", reveal: 15.5 },
+  { id: "smith-1", kind: "carver", pos: { x: fx(1, -1), y: fpad(0, 2) }, price: 9000, label: "鋳手", stoveId: "anvil-1", area: 0, unlockAfter: "anvil-1", reveal: 18.5 },
+
+  /* --- area-1 炭焼きの尾根 --- */
+  { id: "logger-1", kind: "logger", pos: { x: fx(0, 1), y: fpad(1, 0) }, price: 3800, label: "木こり", stoveId: "grove-1", area: 1, reveal: 21.5 },
+  { id: "waiter-3", kind: "waiter", pos: { x: fx(1, 1), y: fpad(1, 0) }, price: 4000, label: "運び手", area: 1, reveal: 22.5 },
+  { id: "charcoaler-1", kind: "cook", pos: { x: fx(0, -1), y: fpad(1, 1) }, price: 5200, label: "炭焼き", stoveId: "kiln-1", area: 1, unlockAfter: "kiln-1", reveal: 23.5 },
+  { id: "founder-1", kind: "cook", pos: { x: fx(1, -1), y: fpad(1, 0) }, price: 8000, label: "炉の番", stoveId: "furnace-1", area: 1, unlockAfter: "furnace-1", reveal: 24.5 },
+  { id: "molder-1", kind: "splitter", pos: { x: fx(1, -1), y: fpad(1, 1) }, price: 11000, label: "型づくり", stoveId: "mold-1", area: 1, unlockAfter: "mold-1", reveal: 25.5 },
+  { id: "caster-1", kind: "carver", pos: { x: fx(1, -1), y: fpad(1, 2) }, price: 17000, label: "鋳込み手", stoveId: "cast-1", area: 1, unlockAfter: "cast-1", reveal: 26.5 },
+  { id: "digger-3", kind: "splitter", pos: { x: fx(0, -1), y: fpad(1, 2) }, price: 11000, label: "尾根の掘り手", stoveId: "dig-3", area: 1, unlockAfter: "dig-3", reveal: 27.5 },
+  { id: "collector-2", kind: "collector", pos: { x: fx(1, 1), y: fpad(1, 1) }, price: 6000, label: "拾い手", area: 1, reveal: 28.5 },
+  { id: "robot-2", kind: "robot", pos: { x: fx(1, 1), y: fpad(1, 2) }, price: 18000, label: "荷車", area: 1, reveal: 30 },
+  { id: "builder-1", kind: "builder", pos: { x: fx(0, 1), y: fpad(1, 2) }, price: 20000, label: "建築係", area: 1, reveal: 31.5 },
+
+  /* --- area-2 錫の隊商路 --- */
+  { id: "trader-1", kind: "splitter", pos: { x: fx(0, -1), y: fpad(2, 0) }, price: 52000, label: "隊商のあるじ", stoveId: "caravan-1", area: 2, reveal: 41.5 },
+  { id: "logger-2", kind: "logger", pos: { x: fx(0, 1), y: fpad(2, 1) }, price: 40000, label: "街道の木こり", stoveId: "grove-2", area: 2, unlockAfter: "grove-2", reveal: 43.5 },
+  { id: "charcoaler-2", kind: "cook", pos: { x: fx(0, -1), y: fpad(2, 2) }, price: 56000, label: "街道の炭焼き", stoveId: "kiln-2", area: 2, unlockAfter: "kiln-2", reveal: 44.5 },
+  { id: "alloyer-1", kind: "cook", pos: { x: fx(1, -1), y: fpad(2, 0) }, price: 110000, label: "配合の炉番", stoveId: "alloy-1", area: 2, unlockAfter: "alloy-1", reveal: 45.5 },
+  { id: "caster-2", kind: "carver", pos: { x: fx(1, -1), y: fpad(2, 1) }, price: 90000, label: "街道の鋳込み手", stoveId: "cast-2", area: 2, unlockAfter: "cast-2", reveal: 46.5 },
+  { id: "grinder-1", kind: "carver", pos: { x: fx(1, -1), y: fpad(2, 2) }, price: 150000, label: "研ぎ手", stoveId: "grind-1", area: 2, unlockAfter: "grind-1", reveal: 47.5 },
+  { id: "waiter-4", kind: "waiter", pos: { x: fx(1, 1), y: fpad(2, 0) }, price: 70000, label: "運び手", area: 2, reveal: 49.5 },
+  { id: "potter-2", kind: "splitter", pos: { x: fx(0, 1), y: fpad(2, 3) }, price: 80000, label: "街道の粘土掘り", stoveId: "pit-2", area: 2, unlockAfter: "pit-2", reveal: 50.5 },
+  { id: "robot-3", kind: "robot", pos: { x: fx(1, 1), y: fpad(2, 1) }, price: 220000, label: "荷車", area: 2, reveal: 51 },
+  { id: "builder-2", kind: "builder", pos: { x: fx(1, 1), y: fpad(2, 2) }, price: 260000, label: "宿場の建築係", area: 2, reveal: 52.5 },
+
+  /* --- area-3 鋳物の工房街 --- */
+  { id: "potter-3", kind: "splitter", pos: { x: fx(0, -1), y: fpad(3, 0) }, price: 800000, label: "工房の粘土掘り", stoveId: "pit-3", area: 3, reveal: 61.5 },
+  { id: "molder-2", kind: "splitter", pos: { x: fx(0, -1), y: fpad(3, 1) }, price: 1200000, label: "大型の型づくり", stoveId: "mold-2", area: 3, unlockAfter: "mold-2", reveal: 62.5 },
+  { id: "charcoaler-3", kind: "cook", pos: { x: fx(0, -1), y: fpad(3, 2) }, price: 1100000, label: "工房の炭焼き", stoveId: "kiln-3", area: 3, unlockAfter: "kiln-3", reveal: 63.5 },
+  { id: "logger-3", kind: "logger", pos: { x: fx(0, 1), y: fpad(3, 3) }, price: 900000, label: "工房裏の木こり", stoveId: "grove-3", area: 3, unlockAfter: "grove-3", reveal: 64.5 },
+  { id: "alloyer-2", kind: "cook", pos: { x: fx(1, -1), y: fpad(3, 0) }, price: 2200000, label: "工房の炉番", stoveId: "alloy-2", area: 3, unlockAfter: "alloy-2", reveal: 65.5 },
+  { id: "caster-3", kind: "carver", pos: { x: fx(1, -1), y: fpad(3, 2) }, price: 2400000, label: "工房の鋳込み手", stoveId: "cast-3", area: 3, unlockAfter: "cast-3", reveal: 66.5 },
+  { id: "bellman-1", kind: "carver", pos: { x: fx(1, -1), y: fpad(3, 1) }, price: 3200000, label: "鐘の鋳師", stoveId: "bell-1", area: 3, unlockAfter: "bell-1", reveal: 67.5 },
+  { id: "polisher-1", kind: "carver", pos: { x: fx(1, -1), y: fpad(3, 3) }, price: 4800000, label: "磨き手", stoveId: "mirror-1", area: 3, unlockAfter: "mirror-1", reveal: 69.5 },
+  { id: "waiter-5", kind: "waiter", pos: { x: fx(1, 1), y: fpad(3, 0) }, price: 1400000, label: "運び手", area: 3, reveal: 70.5 },
+  { id: "robot-4", kind: "robot", pos: { x: fx(1, 1), y: fpad(3, 1) }, price: 3600000, label: "荷車", area: 3, reveal: 71 },
+  { id: "builder-3", kind: "builder", pos: { x: fx(1, 1), y: fpad(3, 2) }, price: 5000000, label: "工房の建築係", area: 3, reveal: 72.5 },
+
+  /* --- area-4 王の宮 --- */
+  { id: "trader-2", kind: "splitter", pos: { x: fx(0, -1), y: fpad(4, 0) }, price: 12000000, label: "宮の隊商役", stoveId: "caravan-2", area: 4, reveal: 81.5 },
+  { id: "digger-4", kind: "splitter", pos: { x: fx(0, -1), y: fpad(4, 1) }, price: 16000000, label: "坑道の掘り手", stoveId: "dig-4", area: 4, unlockAfter: "dig-4", reveal: 82.5 },
+  { id: "fireman-3", kind: "cook", pos: { x: fx(0, -1), y: fpad(4, 2) }, price: 20000000, label: "宮の吹き手", stoveId: "hearth-3", area: 4, unlockAfter: "hearth-3", reveal: 83.5 },
+  { id: "charcoaler-4", kind: "cook", pos: { x: fx(0, 1), y: fpad(4, 3) }, price: 18000000, label: "宮の炭焼き", stoveId: "kiln-4", area: 4, unlockAfter: "kiln-4", reveal: 84.5 },
+  { id: "alloyer-3", kind: "cook", pos: { x: fx(1, -1), y: fpad(4, 0) }, price: 38000000, label: "大炉の炉番", stoveId: "alloy-3", area: 4, unlockAfter: "alloy-3", reveal: 85.5 },
+  { id: "grinder-2", kind: "carver", pos: { x: fx(1, -1), y: fpad(4, 1) }, price: 30000000, label: "宮の研ぎ手", stoveId: "grind-2", area: 4, unlockAfter: "grind-2", reveal: 86.5 },
+  { id: "caster-4", kind: "carver", pos: { x: fx(1, -1), y: fpad(4, 2) }, price: 32000000, label: "宮の鋳込み手", stoveId: "cast-4", area: 4, unlockAfter: "cast-4", reveal: 87.5 },
+  { id: "regalier-1", kind: "carver", pos: { x: fx(1, -1), y: fpad(4, 3) }, price: 80000000, label: "冠の細工師", stoveId: "crown-1", area: 4, unlockAfter: "crown-1", reveal: 89.5 },
+  { id: "waiter-6", kind: "waiter", pos: { x: fx(1, 1), y: fpad(4, 0) }, price: 22000000, label: "運び手", area: 4, reveal: 90.5 },
+  { id: "robot-5", kind: "robot", pos: { x: fx(1, 1), y: fpad(4, 1) }, price: 44000000, label: "荷車", area: 4, reveal: 91 },
+  { id: "builder-4", kind: "builder", pos: { x: fx(1, 1), y: fpad(4, 2) }, price: 70000000, label: "宮の建築係", area: 4, reveal: 93 },
+  { id: "steward-1", kind: "master", pos: { x: fx(2, -1), y: fpad(4, 3) }, price: 300000000, label: "宮の匠長", area: 4, unlockAfter: "built-build-palace", reveal: 96 },
+
+  /* --- area-5 大鼎の神殿 --- */
+  { id: "quarrier-1", kind: "carver", pos: { x: fx(0, -1), y: fpad(5, 0) }, price: 300000000, label: "石切り", stoveId: "quarry-1", area: 5, reveal: 101.5 },
+  { id: "molder-3", kind: "splitter", pos: { x: fx(0, -1), y: fpad(5, 1) }, price: 400000000, label: "大鼎の型づくり", stoveId: "mold-3", area: 5, unlockAfter: "mold-3", reveal: 102.5 },
+  { id: "potter-4", kind: "splitter", pos: { x: fx(0, -1), y: fpad(5, 2) }, price: 340000000, label: "神域の粘土掘り", stoveId: "pit-4", area: 5, unlockAfter: "pit-4", reveal: 103.5 },
+  { id: "charcoaler-5", kind: "cook", pos: { x: fx(0, 1), y: fpad(5, 3) }, price: 360000000, label: "神殿の炭焼き", stoveId: "kiln-5", area: 5, unlockAfter: "kiln-5", reveal: 104.5 },
+  { id: "alloyer-4", kind: "cook", pos: { x: fx(1, -1), y: fpad(5, 0) }, price: 600000000, label: "神殿の炉番", stoveId: "alloy-4", area: 5, unlockAfter: "alloy-4", reveal: 105.5 },
+  { id: "caster-5", kind: "carver", pos: { x: fx(1, -1), y: fpad(5, 1) }, price: 800000000, label: "神殿の鋳込み手", stoveId: "cast-5", area: 5, unlockAfter: "cast-5", reveal: 106.5 },
+  { id: "bellman-2", kind: "carver", pos: { x: fx(1, -1), y: fpad(5, 2) }, price: 1100000000, label: "大鐸の鋳師", stoveId: "bell-2", area: 5, unlockAfter: "bell-2", reveal: 107.5 },
+  { id: "polisher-2", kind: "carver", pos: { x: fx(1, -1), y: fpad(5, 3) }, price: 1400000000, label: "神鏡の磨き手", stoveId: "mirror-2", area: 5, unlockAfter: "mirror-2", reveal: 108.5 },
+  { id: "logger-4", kind: "logger", pos: { x: fx(2, -1), y: fpad(5, 3) }, price: 500000000, label: "杜の木こり", stoveId: "grove-4", area: 5, unlockAfter: "grove-4", reveal: 104.8 },
+  { id: "waiter-7", kind: "waiter", pos: { x: fx(1, 1), y: fpad(5, 0) }, price: 500000000, label: "運び手", area: 5, reveal: 109.5 },
+  { id: "robot-6", kind: "robot", pos: { x: fx(1, 1), y: fpad(5, 1) }, price: 900000000, label: "荷車", area: 5, reveal: 111 },
+  { id: "builder-5", kind: "builder", pos: { x: fx(1, 1), y: fpad(5, 2) }, price: 1600000000, label: "壇の建築係", area: 5, reveal: 112.5 },
+  { id: "builder-6", kind: "builder", pos: { x: fx(1, 1), y: fpad(5, 3) }, price: 4000000000, label: "鋳造の建築係", area: 5, unlockAfter: "built-build-terrace", reveal: 120 },
+];
+
+const bronzeEquipment: EquipSpec[] = [
+  /* --- 第1区画: 三列のあいだをつなぐ --- */
+  { id: "ore-chute", name: "鉱石のとい", detail: "銅鉱石を、石の炉へ直接おくる", pos: { x: fx(0, 1), y: fpad(0, 2) }, price: 1600, area: 0, link: { from: "dig-1", to: "hearth-1" }, unlockAfter: "fireman-1", reveal: 12 },
+  { id: "flag", name: "谷の立て札", detail: "谷に人が寄る。集まりが 1.25倍", pos: { x: fx(1, -0.5), y: frow(0, 3) + 12 }, price: 1400, area: 0, draw: 1.25, unlockAfter: "collector-1", reveal: 11 },
+  { id: "fridge", name: "編みかごの棚", detail: "受け口・出し口に積める数 +4", pos: { x: fx(1, -0.5), y: frow(0, 3) + 72 }, price: 9000, area: 0, unlockAfter: "equip-ore-chute", reveal: 16 },
+  { id: "noodle", name: "石のふいご", detail: "すべての作業場が +30%速くなる", pos: { x: fx(1, 1), y: fpad(0, 2) }, price: 18000, area: 0, unlockAfter: "equip-fridge", reveal: 19 },
+
+  /* --- 第2区画: 火を絶やさない --- */
+  { id: "char-way", name: "炭の道", detail: "木炭を、溶解炉へ直接おくる", pos: { x: fx(0, 1), y: fpad(1, 1) }, price: 12000, area: 1, link: { from: "kiln-1", to: "furnace-1" }, unlockAfter: "founder-1", reveal: 32 },
+  { id: "log-roll", name: "丸太ころがし", detail: "丸太を、炭焼き窯へ直接おくる", pos: { x: fx(0, -1), y: fpad(1, 0) }, price: 9000, area: 1, link: { from: "grove-1", to: "kiln-1" }, unlockAfter: "charcoaler-1", reveal: 32.5 },
+  { id: "ore-chute-2", name: "尾根の鉱石とい", detail: "尾根の銅鉱石を、溶解炉へおくる", pos: { x: fx(0, 1), y: fpad(1, 3) }, price: 26000, area: 1, link: { from: "dig-3", to: "furnace-1" }, unlockAfter: "digger-3", reveal: 34 },
+  { id: "mold-rack", name: "型の置き棚", detail: "鋳込み台に積める鋳型 +6", pos: { x: fx(1, 1), y: fpad(1, 3) }, price: 34000, area: 1, capacity: { stove: "cast-1", plus: 6 }, unlockAfter: "caster-1", reveal: 35 },
+  { id: "lantern", name: "尾根のかがり火", detail: "夜も炉が見える。集まりが 1.4倍", pos: { x: fx(2, -1), y: frow(1, 3) + 34 }, price: 60000, area: 1, draw: 1.4, unlockAfter: "area-1", reveal: 36 },
+
+  /* --- 第3区画: 配合をそろえる --- */
+  { id: "tin-way", name: "錫の受け渡し", detail: "錫を、合わせ炉へ直接おくる", pos: { x: fx(0, 1), y: fpad(2, 0) }, price: 140000, area: 2, link: { from: "caravan-1", to: "alloy-1" }, unlockAfter: "alloyer-1", reveal: 54 },
+  { id: "copper-way", name: "地金の道", detail: "精銅を、合わせ炉へ直接おくる", pos: { x: fx(1, 1), y: fpad(2, 3) }, price: 180000, area: 2, link: { from: "hearth-2", to: "alloy-1" }, unlockAfter: "equip-tin-way", reveal: 55 },
+  { id: "scale", name: "錫の秤", detail: "合わせ炉に積める地金 +8。配合が切れにくくなる", pos: { x: fx(0, -1), y: fpad(2, 3) }, price: 260000, area: 2, capacity: { stove: "alloy-1", plus: 8 }, unlockAfter: "equip-copper-way", reveal: 56 },
+  { id: "road-caravan", name: "隊商の敷石", detail: "街道を横切る道。荷と人の足が速くなる", pos: { x: fx(2, 1), y: frow(2, 3) + 34 }, price: 400000, area: 2, road: { from: { x: 20, y: frow(2, 3) + 34 }, to: { x: 400, y: frow(2, 3) + 34 } }, reveal: 57 },
+
+  /* --- 第4区画: 型を回す --- */
+  { id: "mold-way", name: "型の運び道", detail: "鋳型を、鐘の鋳型場へ直接おくる", pos: { x: fx(0, 1), y: fpad(3, 1) }, price: 2000000, area: 3, link: { from: "mold-2", to: "bell-1" }, unlockAfter: "bellman-1", reveal: 73 },
+  { id: "melt-way", name: "湯どい", detail: "とけ湯を、工房の鋳込み台へおくる", pos: { x: fx(0, 1), y: fpad(3, 2) }, price: 2800000, area: 3, link: { from: "alloy-2", to: "cast-3" }, unlockAfter: "caster-3", reveal: 74 },
+  { id: "char-way-2", name: "工房の炭道", detail: "木炭を、工房の合わせ炉へおくる", pos: { x: fx(0, 1), y: fpad(3, 0) }, price: 2400000, area: 3, link: { from: "kiln-3", to: "alloy-2" }, unlockAfter: "alloyer-2", reveal: 75 },
+  { id: "sign", name: "工房通りの看板", detail: "遠くの町からも買いに来る。集まりが 1.5倍", pos: { x: fx(1, 1), y: fpad(3, 3) }, price: 9000000, area: 3, draw: 1.5, unlockAfter: "area-3", reveal: 76 },
+
+  /* --- 第5区画: 宮まわり --- */
+  { id: "palace-road", name: "宮の石畳", detail: "宮を貫く道。街ぜんたいの足が速くなる", pos: { x: fx(1, 1), y: fpad(4, 3) }, price: 60000000, area: 4, road: { from: { x: 20, y: frow(4, 3) + 34 }, to: { x: 400, y: frow(4, 3) + 34 } }, unlockAfter: "equip-road-caravan", reveal: 95 },
+  { id: "melt-way-2", name: "宮の湯どい", detail: "とけ湯を、冠の細工場へおくる", pos: { x: fx(0, 1), y: fpad(4, 0) }, price: 90000000, area: 4, link: { from: "alloy-3", to: "crown-1" }, unlockAfter: "regalier-1", reveal: 97 },
+  { id: "treasury", name: "宝物庫の棚", detail: "冠の細工場に積める鋳型 +10", pos: { x: fx(0, 1), y: fpad(4, 2) }, price: 140000000, area: 4, capacity: { stove: "crown-1", plus: 10 }, unlockAfter: "equip-melt-way-2", reveal: 98 },
+  /*
+   * 宮には森も粘土場も無い。丸太と鋳型は、工房街から落として届ける。
+   * 運び手でも届くが、坂を二段のぼらせるより、この二本を引くほうが速い
+   */
+  { id: "log-way", name: "丸太の落とし道", detail: "工房裏の丸太を、宮の炭窯へおくる", pos: { x: fx(0, -1), y: fpad(4, 3) }, price: 40000000, area: 4, link: { from: "grove-3", to: "kiln-4" }, unlockAfter: "charcoaler-4", reveal: 92 },
+  { id: "mold-way-2", name: "型の落とし道", detail: "大型の型場の鋳型を、冠の細工場へおくる", pos: { x: fx(0, 1), y: fpad(4, 1) }, price: 110000000, area: 4, link: { from: "mold-2", to: "crown-1" }, unlockAfter: "regalier-1", reveal: 99 },
+
+  /* --- 第6区画: 大鼎まで --- */
+  { id: "stone-road", name: "巨石の引き道", detail: "石切り場から壇まで、石を引く道", pos: { x: fx(0, 1), y: fpad(5, 0) }, price: 400000000, area: 5, road: { from: { x: 30, y: fpad(5, 0) }, to: { x: 390, y: fpad(5, 0) } }, reveal: 113 },
+  { id: "melt-way-3", name: "神殿の湯どい", detail: "とけ湯を、神殿の鋳込み台へおくる", pos: { x: fx(0, 1), y: fpad(5, 1) }, price: 900000000, area: 5, link: { from: "alloy-4", to: "cast-5" }, unlockAfter: "caster-5", reveal: 114 },
+  { id: "great-bellows", name: "大ふいご", detail: "神殿の大炉に積める地金 +14", pos: { x: fx(0, 1), y: fpad(5, 2) }, price: 1800000000, area: 5, capacity: { stove: "alloy-4", plus: 14 }, unlockAfter: "alloyer-4", reveal: 115 },
+  { id: "beacon", name: "神殿のかがり火", detail: "国じゅうから人が来る。集まりが 1.7倍", pos: { x: 210, y: frow(5, 3) + 116 }, price: 3000000000, area: 5, draw: 1.7, unlockAfter: "area-5", reveal: 116 },
+];
+
+/**
+ * 強化は、第1区画の右下に4つまとめて置く（「強化の棚」）。
+ * 縦に長い地図なので、あちこちに散らすと見つけられなくなる
+ */
+const bronzeUpgrades: Upgrade[] = [
+  { id: "carry", name: "背負いかご", detail: (n) => `${3 + n}こまで持てる・運び手も 品種ごとに ${3 + Math.floor(n / 2)}こ`, pos: { x: fx(0, -1), y: frow(0, 3) + 12 }, basePrice: 30, growth: 1.7, max: 9, reveal: 1 },
+  { id: "cook", name: "ふいごの革", detail: (n) => `作る速さ +${Math.round((Math.pow(1 / 0.92, n) - 1) * 100)}%`, pos: { x: fx(0, 1), y: frow(0, 3) + 12 }, basePrice: 180, growth: 1.7, max: 14, unlockAfter: "fireman-1", reveal: 7.5 },
+  { id: "speed", name: "革のわらじ", detail: (n) => `足の速さ +${n * 10}%・みんなも +${n * 5}%`, pos: { x: fx(0, -1), y: frow(0, 3) + 72 }, basePrice: 140, growth: 1.65, max: 12, unlockAfter: "collector-1", reveal: 9.5 },
+  { id: "price", name: "地金の目きき", detail: (n) => `ひとつ ${Math.round(12 * Math.pow(1.4, n))}斤`, pos: { x: fx(0, 1), y: frow(0, 3) + 72 }, basePrice: 800, growth: 1.75, max: 20, unlockAfter: "anvil-1", reveal: 14 },
+];
+
 /* ==================== 登録 ==================== */
 
 export const stageDefs: Record<StageId, StageDef> = {
@@ -4104,6 +5122,94 @@ export const stageDefs: Record<StageId, StageDef> = {
       outsideDetail: "立て札・かがり火はこの外に置く",
     },
   },
+  bronze: {
+    id: "bronze",
+    name: "青銅の王国",
+    subtitle: "銅だけでは、まだ刃が立たない",
+    icon: "🏺",
+    itemIcon: "⚱️",
+    frontRoom: { top: 38, bottom: 300 },
+    areas: bronzeAreas,
+    stoves: bronzeStoves,
+    seats: bronzeSeats,
+    hires: bronzeHires,
+    equipment: bronzeEquipment,
+    upgrades: bronzeUpgrades,
+    baseValue: 12,
+    requiresAreas: 0,
+    chain: true,
+    queue: true,
+    currency: "斤",
+    /*
+     * このステージだけ、横三列の縦スクロール。
+     * 三列（0〜420）がまるごと画面に入る幅にして、
+     * カメラは上下だけに動くようにする
+     */
+    columns: 3,
+    view: 440,
+    entranceX: 210,
+    startPos: { x: 210, y: 300 },
+    cookTime: 3.2,
+    cookBoost: 2.2,
+    // 地金も、とけ湯も、鋳型も、運び手と荷車がまとめて運ぶ
+    haulers: true,
+    revealLimit: 5,
+    revealBurst: 3,
+    revealLimitBy: {
+      "area-1": 7,
+      "area-2": 8,
+      "area-3": 8,
+      "area-4": 9,
+      "area-5": 9,
+    },
+    /*
+     * 掘り場と石の炉と市 ―― 三列がひとつずつ。
+     * これだけで「掘る → 火にかける → 渡す」がひと回りする
+     */
+    start: ["dig-1", "hearth-1", "seat-0-1", "seat-0-2"],
+    labels: {
+      item: "しなもの",
+      producer: "作業場",
+      tray: "受け渡し",
+      guest: "民",
+      using: "受け取っている",
+      staff: {
+        waiter: "運び手",
+        robot: "荷車",
+        collector: "拾い手",
+        cook: "火の番",
+        master: "匠長",
+        busser: "片づけ手",
+        stocker: "並べ手",
+        server: "運び手",
+        seller: "受付",
+        gatekeeper: "門番",
+        hunter: "狩人",
+        logger: "木こり",
+        splitter: "掘り手",
+        butcher: "解体係",
+        builder: "建築係",
+        keeper: "倉庫係",
+        nightman: "夜番",
+        explorer: "隊商",
+        boat: "川舟",
+        runner: "仕込み係",
+        scribe: "書記",
+        officer: "役人",
+        carver: "鋳手",
+      },
+      objective: {
+        pickup: "出し口でしなものを受け取ろう",
+        serve: "次の作業場か、待っている民まで運ぼう",
+        coin: "落ちた斤を拾おう",
+        waitItem: "できあがるまで待とう",
+        waitGuest: "民を待っています",
+      },
+      auto: "自動送り",
+      outside: "谷の口",
+      outsideDetail: "立て札・かがり火はこの外に置く",
+    },
+  },
 };
 
 
@@ -4118,4 +5224,5 @@ export const planetStages: StageDef[] = [
   stageDefs.fire,
   stageDefs.taiga,
   stageDefs.moji,
+  stageDefs.bronze,
 ];

@@ -136,6 +136,15 @@ import {
   techProgress,
 } from "@/lib/moji";
 import {
+  alloyKnown,
+  blend as bronzeBlend,
+  blendHint,
+  grade as bronzeGrade,
+  nextRank as bronzeNextRank,
+  rank as bronzeRank,
+  rankProgress,
+} from "@/lib/bronze";
+import {
   SEASON_TIME,
   fertile,
   flooding as taigaFlooding,
@@ -222,6 +231,31 @@ export type Sample = {
     confusionText: string;
     engraved: boolean;
   } | null;
+  /**
+   * 青銅の王国の、配合と王の位（それ以外のステージでは null）。
+   * 位は数字ではなく、王とのあいだに何が起きたかで見せる
+   */
+  kingdom: {
+    tribute: number;
+    level: number;
+    name: string;
+    means: string;
+    nextName: string | null;
+    nextAt: number;
+    progress: number;
+    /** 錫の混ざりぐあい（0〜1） */
+    blend: number;
+    /** いまの青銅の質の名前 */
+    gradeName: string;
+    gradeNote: string;
+    /** 質による単価の倍率 */
+    gradeValue: number;
+    /** 次に何をすればいいか、の一言 */
+    hint: string;
+    /** 錫の隊商路が開いているか */
+    alloy: boolean;
+    casted: boolean;
+  } | null;
 };
 
 type Props = {
@@ -251,7 +285,7 @@ const roundRect = (
 
 /** 区画の名前。「〜をつくる」などの語尾を落として、看板に出す形にする */
 const areaTitle = (label: string) =>
-  label.replace(/(をつくる|をひらく|へ下りる)$/, "");
+  label.replace(/(をつくる|をひらく|へ下りる|へ出る|へのぼる|を建てる)$/, "");
 
 /** 看板の文字を一字ずつ空ける（ら ー め ん） */
 const spaced = (text: string) => [...text].join(" ");
@@ -3166,6 +3200,317 @@ const chainItem = (
     return;
   }
 
+
+  /* ==================== 青銅の王国 ====================
+   *
+   * 掘ったもの・吹いたもの・鋳たものが、ひと目で見分けられること。
+   * 石ころ（銅鉱石）→ 棒（地金）→ とけ湯 → かたまり（荒鋳物）→ 器 と、
+   * 工程がすすむほど「形になっていく」のが分かる並びにしてある。
+   */
+
+  if (item === "ore") {
+    // 銅鉱石: 黒っぽい石に、緑青の筋が走っている
+    ctx.fillStyle = "#4e4a44";
+    ctx.beginPath();
+    ctx.moveTo(-8, 3);
+    ctx.lineTo(-6, -5);
+    ctx.lineTo(2, -7.5);
+    ctx.lineTo(8, -2);
+    ctx.lineTo(5, 6);
+    ctx.lineTo(-4, 6.5);
+    ctx.closePath();
+    ctx.fill();
+    // 緑青（孔雀石）の筋。この緑があるから「銅が入っている」と分かる
+    ctx.fillStyle = "#4fae8e";
+    ctx.beginPath();
+    ctx.moveTo(-5, -3);
+    ctx.lineTo(1, -6);
+    ctx.lineTo(2.5, -2.5);
+    ctx.lineTo(-3, 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#7ad6b0";
+    ctx.beginPath();
+    ctx.ellipse(4, 2.5, 2, 1.4, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "copper" || item === "tin") {
+    // 地金: 型から出した棒。精銅は赤く、錫は白い
+    const red = item === "copper";
+    ctx.fillStyle = red ? "#7a3a1c" : "#6a6c72";
+    ctx.beginPath();
+    ctx.moveTo(-9, 4.5);
+    ctx.lineTo(-7, -3.5);
+    ctx.lineTo(7, -3.5);
+    ctx.lineTo(9, 4.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = red ? "#c46a34" : "#a8adb6";
+    ctx.beginPath();
+    ctx.moveTo(-7, -3.5);
+    ctx.lineTo(-5.5, -7);
+    ctx.lineTo(5.5, -7);
+    ctx.lineTo(7, -3.5);
+    ctx.closePath();
+    ctx.fill();
+    // 上面のてかり。金属だと分かるのはここ
+    ctx.fillStyle = red ? "rgba(255,196,132,0.6)" : "rgba(240,246,255,0.7)";
+    ctx.beginPath();
+    ctx.moveTo(-4.5, -5.6);
+    ctx.lineTo(3.5, -5.6);
+    ctx.lineTo(2.6, -4.2);
+    ctx.lineTo(-3.6, -4.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "charcoal") {
+    // 木炭: 焼けた枝の束。切り口がまだ赤い
+    for (const [i, dx] of [-4, 0.5, 4.5].entries()) {
+      ctx.fillStyle = i === 1 ? "#2b2723" : "#1e1b18";
+      roundRect(ctx, dx - 2.2, -7 + i, 4.4, 14 - i * 1.5, 1.6);
+      ctx.fill();
+      ctx.fillStyle = "#e0692c";
+      ctx.beginPath();
+      ctx.ellipse(dx, -7 + i, 2.2, 1.1, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "rgba(255,150,70,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(0, -7, 7, 2.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "mold") {
+    // 鋳型: 焼いた粘土の合わせ型。まんなかに湯の通る溝がある
+    ctx.fillStyle = "#7c5b3c";
+    roundRect(ctx, -9, -7.5, 18, 15, 2);
+    ctx.fill();
+    ctx.fillStyle = "#9d7a52";
+    roundRect(ctx, -9, -7.5, 18, 7, 2);
+    ctx.fill();
+    // 合わせ目
+    ctx.strokeStyle = "rgba(40,28,16,0.75)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-9, -0.5);
+    ctx.lineTo(9, -0.5);
+    ctx.stroke();
+    // 湯口（じょうご状のくぼみ）
+    ctx.fillStyle = "#4a331e";
+    ctx.beginPath();
+    ctx.moveTo(-2.6, -7.5);
+    ctx.lineTo(2.6, -7.5);
+    ctx.lineTo(1, -3.2);
+    ctx.lineTo(-1, -3.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "melt") {
+    // とけ湯: 取っ手つきの坩堝に、光る湯。運んでいるあいだも明るい
+    const glow = 0.7 + Math.sin(time * 5) * 0.3;
+    ctx.fillStyle = `rgba(255,150,50,${0.22 * glow})`;
+    ctx.beginPath();
+    ctx.arc(0, -2, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#3b3029";
+    ctx.beginPath();
+    ctx.moveTo(-7.5, -5);
+    ctx.lineTo(7.5, -5);
+    ctx.lineTo(5, 7);
+    ctx.lineTo(-5, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#5d4b3c";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-7.5, -5);
+    ctx.lineTo(-10.5, -8.5);
+    ctx.moveTo(7.5, -5);
+    ctx.lineTo(10.5, -8.5);
+    ctx.stroke();
+    // 湯の面。ゆっくり明滅する
+    ctx.fillStyle = `rgb(255,${Math.round(150 + glow * 70)},60)`;
+    ctx.beginPath();
+    ctx.ellipse(0, -4.6, 6.6, 2.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,246,200,0.85)";
+    ctx.beginPath();
+    ctx.ellipse(-1.6, -5, 2.4, 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "cast") {
+    // 荒鋳物: 型から出したばかり。まだ湯口のバリが付いている
+    ctx.fillStyle = "#6a5a2e";
+    ctx.beginPath();
+    ctx.moveTo(-7.5, -3);
+    ctx.lineTo(-5.5, -8);
+    ctx.lineTo(6, -7);
+    ctx.lineTo(8, 1);
+    ctx.lineTo(3, 7);
+    ctx.lineTo(-6, 5.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#9a8642";
+    ctx.beginPath();
+    ctx.moveTo(-5.5, -8);
+    ctx.lineTo(6, -7);
+    ctx.lineTo(4, -3);
+    ctx.lineTo(-4.5, -4);
+    ctx.closePath();
+    ctx.fill();
+    // 湯口のバリ。研ぐ前だと分かる目印
+    ctx.strokeStyle = "#8a7a3c";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(1, -7.5);
+    ctx.lineTo(2.5, -11);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "blade") {
+    // 青銅の刃: 短剣。柄は木、身は磨いた青銅
+    ctx.fillStyle = "#5a3f26";
+    roundRect(ctx, -1.8, 3, 3.6, 7, 1.4);
+    ctx.fill();
+    ctx.fillStyle = "#8a6a3a";
+    roundRect(ctx, -4.5, 1.6, 9, 2.4, 1.2);
+    ctx.fill();
+    ctx.fillStyle = "#b8933f";
+    ctx.beginPath();
+    ctx.moveTo(-3, 1.6);
+    ctx.lineTo(-2, -8);
+    ctx.lineTo(0, -11.5);
+    ctx.lineTo(2, -8);
+    ctx.lineTo(3, 1.6);
+    ctx.closePath();
+    ctx.fill();
+    // 中央の稜線。ここが光ると「研いである」に見える
+    ctx.strokeStyle = "rgba(255,238,180,0.85)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, -10.5);
+    ctx.lineTo(0, 1.2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "bell") {
+    // 銅鐸: 上がすぼまった鐘。鰭（ひれ）と横帯で銅鐸らしくする
+    ctx.fillStyle = "#6f7f52";
+    ctx.beginPath();
+    ctx.moveTo(-6, 8);
+    ctx.quadraticCurveTo(-5, -6, -2.6, -8.5);
+    ctx.lineTo(2.6, -8.5);
+    ctx.quadraticCurveTo(5, -6, 6, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#8fa06a";
+    ctx.beginPath();
+    ctx.moveTo(-6, 8);
+    ctx.quadraticCurveTo(-5, -6, -2.6, -8.5);
+    ctx.lineTo(-0.6, -8.5);
+    ctx.quadraticCurveTo(-2, -5, -2.6, 8);
+    ctx.closePath();
+    ctx.fill();
+    // 吊り手
+    ctx.strokeStyle = "#6f7f52";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, -9.5, 2.6, Math.PI, 0);
+    ctx.stroke();
+    // 横帯
+    ctx.strokeStyle = "rgba(40,54,30,0.6)";
+    ctx.lineWidth = 1;
+    for (const ly of [-2, 2.5]) {
+      ctx.beginPath();
+      ctx.moveTo(-5.4, ly);
+      ctx.lineTo(5.4, ly);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (item === "mirror") {
+    // 銅鏡: 円い盤。裏は文様、表は磨いてぴかりと光る
+    ctx.fillStyle = "#7d6a34";
+    ctx.beginPath();
+    ctx.arc(0, 0, 9.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#c9ad5a";
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+    ctx.fill();
+    // 放射の文様
+    ctx.strokeStyle = "rgba(90,74,30,0.7)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i += 1) {
+      const a = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 3.2, Math.sin(a) * 3.2);
+      ctx.lineTo(Math.cos(a) * 7, Math.sin(a) * 7);
+      ctx.stroke();
+    }
+    // 中央のつまみ
+    ctx.fillStyle = "#8a7538";
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+    // 磨いた面のかがやき
+    ctx.fillStyle = "rgba(255,250,210,0.6)";
+    ctx.beginPath();
+    ctx.ellipse(-3.4, -3.6, 2.6, 1.5, -0.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (item === "crown") {
+    // 王の冠: 山形の飾りが立った環。緑石をひとつ据える
+    ctx.fillStyle = "#8a6a22";
+    roundRect(ctx, -9, 0, 18, 6.5, 2);
+    ctx.fill();
+    ctx.fillStyle = "#e0bb4c";
+    roundRect(ctx, -9, 0, 18, 3, 1.5);
+    ctx.fill();
+    ctx.fillStyle = "#d1a93f";
+    for (const [dx, h] of [[-6.5, 6], [0, 10], [6.5, 6]] as const) {
+      ctx.beginPath();
+      ctx.moveTo(dx - 3, 0);
+      ctx.lineTo(dx, -h);
+      ctx.lineTo(dx + 3, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = "#4fae8e";
+    ctx.beginPath();
+    ctx.arc(0, 3.2, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,248,200,0.7)";
+    ctx.beginPath();
+    ctx.ellipse(-4, 1.2, 2.4, 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
   if (item === "grain") {
     // 穀物: 刈り取った穂の束。縄でしばってある
     ctx.strokeStyle = "#c9a95e";
@@ -4188,6 +4533,788 @@ const drawCitySeat = (
   ctx.lineTo(x + 26, y + 3);
   ctx.stroke();
 };
+
+
+/* ==================== 青銅の王国: 工房の絵 ==================== */
+/**
+ * 青銅の王国の受け渡し場。
+ * 谷のござ → 街道の屋台 → 祭壇 → 宮の受け取り台 と、
+ * 上へのぼるほど、渡す相手の格が上がっていくのが形で分かるようにする
+ */
+const drawForgeSeat = (
+  ctx: CanvasRenderingContext2D,
+  art: string,
+  x: number,
+  y: number,
+  time: number,
+) => {
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 8, 26, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (art === "stall") {
+    // 屋台: 天幕と台。街道の市のにぎわい
+    ctx.strokeStyle = "#6b4f2e";
+    ctx.lineWidth = 2.5;
+    for (const px of [x - 22, x + 22]) {
+      ctx.beginPath();
+      ctx.moveTo(px, y + 6);
+      ctx.lineTo(px, y - 26);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#a06a3c";
+    ctx.beginPath();
+    ctx.moveTo(x - 28, y - 26);
+    ctx.quadraticCurveTo(x, y - 36, x + 28, y - 26);
+    ctx.lineTo(x + 28, y - 22);
+    ctx.quadraticCurveTo(x, y - 32, x - 28, y - 22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#7a5a34";
+    roundRect(ctx, x - 24, y - 8, 48, 6, 2);
+    ctx.fill();
+    return;
+  }
+
+  if (art === "altar") {
+    // 祭壇: 石を三段。上に供物を載せる
+    ctx.fillStyle = "#8b8574";
+    roundRect(ctx, x - 24, y - 2, 48, 11, 2);
+    ctx.fill();
+    ctx.fillStyle = "#a09a86";
+    roundRect(ctx, x - 18, y - 11, 36, 9, 2);
+    ctx.fill();
+    ctx.fillStyle = "#b3ad98";
+    roundRect(ctx, x - 13, y - 17, 26, 6, 2);
+    ctx.fill();
+    // 立てたかがり火
+    for (const px of [x - 26, x + 26]) {
+      ctx.strokeStyle = "#5a4630";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(px, y + 8);
+      ctx.lineTo(px, y - 16);
+      ctx.stroke();
+      const flick = 0.7 + Math.sin(time * 6 + px) * 0.3;
+      ctx.fillStyle = `rgba(255,170,70,${0.55 + flick * 0.35})`;
+      ctx.beginPath();
+      ctx.ellipse(px, y - 20, 3.4, 5.4 * flick, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return;
+  }
+
+  if (art === "court") {
+    // 宮の受け取り台: 磨いた石の台に、布を敷いてある
+    ctx.fillStyle = "#8d8878";
+    roundRect(ctx, x - 26, y - 8, 52, 10, 2);
+    ctx.fill();
+    ctx.fillStyle = "#a6a191";
+    roundRect(ctx, x - 26, y - 11, 52, 4, 2);
+    ctx.fill();
+    ctx.fillStyle = "#5f5a50";
+    ctx.fillRect(x - 21, y + 2, 5, 8);
+    ctx.fillRect(x + 16, y + 2, 5, 8);
+    // 敷いた布
+    ctx.fillStyle = "#8a3a4a";
+    roundRect(ctx, x - 20, y - 14, 40, 5, 2);
+    ctx.fill();
+    // 背に立てた旗
+    ctx.strokeStyle = "#5a4630";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 24, y - 12);
+    ctx.lineTo(x + 24, y - 38);
+    ctx.stroke();
+    ctx.fillStyle = "#b8933f";
+    ctx.beginPath();
+    ctx.moveTo(x + 24, y - 38);
+    ctx.lineTo(x + 24 + 16, y - 33 + Math.sin(time * 2) * 1.5);
+    ctx.lineTo(x + 24, y - 26);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+
+  // 谷の市: 地面に敷いた布に、そのまま地金を並べる
+  ctx.fillStyle = "#9a7a56";
+  roundRect(ctx, x - 26, y - 6, 52, 18, 3);
+  ctx.fill();
+  ctx.fillStyle = "#b08e63";
+  roundRect(ctx, x - 26, y - 6, 52, 6, 3);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(90,70,44,0.5)";
+  ctx.lineWidth = 0.9;
+  for (let i = -2; i <= 2; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(x + i * 10, y - 6);
+    ctx.lineTo(x + i * 10, y + 12);
+    ctx.stroke();
+  }
+  // 重しの石
+  ctx.fillStyle = "#6b675d";
+  for (const px of [x - 24, x + 24]) {
+    ctx.beginPath();
+    ctx.ellipse(px, y + 10, 4, 2.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
+
+/** 石を積んだ土台。この王国の建物は、みんなこの上に載っている */
+const stoneBase = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  tone = "#7a6e5e",
+  dark = "#584f43",
+) => {
+  ctx.fillStyle = tone;
+  roundRect(ctx, x - w / 2, y - h, w, h, 3);
+  ctx.fill();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 0.9;
+  for (let row = 1; row * 8 < h; row += 1) {
+    const ly = y - row * 8;
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, ly);
+    ctx.lineTo(x + w / 2, ly);
+    ctx.stroke();
+  }
+};
+
+/** 炉の口から出る炎。強さで色と高さが変わる */
+const forgeFlame = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  time: number,
+  power: number,
+  scale = 1,
+) => {
+  if (power <= 0) return;
+  const wobble = Math.sin(time * 9 + x) * 0.18 + 1;
+  const h = (10 + power * 16) * wobble * scale;
+  ctx.fillStyle = `rgba(255,140,40,${0.55 + power * 0.35})`;
+  ctx.beginPath();
+  ctx.moveTo(x - 5 * scale, y);
+  ctx.quadraticCurveTo(x - 2 * scale, y - h * 0.6, x, y - h);
+  ctx.quadraticCurveTo(x + 2 * scale, y - h * 0.6, x + 5 * scale, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = `rgba(255,240,170,${0.5 + power * 0.4})`;
+  ctx.beginPath();
+  ctx.moveTo(x - 2.2 * scale, y);
+  ctx.quadraticCurveTo(x, y - h * 0.45, x, y - h * 0.62);
+  ctx.quadraticCurveTo(x + 1.4 * scale, y - h * 0.4, x + 2.2 * scale, y);
+  ctx.closePath();
+  ctx.fill();
+  // 火の粉
+  ctx.fillStyle = `rgba(255,190,110,${0.4 + power * 0.4})`;
+  for (let i = 0; i < 3; i += 1) {
+    const t = (time * 0.9 + i * 0.33) % 1;
+    ctx.beginPath();
+    ctx.arc(
+      x + Math.sin(time * 4 + i * 2) * 6 * scale,
+      y - h * 0.7 - t * 22 * scale,
+      (1.4 - t) * scale,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+};
+
+/**
+ * 青銅の王国の作業場・建物。描けたら true。
+ *
+ * 三列のどこにあるかで、絵の系統をそろえてある。
+ *   左（掘る）… 土と岩の色
+ *   中（火）　… 火の見える炉と、煤けた土間
+ *   右（渡す）… 布と石の、人のいる場所
+ */
+const drawForge = (
+  ctx: CanvasRenderingContext2D,
+  stove: StoveSpec,
+  x: number,
+  y: number,
+  time: number,
+  state: ShopState,
+): boolean => {
+  const art = stove.art ?? "";
+  const ready = state.ready[stove.id] ?? 0;
+  const held = heldAt(state, stove.id);
+  const fuel = fuelAt(state, stove.id);
+  const cooking = Math.max(0, Math.min(1, state.cooking[stove.id] ?? 0));
+
+  /* --- 銅の露天掘り: 岩肌を削った段。緑青の筋が見えている --- */
+  if (art === "adit") {
+    shadow(ctx, x, y + 14, 30);
+    ctx.fillStyle = "#4a3a2e";
+    ctx.beginPath();
+    ctx.moveTo(x - 30, y + 14);
+    ctx.lineTo(x - 24, y - 18);
+    ctx.lineTo(x + 24, y - 22);
+    ctx.lineTo(x + 30, y + 14);
+    ctx.closePath();
+    ctx.fill();
+    // 掘り進んだ段
+    ctx.fillStyle = "#5d4a3a";
+    for (const [i, oy] of [-12, -2].entries()) {
+      ctx.fillRect(x - 22 + i * 4, y + oy, 44 - i * 8, 5);
+    }
+    // 坑口
+    ctx.fillStyle = "#1c1512";
+    ctx.beginPath();
+    ctx.moveTo(x - 9, y + 8);
+    ctx.lineTo(x - 7, y - 10);
+    ctx.quadraticCurveTo(x, y - 16, x + 7, y - 10);
+    ctx.lineTo(x + 9, y + 8);
+    ctx.closePath();
+    ctx.fill();
+    // 緑青の筋。ここを掘ると銅が出る、という目印
+    ctx.strokeStyle = "rgba(96,196,158,0.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 20, y - 6);
+    ctx.quadraticCurveTo(x - 12, y - 14, x - 13, y + 4);
+    ctx.moveTo(x + 14, y - 14);
+    ctx.quadraticCurveTo(x + 20, y - 6, x + 17, y + 6);
+    ctx.stroke();
+    // 掘り出した鉱石
+    if (ready > 0) pileOf(ctx, "ore", x + 20, y + 12, ready);
+    return true;
+  }
+
+  /* --- 石の炉: 地面の穴に石を組んだだけの炉。地金までしか出ない --- */
+  if (art === "stonehearth") {
+    shadow(ctx, x, y + 12, 26);
+    ctx.fillStyle = "#3a2c22";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 6, 26, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // まわりに立てた石
+    ctx.fillStyle = "#7a6e5e";
+    for (const [dx, h] of [[-20, 14], [-8, 18], [6, 17], [18, 13]] as const) {
+      ctx.beginPath();
+      ctx.moveTo(x + dx - 5, y + 6);
+      ctx.lineTo(x + dx - 3, y + 6 - h);
+      ctx.lineTo(x + dx + 4, y + 6 - h + 2);
+      ctx.lineTo(x + dx + 5, y + 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // 炭火の面
+    const heat = held > 0 ? 0.4 + cooking * 0.6 : 0.12;
+    ctx.fillStyle = `rgba(${220 + heat * 35},${90 + heat * 90},40,${0.5 + heat * 0.45})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, 13, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    forgeFlame(ctx, x, y + 1, time, held > 0 ? 0.35 + cooking * 0.3 : 0, 0.8);
+    if (ready > 0) pileOf(ctx, "copper", x + 24, y + 10, ready);
+    return true;
+  }
+
+  /* --- 石の金床: 打って延ばすだけの、いちばん古い刃づくり --- */
+  if (art === "anvil") {
+    shadow(ctx, x, y + 12, 22);
+    // 木の台
+    ctx.fillStyle = "#513a24";
+    roundRect(ctx, x - 12, y - 6, 24, 18, 3);
+    ctx.fill();
+    // 金床の石
+    ctx.fillStyle = "#8a8375";
+    ctx.beginPath();
+    ctx.moveTo(x - 16, y - 6);
+    ctx.lineTo(x - 12, y - 14);
+    ctx.lineTo(x + 12, y - 14);
+    ctx.lineTo(x + 16, y - 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#a49c8c";
+    roundRect(ctx, x - 12, y - 15, 24, 3, 1.5);
+    ctx.fill();
+    // 打っている最中は、槌が上下する
+    if (held > 0) {
+      const swing = Math.abs(Math.sin(time * 7));
+      ctx.strokeStyle = "#5a4026";
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(x + 16, y - 12);
+      ctx.lineTo(x + 22, y - 20 - swing * 10);
+      ctx.stroke();
+      ctx.fillStyle = "#4a4640";
+      roundRect(ctx, x + 18, y - 26 - swing * 10, 10, 6, 2);
+      ctx.fill();
+      // 火花
+      if (swing < 0.15) {
+        ctx.fillStyle = "rgba(255,220,140,0.9)";
+        for (let i = 0; i < 4; i += 1) {
+          const a = -0.4 - i * 0.5;
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(a) * 12, y - 15 + Math.sin(a) * 8, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    if (ready > 0) pileOf(ctx, "blade", x - 24, y + 8, ready);
+    return true;
+  }
+
+  /* --- 炭焼き窯: 土をかぶせた伏せ焼き。てっぺんから細く煙が立つ --- */
+  if (art === "charkiln") {
+    shadow(ctx, x, y + 12, 28);
+    ctx.fillStyle = "#4a3a28";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 8, 28, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#5f4b32";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 4, 24, 20, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = "#43341f";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, 17, 13, 0, Math.PI, 0);
+    ctx.fill();
+    // 焚き口
+    ctx.fillStyle = held > 0 ? "#d4691f" : "#241a12";
+    ctx.beginPath();
+    ctx.ellipse(x - 16, y + 5, 5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 煙。焼いているあいだだけ立つ
+    if (held > 0) {
+      ctx.fillStyle = "rgba(190,180,168,0.32)";
+      for (let i = 0; i < 3; i += 1) {
+        const t = (time * 0.35 + i * 0.33) % 1;
+        ctx.beginPath();
+        ctx.arc(x + Math.sin(t * 5 + i) * 6, y - 16 - t * 28, 3 + t * 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (ready > 0) pileOf(ctx, "charcoal", x + 24, y + 10, ready);
+    return true;
+  }
+
+  /* --- 溶解炉 / 合わせ炉: 高く積んだ炉。ふいごが動き、湯が出る --- */
+  if (art === "furnace" || art === "alloyfurnace") {
+    const alloy = art === "alloyfurnace";
+    shadow(ctx, x, y + 14, 30);
+    // 炉体
+    stoneBase(ctx, x, y + 12, alloy ? 44 : 38, alloy ? 40 : 34, "#6b5b48", "#4a3d2f");
+    // 煙突
+    ctx.fillStyle = "#5a4c3c";
+    roundRect(ctx, x - 7, y - 40, 14, 18, 3);
+    ctx.fill();
+    // 焚き口
+    const lit = fuel > 0 && (alloy ? recipeLooksReady(state, stove) : held > 0);
+    ctx.fillStyle = lit ? "#ffae3c" : "#221a12";
+    roundRect(ctx, x - 9, y - 6, 18, 12, 3);
+    ctx.fill();
+    if (lit) {
+      ctx.fillStyle = `rgba(255,220,140,${0.4 + Math.sin(time * 8) * 0.2})`;
+      roundRect(ctx, x - 6, y - 3, 12, 7, 2);
+      ctx.fill();
+    }
+    forgeFlame(ctx, x, y - 40, time, lit ? 0.5 + cooking * 0.5 : 0, alloy ? 1.1 : 0.9);
+    // ふいご（火が入っているあいだ動く）
+    const push = lit ? Math.abs(Math.sin(time * 3.2)) : 0;
+    ctx.fillStyle = "#6a4a2c";
+    ctx.beginPath();
+    ctx.moveTo(x - 22, y - 2);
+    ctx.lineTo(x - 34 - push * 4, y - 10);
+    ctx.lineTo(x - 34 - push * 4, y + 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#4a3320";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x - 22, y - 2);
+    ctx.lineTo(x - 15, y - 1);
+    ctx.stroke();
+    // 合わせ炉には、錫と銅を量る秤を添える
+    if (alloy) {
+      ctx.strokeStyle = "#8a7a58";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(x + 24, y + 12);
+      ctx.lineTo(x + 24, y - 12);
+      ctx.moveTo(x + 16, y - 12);
+      ctx.lineTo(x + 32, y - 12);
+      ctx.stroke();
+      for (const dx of [-8, 8]) {
+        ctx.fillStyle = dx < 0 ? "#c46a34" : "#a8adb6";
+        ctx.beginPath();
+        ctx.ellipse(x + 24 + dx, y - 6, 4, 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (ready > 0) pileOf(ctx, "melt", x + (alloy ? 38 : 30), y + 10, ready);
+    return true;
+  }
+
+  /* --- 型場: 粘土をつめて、型を抜いて干す --- */
+  if (art === "moldshop") {
+    shadow(ctx, x, y + 12, 26);
+    ctx.fillStyle = "#6a533a";
+    roundRect(ctx, x - 26, y - 4, 52, 16, 3);
+    ctx.fill();
+    ctx.fillStyle = "#82694a";
+    roundRect(ctx, x - 26, y - 7, 52, 5, 2);
+    ctx.fill();
+    // 干し棚
+    ctx.strokeStyle = "#5a4630";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(x - 20, y - 7);
+    ctx.lineTo(x - 18, y - 30);
+    ctx.moveTo(x + 20, y - 7);
+    ctx.lineTo(x + 18, y - 30);
+    ctx.moveTo(x - 19, y - 26);
+    ctx.lineTo(x + 19, y - 26);
+    ctx.stroke();
+    // 棚に並ぶ型
+    for (const [i, dx] of [-12, 0, 12].entries()) {
+      ctx.fillStyle = i === 1 ? "#9d7a52" : "#7c5b3c";
+      roundRect(ctx, x + dx - 5, y - 26, 10, 9, 1.5);
+      ctx.fill();
+    }
+    // こねている粘土
+    ctx.fillStyle = "#8a6a48";
+    ctx.beginPath();
+    ctx.ellipse(x - 8, y - 9, 7, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (ready > 0) pileOf(ctx, "mold", x + 24, y + 10, ready);
+    return true;
+  }
+
+  /* --- 鋳込み台 / 鐘の鋳型場: 砂床に型を伏せて、湯を流す --- */
+  if (art === "castpit" || art === "bellpit") {
+    const bell = art === "bellpit";
+    shadow(ctx, x, y + 12, bell ? 30 : 26);
+    // 砂床
+    ctx.fillStyle = "#5f5142";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 6, bell ? 30 : 25, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#6f6151";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 4, bell ? 24 : 19, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 伏せた型
+    ctx.fillStyle = "#7c5b3c";
+    if (bell) {
+      ctx.beginPath();
+      ctx.moveTo(x - 15, y + 4);
+      ctx.quadraticCurveTo(x - 12, y - 22, x - 6, y - 26);
+      ctx.lineTo(x + 6, y - 26);
+      ctx.quadraticCurveTo(x + 12, y - 22, x + 15, y + 4);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      roundRect(ctx, x - 16, y - 16, 32, 20, 3);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#9d7a52";
+    roundRect(ctx, x - (bell ? 7 : 12), y - (bell ? 29 : 19), bell ? 14 : 24, 5, 2);
+    ctx.fill();
+    // 湯口。流しこんでいるあいだは光る
+    const pour = fuel > 0 && held > 0;
+    if (pour) {
+      const glow = 0.55 + Math.sin(time * 7) * 0.35;
+      ctx.fillStyle = `rgba(255,${Math.round(150 + glow * 80)},60,${glow})`;
+      roundRect(ctx, x - 2.5, y - (bell ? 34 : 24), 5, 10, 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,170,60,${0.2 * glow})`;
+      ctx.beginPath();
+      ctx.arc(x, y - (bell ? 28 : 18), 20, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (ready > 0) pileOf(ctx, bell ? "bell" : "cast", x + (bell ? 30 : 26), y + 10, ready);
+    return true;
+  }
+
+  /* --- 研ぎ場: 回る砥石。当てているあいだ火花が散る --- */
+  if (art === "grindstone") {
+    shadow(ctx, x, y + 12, 24);
+    ctx.fillStyle = "#513a24";
+    roundRect(ctx, x - 20, y - 2, 40, 14, 3);
+    ctx.fill();
+    for (const dx of [-16, 16]) {
+      ctx.fillStyle = "#3f2c1a";
+      ctx.fillRect(x + dx - 2, y + 10, 4, 4);
+    }
+    // 砥石
+    const spin = held > 0 ? time * 6 : 0;
+    ctx.fillStyle = "#8a8375";
+    ctx.beginPath();
+    ctx.arc(x, y - 12, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(60,56,48,0.6)";
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 4; i += 1) {
+      const a = spin + (i / 4) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 12);
+      ctx.lineTo(x + Math.cos(a) * 13, y - 12 + Math.sin(a) * 13);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#5f5749";
+    ctx.beginPath();
+    ctx.arc(x, y - 12, 3, 0, Math.PI * 2);
+    ctx.fill();
+    if (held > 0) {
+      ctx.fillStyle = "rgba(255,214,140,0.9)";
+      for (let i = 0; i < 5; i += 1) {
+        const t = (time * 2.5 + i * 0.2) % 1;
+        ctx.beginPath();
+        ctx.arc(x + 12 + t * 16, y - 6 + t * t * 14, 1.3 - t, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (ready > 0) pileOf(ctx, "blade", x - 26, y + 10, ready);
+    return true;
+  }
+
+  /* --- 鏡の磨き場: 布と砂で、丸い盤をひたすら磨く --- */
+  if (art === "polish") {
+    shadow(ctx, x, y + 12, 26);
+    ctx.fillStyle = "#5a4630";
+    roundRect(ctx, x - 24, y - 6, 48, 18, 3);
+    ctx.fill();
+    ctx.fillStyle = "#72583c";
+    roundRect(ctx, x - 24, y - 9, 48, 5, 2);
+    ctx.fill();
+    // 磨いている盤
+    const shine = held > 0 ? 0.4 + Math.abs(Math.sin(time * 4)) * 0.6 : 0.15;
+    ctx.fillStyle = "#c9ad5a";
+    ctx.beginPath();
+    ctx.arc(x - 6, y - 16, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,250,210,${shine})`;
+    ctx.beginPath();
+    ctx.ellipse(x - 9, y - 19, 4.4, 2.2, -0.7, 0, Math.PI * 2);
+    ctx.fill();
+    // 砂と布
+    ctx.fillStyle = "#a89272";
+    ctx.beginPath();
+    ctx.ellipse(x + 15, y - 11, 7, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (ready > 0) pileOf(ctx, "mirror", x + 26, y + 10, ready);
+    return true;
+  }
+
+  /* --- 隊商宿: 天幕と荷駄。錫はここからしか入ってこない --- */
+  if (art === "caravan" || art === "caravanserai") {
+    const big = art === "caravanserai";
+    shadow(ctx, x, y + 12, big ? 36 : 28);
+    if (big) stoneBase(ctx, x, y + 12, 66, 30, "#8a7a5c", "#63563e");
+    // 天幕
+    ctx.fillStyle = big ? "#8a5a3c" : "#9a6a44";
+    ctx.beginPath();
+    ctx.moveTo(x - (big ? 34 : 26), y - (big ? 16 : 2));
+    ctx.quadraticCurveTo(x, y - (big ? 44 : 30), x + (big ? 34 : 26), y - (big ? 16 : 2));
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(60,40,24,0.5)";
+    ctx.lineWidth = 1;
+    for (const dx of [-12, 0, 12]) {
+      ctx.beginPath();
+      ctx.moveTo(x + dx, y - (big ? 18 : 4));
+      ctx.lineTo(x + dx * 0.4, y - (big ? 38 : 26));
+      ctx.stroke();
+    }
+    // 荷駄と、ほどいた包み
+    ctx.fillStyle = "#6a563a";
+    roundRect(ctx, x - 22, y - 2, 16, 12, 2);
+    ctx.fill();
+    ctx.fillStyle = "#7d6647";
+    roundRect(ctx, x + 6, y - 4, 18, 14, 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(230,210,170,0.6)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x + 6, y + 2);
+    ctx.lineTo(x + 24, y + 2);
+    ctx.stroke();
+    if (ready > 0) pileOf(ctx, "tin", x - 26, y + 12, ready);
+    return true;
+  }
+
+  /* --- 屋根つきの鍛冶場 / 大鋳物場 --- */
+  if (art === "forgehouse" || art === "foundry") {
+    const big = art === "foundry";
+    shadow(ctx, x, y + 14, big ? 44 : 34);
+    stoneBase(ctx, x, y + 12, big ? 82 : 62, big ? 34 : 28, "#6f6252", "#4d4438");
+    // 板ぶきの屋根
+    ctx.fillStyle = big ? "#5a4630" : "#63482e";
+    ctx.beginPath();
+    ctx.moveTo(x - (big ? 48 : 36), y - (big ? 22 : 16));
+    ctx.lineTo(x, y - (big ? 50 : 38));
+    ctx.lineTo(x + (big ? 48 : 36), y - (big ? 22 : 16));
+    ctx.closePath();
+    ctx.fill();
+    // 中の炉あかり
+    ctx.fillStyle = `rgba(255,150,60,${0.5 + Math.sin(time * 3) * 0.18})`;
+    roundRect(ctx, x - (big ? 14 : 10), y - (big ? 12 : 8), big ? 28 : 20, big ? 16 : 12, 3);
+    ctx.fill();
+    // 煙出し
+    ctx.fillStyle = "rgba(190,180,168,0.28)";
+    for (let i = 0; i < 3; i += 1) {
+      const t = (time * 0.3 + i * 0.33) % 1;
+      ctx.beginPath();
+      ctx.arc(x + 14 + Math.sin(t * 4) * 4, y - (big ? 50 : 38) - t * 26, 3 + t * 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (big) {
+      // 壁いちめんの型
+      ctx.fillStyle = "#7c5b3c";
+      for (let i = 0; i < 5; i += 1) {
+        roundRect(ctx, x - 34 + i * 15, y - 34, 10, 9, 1.5);
+        ctx.fill();
+      }
+    }
+    return true;
+  }
+
+  /* --- 冠の細工場: 小さな机と、細い道具の並び --- */
+  if (art === "regalia") {
+    shadow(ctx, x, y + 12, 26);
+    ctx.fillStyle = "#5a4630";
+    roundRect(ctx, x - 24, y - 6, 48, 18, 3);
+    ctx.fill();
+    ctx.fillStyle = "#7a5f3e";
+    roundRect(ctx, x - 24, y - 10, 48, 6, 2);
+    ctx.fill();
+    // 道具かけ
+    ctx.strokeStyle = "#4a3320";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 20, y - 10);
+    ctx.lineTo(x - 20, y - 34);
+    ctx.lineTo(x + 20, y - 34);
+    ctx.lineTo(x + 20, y - 10);
+    ctx.stroke();
+    ctx.strokeStyle = "#b8933f";
+    ctx.lineWidth = 1.4;
+    for (const dx of [-12, -4, 4, 12]) {
+      ctx.beginPath();
+      ctx.moveTo(x + dx, y - 34);
+      ctx.lineTo(x + dx, y - 24);
+      ctx.stroke();
+    }
+    // 机の上の細工
+    chainItem(ctx, "crown", x, y - 16, 0.8, time);
+    if (ready > 0) pileOf(ctx, "crown", x + 26, y + 10, ready);
+    return true;
+  }
+
+  /* --- 王の鋳物殿: 柱の立った大屋根 --- */
+  if (art === "palace") {
+    shadow(ctx, x, y + 16, 48);
+    stoneBase(ctx, x, y + 14, 92, 22, "#9a9382", "#6d6759");
+    // 柱
+    ctx.fillStyle = "#b0a894";
+    for (const dx of [-34, -17, 0, 17, 34]) {
+      roundRect(ctx, x + dx - 4, y - 34, 8, 26, 2);
+      ctx.fill();
+    }
+    // 大屋根
+    ctx.fillStyle = "#6a5238";
+    ctx.beginPath();
+    ctx.moveTo(x - 52, y - 34);
+    ctx.lineTo(x, y - 58);
+    ctx.lineTo(x + 52, y - 34);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#83653f";
+    roundRect(ctx, x - 52, y - 36, 104, 5, 2);
+    ctx.fill();
+    // 棟に据えた鏡
+    chainItem(ctx, "mirror", x, y - 46, 0.7, time);
+    return true;
+  }
+
+  /* --- 石段の壇 --- */
+  if (art === "terrace") {
+    shadow(ctx, x, y + 14, 44);
+    for (const [i, w] of [86, 70, 54].entries()) {
+      ctx.fillStyle = i % 2 ? "#9a9382" : "#a9a189";
+      roundRect(ctx, x - w / 2, y + 6 - i * 10, w, 10, 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(80,74,62,0.5)";
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2, y + 6 - i * 10);
+      ctx.lineTo(x + w / 2, y + 6 - i * 10);
+      ctx.stroke();
+    }
+    return true;
+  }
+
+  /* --- 大鼎: この時代の締め。ほかの何倍もの大きさで据える --- */
+  if (art === "cauldron") {
+    shadow(ctx, x, y + 18, 52);
+    // 壇
+    ctx.fillStyle = "#9a9382";
+    roundRect(ctx, x - 46, y + 4, 92, 14, 3);
+    ctx.fill();
+    // 三本足
+    ctx.fillStyle = "#5f6b46";
+    for (const dx of [-24, 0, 24]) {
+      ctx.beginPath();
+      ctx.moveTo(x + dx - 6, y + 4);
+      ctx.lineTo(x + dx - 3, y - 16);
+      ctx.lineTo(x + dx + 3, y - 16);
+      ctx.lineTo(x + dx + 6, y + 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // 胴
+    ctx.fillStyle = "#6f7f52";
+    ctx.beginPath();
+    ctx.moveTo(x - 36, y - 16);
+    ctx.quadraticCurveTo(x - 40, y - 46, x - 30, y - 52);
+    ctx.lineTo(x + 30, y - 52);
+    ctx.quadraticCurveTo(x + 40, y - 46, x + 36, y - 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#8fa06a";
+    roundRect(ctx, x - 34, y - 56, 68, 7, 3);
+    ctx.fill();
+    // 饕餮のような文様
+    ctx.strokeStyle = "rgba(38,52,28,0.7)";
+    ctx.lineWidth = 1.4;
+    for (const dx of [-18, 0, 18]) {
+      ctx.beginPath();
+      ctx.arc(x + dx, y - 34, 6, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+    }
+    // 耳
+    ctx.strokeStyle = "#6f7f52";
+    ctx.lineWidth = 5;
+    for (const dx of [-30, 30]) {
+      ctx.beginPath();
+      ctx.arc(x + dx, y - 58, 7, Math.PI * 0.9, Math.PI * 2.1);
+      ctx.stroke();
+    }
+    // 立ってからは、鼎のなかで火が燃えている
+    if (isDone(state, stove.id)) {
+      forgeFlame(ctx, x, y - 54, time, 0.9, 1.6);
+    }
+    return true;
+  }
+
+  return false;
+};
+
+/** 合わせ炉が、いま湯を吹ける状態か（絵のためのざっくりした判定） */
+const recipeLooksReady = (state: ShopState, stove: StoveSpec) =>
+  Object.entries(stove.recipe ?? {}).every(
+    ([kind, need]) => (state.parts[stove.id]?.[kind] ?? 0) >= need,
+  );
 
 /**
  * 文字のはじまりの作業場・建物。
@@ -5311,6 +6438,9 @@ const drawSettlement = (
     ctx.font = FONT;
     return true;
   }
+
+  // 青銅の王国の工房。炉と型と砥石で、火のとおり道が見える形にしてある
+  if (drawForge(ctx, stove, x, y, time, state)) return true;
 
   // 文字のはじまりの街並み。名前ごとに別の形を持たせてある
   if (drawCity(ctx, stove, x, y, time, state)) return true;
@@ -8593,6 +9723,157 @@ const drawEquip = (
 ) => {
   const park = stage().id === "park" && stage().visualTheme !== "aquarium";
 
+  /*
+   * 青銅の王国の設備。
+   * のぼり旗・提灯・ラーメンの立て看板は、この時代には無いものなので、
+   * 同じ id でも別の絵にする（谷の立て札・かがり火・石碑）
+   */
+  const forge = stage().id === "bronze";
+  if (forge) {
+    if (id === "flag") {
+      // 谷の立て札: 杭に渡した板に、印だけを彫ってある
+      ctx.strokeStyle = "#5a4028";
+      ctx.lineWidth = 3.4;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 14);
+      ctx.lineTo(x, y - 26);
+      ctx.stroke();
+      ctx.fillStyle = "#8a6a44";
+      roundRect(ctx, x - 18, y - 30, 36, 18, 3);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(48,34,20,0.8)";
+      ctx.lineWidth = 1.4;
+      for (const ly of [-25, -20]) {
+        ctx.beginPath();
+        ctx.moveTo(x - 12, ly);
+        ctx.lineTo(x + 12, ly);
+        ctx.stroke();
+      }
+      chainItem(ctx, "copper", x, y - 2, 0.7, time);
+      return;
+    }
+    if (id === "lantern" || id === "beacon") {
+      // かがり火: 三脚に載せた鉄鉢。神殿のものは、ひとまわり大きい
+      const big = id === "beacon";
+      const s = big ? 1.35 : 1;
+      ctx.strokeStyle = "#4a3a28";
+      ctx.lineWidth = 3 * s;
+      for (const dx of [-11, 0, 11]) {
+        ctx.beginPath();
+        ctx.moveTo(x + dx * s, y + 14);
+        ctx.lineTo(x + dx * s * 0.35, y - 12 * s);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#6f6151";
+      ctx.beginPath();
+      ctx.moveTo(x - 15 * s, y - 14 * s);
+      ctx.lineTo(x + 15 * s, y - 14 * s);
+      ctx.lineTo(x + 10 * s, y - 4 * s);
+      ctx.lineTo(x - 10 * s, y - 4 * s);
+      ctx.closePath();
+      ctx.fill();
+      const flick = 0.7 + Math.sin(time * 6) * 0.3;
+      ctx.fillStyle = `rgba(255,${Math.round(140 + flick * 80)},50,${0.65 + flick * 0.3})`;
+      ctx.beginPath();
+      ctx.moveTo(x - 9 * s, y - 14 * s);
+      ctx.quadraticCurveTo(x - 3 * s, y - (28 + flick * 12) * s, x, y - (34 + flick * 14) * s);
+      ctx.quadraticCurveTo(x + 3 * s, y - (28 + flick * 12) * s, x + 9 * s, y - 14 * s);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,180,80,${0.14 * flick})`;
+      ctx.beginPath();
+      ctx.arc(x, y - 20 * s, 40 * s, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    if (id === "sign") {
+      // 工房通りの石碑: 立てた石に、青銅の板を打ちつけてある
+      ctx.fillStyle = "#8b8574";
+      ctx.beginPath();
+      ctx.moveTo(x - 16, y + 14);
+      ctx.lineTo(x - 13, y - 32);
+      ctx.lineTo(x + 13, y - 34);
+      ctx.lineTo(x + 16, y + 14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#a49c8c";
+      roundRect(ctx, x - 14, y - 30, 28, 5, 2);
+      ctx.fill();
+      ctx.fillStyle = "#8fa06a";
+      roundRect(ctx, x - 10, y - 24, 20, 26, 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(40,54,30,0.7)";
+      ctx.lineWidth = 1.2;
+      for (const ly of [-18, -12, -6, 0]) {
+        ctx.beginPath();
+        ctx.moveTo(x - 6, y + ly);
+        ctx.lineTo(x + 6, y + ly);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (id === "fridge") {
+      // 編みかごの棚: 木の枠に、葦のかごを積んである
+      ctx.fillStyle = "#5a4630";
+      roundRect(ctx, x - 22, y - 34, 44, 48, 3);
+      ctx.fill();
+      ctx.fillStyle = "#3f3020";
+      for (const ly of [-20, -6]) {
+        ctx.fillRect(x - 22, y + ly, 44, 3);
+      }
+      ctx.fillStyle = "#b7a173";
+      for (const [ly, n] of [[-24, 2], [-10, 2], [4, 2]] as const) {
+        for (let i = 0; i < n; i += 1) {
+          ctx.beginPath();
+          ctx.ellipse(x - 10 + i * 20, y + ly + 4, 8, 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      return;
+    }
+    if (id === "noodle") {
+      // 石のふいご: 石の台に据えた皮ぶくろ。押すと風が炉へ入る
+      ctx.fillStyle = "#6f6151";
+      roundRect(ctx, x - 24, y - 6, 48, 20, 3);
+      ctx.fill();
+      const push = Math.abs(Math.sin(time * 3));
+      ctx.fillStyle = "#7a5230";
+      ctx.beginPath();
+      ctx.moveTo(x + 16, y - 8);
+      ctx.lineTo(x - 18 - push * 5, y - 22);
+      ctx.lineTo(x - 18 - push * 5, y - 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#4a3320";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(x + 16, y - 8);
+      ctx.lineTo(x + 26, y - 6);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255,170,70,${0.35 + push * 0.4})`;
+      ctx.beginPath();
+      ctx.ellipse(x + 28, y - 6, 5, 3.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    if (id === "scale" || id === "treasury" || id === "great-bellows" || id === "mold-rack") {
+      // 積んでおける数を増やすもの。どれも「棚を足す」形でそろえる
+      ctx.fillStyle = "#5a4630";
+      roundRect(ctx, x - 22, y - 26, 44, 40, 3);
+      ctx.fill();
+      ctx.fillStyle = "#3f3020";
+      ctx.fillRect(x - 22, y - 12, 44, 3);
+      const kind =
+        id === "scale" ? "tin" : id === "treasury" ? "crown" : id === "mold-rack" ? "mold" : "charcoal";
+      for (const [i, dx] of [-11, 11].entries()) {
+        chainItem(ctx, kind, x + dx, y - 19, 0.6, time + i);
+        chainItem(ctx, kind, x + dx, y + 3, 0.6, time + i * 2);
+      }
+      return;
+    }
+  }
+
+
   if (id === "hand-torch") {
     ctx.strokeStyle = "#6b4a2b";
     ctx.lineWidth = 3;
@@ -10929,9 +12210,11 @@ const currentScene = (state: ShopState): Scene => {
           ? "taiga"
           : stage().id === "moji"
             ? "moji"
-            : stage().id === "park"
-              ? "park"
-              : "ramen",
+            : stage().id === "bronze"
+              ? "bronze"
+              : stage().id === "park"
+                ? "park"
+                : "ramen",
     area,
     phase: state.fire.phase,
     weather: state.fire.weather,
@@ -11014,13 +12297,14 @@ export default function Shop({ onSample, paused }: Props) {
       const isFire = stage().id === "fire";
       const isTaiga = stage().id === "taiga";
       const isMoji = stage().id === "moji";
+      const isBronze = stage().id === "bronze";
       const isOnsen = stage().id === "onsen";
       /*
        * 原始の見た目（火のはじまり・大河の文明・文字のはじまり）。
        * 床・区画の看板・作業場・ベンチ・働く人を、こちらの絵で描く。
        * 雪と夜、犬ぞりは「火のはじまり」だけのものなので、isFire のまま。
        */
-      const wild = isFire || isTaiga || isMoji;
+      const wild = isFire || isTaiga || isMoji || isBronze;
       /** 画面に映るワールドの横幅。広い区画のステージは少し引いて見せる */
       const view = viewWidth();
 
@@ -11041,6 +12325,8 @@ export default function Shop({ onSample, paused }: Props) {
       }
       ctx.fillStyle = isMoji
         ? "#3b3423"
+        : isBronze
+        ? "#2a1e18"
         : wild
         ? "#20160f"
         : isPark
@@ -11218,7 +12504,7 @@ export default function Shop({ onSample, paused }: Props) {
          * 文字のはじまりに「作業場の帯」は無い。街そのものが舞台なので、
          * 川・道・前景を敷いた地面（drawCityGround）を、この帯で塗りつぶさない
          */
-        if (isMoji) {
+        if (isMoji || isBronze) {
           // 何も敷かない
         } else if (earlyFire) {
           // 序盤だけは「作業場」という長方形そのものを描かない。
@@ -11252,8 +12538,8 @@ export default function Shop({ onSample, paused }: Props) {
         // 山は帯より手前（奥の景色）として描く
         if (area.palette.prop === "volcano") drawVolcano(ctx, area.rect, time);
 
-        if (isMoji) {
-          // 帯の境目も引かない（街に「厨房の線」は無い）
+        if (isMoji || isBronze) {
+          // 帯の境目も引かない（街や谷に「厨房の線」は無い）
         } else if (!earlyFire) {
           ctx.strokeStyle = "rgba(246,231,207,0.16)";
           ctx.lineWidth = 2;
@@ -11535,6 +12821,36 @@ export default function Shop({ onSample, paused }: Props) {
         }
       }
 
+      /*
+       * 縦スクロールの段の見出し。
+       *
+       * 上の帯（区画の看板）は「ワールドの一番上」にしか出ないので、
+       * 下へ積んでいく青銅の王国では、二段目から先が名無しになってしまう。
+       * 段の上端に、石を彫った札を横いっぱいに渡して、いまどの段かを出す
+       */
+      if (isBronze) {
+        for (const area of openAreas(state)) {
+          if (area.rect.y0 === 0) continue;
+          if (rectOffView(area.rect)) continue;
+          const { x0, x1, y0 } = area.rect;
+          const mid = (x0 + x1) / 2;
+          // 段のさかいめ。石を並べた縁
+          ctx.fillStyle = "rgba(24,18,14,0.55)";
+          ctx.fillRect(x0, y0 - 4, x1 - x0, 8);
+          ctx.fillStyle = "#4a3f33";
+          roundRect(ctx, mid - 96, y0 + 4, 192, 24, 6);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(200,168,110,0.45)";
+          ctx.lineWidth = 1.2;
+          roundRect(ctx, mid - 96, y0 + 4, 192, 24, 6);
+          ctx.stroke();
+          ctx.fillStyle = "#f0d9a8";
+          ctx.font = `800 13px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+          ctx.fillText(areaTitle(area.label), mid, y0 + 17);
+          ctx.font = FONT;
+        }
+      }
+
       /* --- 寸胴 --- */
       // 直結の設備（樋・ベルト）: つないだ2点のあいだに線を描く
       for (const item of stage().equipment) {
@@ -11777,33 +13093,27 @@ export default function Shop({ onSample, paused }: Props) {
           const held0 = heldAt(state, stove.id);
           const fuel0 = stove.fuel ? fuelAt(state, stove.id) : 0;
           const needs = Object.keys(stove.recipe ?? {});
-          const slots: { kind: string; count: number; sx: number; word: string }[] =
+          /*
+           * 受け口をぜんぶ並べる。
+           * 多品目の受け口（盛り付け台・合わせ炉）にまきが要るときは、
+           * まきの受け口も同じ列に足す ―― でないと「炭が切れている」が
+           * 画面のどこにも出ない
+           */
+          const rows: { kind: string; count: number }[] =
             needs.length > 0
-              ? // 多品目の受け口（盛り付け台）。どの品が足りないかまで並べて出す
-                needs.map((kind, i) => ({
-                  kind,
-                  count: partsAt(state, stove.id, kind),
-                  sx: x + (i - (needs.length - 1) / 2) * 26,
-                  word: `${itemLabel(kind)}まち`,
-                }))
-              : [
-                  {
-                    kind: stove.takes ?? "",
-                    count: held0,
-                    sx: x - 32,
-                    word: `${itemLabel(stove.takes ?? "")}まち`,
-                  },
-                  ...(stove.fuel
-                    ? [
-                        {
-                          kind: stove.fuel,
-                          count: fuel0,
-                          sx: x + 32,
-                          word: `${itemLabel(stove.fuel)}まち`,
-                        },
-                      ]
-                    : []),
-                ];
+              ? needs.map((kind) => ({ kind, count: partsAt(state, stove.id, kind) }))
+              : [{ kind: stove.takes ?? "", count: held0 }];
+          if (stove.fuel) rows.push({ kind: stove.fuel, count: fuel0 });
+          const spread = needs.length > 0;
+          const slots = rows.map((row, i) => ({
+            ...row,
+            word: `${itemLabel(row.kind)}まち`,
+            sx: spread
+              ? x + (i - (rows.length - 1) / 2) * 26
+              : x + (i === 0 ? -32 : 32),
+            // 受け口が三つ以上あると札が重なるので、一段ずつ上下にずらす
+            line: i % 2,
+          }));
           for (const slot of slots) {
             // 受け口の枠（空だと赤く点滅する）
             const empty = slot.count <= 0;
@@ -11824,7 +13134,7 @@ export default function Shop({ onSample, paused }: Props) {
               ctx.restore();
               ctx.font = SMALL;
               ctx.fillStyle = "rgba(255,160,148,0.95)";
-              ctx.fillText(slot.word, slot.sx, y - 12);
+              ctx.fillText(slot.word, slot.sx, y - 12 - slot.line * 11);
               ctx.font = FONT;
             } else {
               for (let i = 0; i < slot.count; i += 1) {
@@ -12011,6 +13321,9 @@ export default function Shop({ onSample, paused }: Props) {
         } else if (isMoji) {
           // 受け渡しの場所。ござ・帳場・屋台・契約席で、形も色も変える
           drawCitySeat(ctx, seat.art ?? "mat", seat.pos.x, seat.pos.y + 4, time);
+        } else if (isBronze) {
+          // 谷の市・街道の屋台・祭壇・宮の台。渡す相手の格を形で出す
+          drawForgeSeat(ctx, seat.art ?? "matmarket", seat.pos.x, seat.pos.y + 4, time);
         } else if (wild) {
           // 丸太のベンチ
           const bx = seat.pos.x;
@@ -14676,6 +15989,25 @@ export default function Shop({ onSample, paused }: Props) {
                   confusion: confusion(state),
                   confusionText: confusionLabel(state),
                   engraved: state.moji.engraved,
+                }
+              : null,
+          kingdom:
+            stage().id === "bronze"
+              ? {
+                  tribute: state.bronze.tribute,
+                  level: state.bronze.rank,
+                  name: bronzeRank(state).name,
+                  means: bronzeRank(state).means,
+                  nextName: bronzeNextRank(state)?.name ?? null,
+                  nextAt: bronzeNextRank(state)?.tribute ?? 0,
+                  progress: rankProgress(state),
+                  blend: bronzeBlend(state),
+                  gradeName: bronzeGrade(state).name,
+                  gradeNote: bronzeGrade(state).note,
+                  gradeValue: bronzeGrade(state).value,
+                  hint: blendHint(state),
+                  alloy: alloyKnown(state),
+                  casted: state.bronze.casted,
                 }
               : null,
         });

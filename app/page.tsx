@@ -31,6 +31,7 @@ import {
 } from "@/data/skins";
 import { planetStages, stageDefs, stageList, type StageId } from "@/data/stages";
 import { TECHS } from "@/lib/moji";
+import { RANKS } from "@/lib/bronze";
 import { HANDS_PER_POP, JOBS, JOB_STEP, moveHand, type Job } from "@/lib/taiga";
 import { getState } from "@/lib/shopStore";
 import { formatDuration, formatExact, formatMoney } from "@/lib/format";
@@ -78,6 +79,8 @@ export default function Page() {
   /** 人手の割りふりシート（大河の文明の第6区画から） */
   const [crew, setCrew] = useState(false);
   const [scribe, setScribe] = useState(false);
+  /** 王の名簿と配合の帳（青銅の王国） */
+  const [smithy, setSmithy] = useState(false);
   const [tier, setTier] = useState<Tier>(1);
   const [tiers, setTiers] = useState<TierProgress[]>([]);
   /** 上の段が開いた瞬間の演出（1回だけ） */
@@ -502,6 +505,26 @@ export default function Page() {
               {formatMoney(sample.writing.records, "")}
             </span>
           ) : null}
+          {sample?.kingdom ? (
+            <button
+              type="button"
+              className={`chip-button${
+                sample.kingdom.gradeValue < 1 ? " is-ready" : ""
+              }`}
+              onClick={() => setSmithy(true)}
+              aria-label="配合と王の位"
+            >
+              🏺
+            </button>
+          ) : null}
+          {sample?.kingdom ? (
+            <span className="chip" aria-label="いまの青銅の質">
+              <i className="chip-mark" aria-hidden>
+                ⚖️
+              </i>
+              {sample.kingdom.gradeName}
+            </span>
+          ) : null}
           <button
             type="button"
             className={`chip-button${gachaReady ? " is-ready" : ""}`}
@@ -785,6 +808,73 @@ export default function Page() {
               type="button"
               className="ghost"
               onClick={() => setScribe(false)}
+            >
+              とじる
+            </button>
+          </section>
+        </div>
+      ) : null}
+
+      {/* 配合と王の位。どちらも「いま何をすればいいか」を先に出す */}
+      {smithy && sample?.kingdom ? (
+        <div className="scrim" onClick={() => setSmithy(false)}>
+          <section className="sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-head">
+              <h2>配合と王の位</h2>
+              <span className="sheet-money">
+                献上 {sample.kingdom.tribute.toLocaleString("ja-JP")}
+              </span>
+              <button
+                type="button"
+                className="sheet-close"
+                onClick={() => setSmithy(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="crew-note">
+              銅は谷で採れますが、<strong>錫</strong>は隊商でしか来ません。
+              その混ざりぐあいで青銅の質が決まり、質がそのまま器の値になります。
+              器を納めるほど、王の名簿で位が上がります。
+            </p>
+            <p
+              className={`crew-left${
+                sample.kingdom.gradeValue < 1 ? " is-bad" : ""
+              }`}
+            >
+              いまの青銅: {sample.kingdom.gradeName}（
+              {sample.kingdom.alloy
+                ? `錫 ${Math.round(sample.kingdom.blend * 100)}%`
+                : "錫はまだ来ていない"}
+              ・値 {sample.kingdom.gradeValue.toFixed(2)}倍） ／{" "}
+              {sample.kingdom.hint}
+            </p>
+            <ul className="crew-list">
+              {RANKS.map((step) => {
+                const done = sample.kingdom!.level >= step.level;
+                const now = sample.kingdom!.level === step.level;
+                return (
+                  <li key={step.id}>
+                    <div className="crew-body">
+                      <strong>
+                        {done ? "✓ " : ""}
+                        {step.name}
+                        {now ? "（いま）" : ""}
+                      </strong>
+                      <p>{step.means}</p>
+                      <span className="crew-gain">{step.effect}</span>
+                    </div>
+                    <div className="crew-pick">
+                      <b>{done ? "—" : step.tribute.toLocaleString("ja-JP")}</b>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setSmithy(false)}
             >
               とじる
             </button>

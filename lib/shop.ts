@@ -53,6 +53,18 @@ import {
   type OnsenState,
 } from "@/lib/onsen";
 import {
+  BRONZE_MARK_IDS,
+  bronzeDraw,
+  bronzeMade,
+  bronzeValue,
+  bronzeWork,
+  createBronze,
+  fromBronze,
+  toBronze,
+  updateBronze,
+  type BronzeState,
+} from "@/lib/bronze";
+import {
   MOJI_MARK_IDS,
   createMoji,
   fromMoji,
@@ -823,6 +835,33 @@ export const hasGate = () => !!currentStage.admission;
 export const queueMode = () => !!currentStage.queue;
 
 /**
+ * 横に列を並べて、縦にスクロールするステージか（青銅の王国）。
+ *
+ * これまでのステージは、区画を右へ右へと足していく横スクロール。
+ * 縦スクロールのステージでは、区画が下へ下へと積まれるので、
+ * 画面のいちばん下の「通り」は、上のほうの区画から遠くなってしまう。
+ * 客の出入りと行列だけ、その分の作り替えがいる（下の localEntry / lineCap）
+ */
+export const columnMode = () => (currentStage.columns ?? 0) > 0;
+
+/**
+ * 客が、通りからではなく区画のそばに現れるステージか。
+ *
+ * 火のはじまりは野が広いから、縦スクロールのステージは通りが遠いから ――
+ * 理由はちがうが、どちらも「その区画のはずれから来て、そこへ帰る」でよい
+ */
+const localEntry = (state: ShopState) =>
+  state.stageId === "fire" || columnMode();
+
+/**
+ * 行列に並べる人数。
+ * 縦スクロールのステージでは、通りが上の区画から遠すぎて
+ * 「並んでから席まで歩く」が成立しないので、行列は作らない
+ * （席が空くまで、そもそも人を出さない）
+ */
+const lineCap = () => (columnMode() ? 0 : MAX_LINE);
+
+/**
  * 行列の立ち位置（0 が先頭＝席に近い側）。
  * 入口の外に、横3人ずつの塊で並ぶ。区画のなかへはみ出さない
  */
@@ -1079,6 +1118,8 @@ export type Persisted = {
   taiga?: unknown;
   /** 文字のはじまりの記録と文字の段階 */
   moji?: unknown;
+  /** 青銅の王国の配合と位 */
+  bronze?: unknown;
 };
 
 export type ShopState = Persisted & {
@@ -1095,6 +1136,8 @@ export type ShopState = Persisted & {
   taiga: TaigaState;
   /** 文字のはじまりの記録・文字の段階・混乱 */
   moji: MojiState;
+  /** 青銅の王国の配合・王の位 */
+  bronze: BronzeState;
   /** 次に新しい枠を出すまでの間（一度に増やしすぎない） */
   revealWait: number;
   player: Player;
@@ -1270,6 +1313,7 @@ export const createState = (): ShopState => ({
   onsen: createOnsen(),
   taiga: createTaiga(),
   moji: createMoji(),
+  bronze: createBronze(),
   revealWait: 0,
   padProgress: {},
   levels: { carry: 0, speed: 0, cook: 0, price: 0, gate: 0 },
@@ -1335,6 +1379,7 @@ export const toPersisted = (state: ShopState): Persisted => ({
   onsen: toOnsen(state.onsen),
   taiga: toTaiga(state.taiga),
   moji: toMoji(state.moji),
+  bronze: toBronze(state.bronze),
   padProgress: state.padProgress,
   levels: state.levels,
   served: state.served,
@@ -1369,6 +1414,7 @@ export const fromPersisted = (input: unknown): ShopState => {
     ...MARK_IDS,
     ...TAIGA_MARK_IDS,
     ...MOJI_MARK_IDS,
+    ...BRONZE_MARK_IDS,
   ]);
   const migrate = (id: string) =>
     id.replace(/^seat-a(\d+)$/, "seat-0-$1").replace(/^seat-b(\d+)$/, "seat-1-$1");
@@ -1453,6 +1499,7 @@ export const fromPersisted = (input: unknown): ShopState => {
   state.onsen = fromOnsen(raw.onsen);
   state.taiga = fromTaiga(raw.taiga);
   state.moji = fromMoji(raw.moji);
+  state.bronze = fromBronze(raw.bronze);
   if (
     state.stageId === "taiga" &&
     state.taiga.sailed &&
@@ -1467,6 +1514,14 @@ export const fromPersisted = (input: unknown): ShopState => {
     !state.built.includes("build-code")
   ) {
     state.moji.engraved = false;
+  }
+  // 大鼎を鋳る前のセーブから、締めの演出だけが残らないようにする
+  if (
+    state.stageId === "bronze" &&
+    state.bronze.casted &&
+    !state.built.includes("build-cauldron")
+  ) {
+    state.bronze.casted = false;
   }
 
   for (const stove of stoves) {
@@ -1607,6 +1662,19 @@ const itemNames: Record<string, string> = {
   deed: "契約板",
   landtab: "土地台帳",
   taxtab: "徴税記録",
+  // 青銅の王国 ―― 掘るもの・吹くもの
+  ore: "銅鉱石",
+  copper: "精銅",
+  charcoal: "木炭",
+  tin: "錫",
+  mold: "鋳型",
+  // 青銅の王国 ―― 火から出てくるもの
+  melt: "とけ湯",
+  cast: "荒鋳物",
+  blade: "青銅の刃",
+  bell: "銅鐸",
+  mirror: "銅鏡",
+  crown: "王の冠",
 };
 
 export const itemLabel = (kind: ItemKind): string =>
@@ -2182,7 +2250,7 @@ export const customerDraw = (state: ShopState) =>
     (total, item) =>
       item.draw && hasEquip(state, item.id) ? total * item.draw : total,
     1,
-  ) * drawBonus(state, festivalOn(state)) * mojiDraw(state);
+  ) * drawBonus(state, festivalOn(state)) * mojiDraw(state) * bronzeDraw(state);
 
 export const spawnInterval = (state: ShopState) => SPAWN_TIME / customerDraw(state);
 
@@ -2591,7 +2659,7 @@ const guestEntry = (state: ShopState, seat: SeatSpec | null): Vec => {
     x: street.x + (wallsOn() ? 0 : Math.random() * 40 - 20),
     y: street.y,
   };
-  if (state.stageId !== "fire" || !seat) return fallback;
+  if (!localEntry(state) || !seat) return fallback;
   const area = areaById.get(`area-${seat.area}`);
   if (!area) return fallback;
   return {
@@ -2640,7 +2708,7 @@ const spawnCustomers = (state: ShopState, dt: number) => {
     const lining = state.customers.filter((c) => c.state === "lining").length;
     if (free) {
       state.customers.push(newGuest({ seatId: free.id, state: "walking" }));
-    } else if (lining < MAX_LINE) {
+    } else if (lining < lineCap()) {
       state.customers.push(newGuest({ state: "lining", lane: lining }));
     }
     return;
@@ -2749,6 +2817,7 @@ const updateStoves = (state: ShopState, dt: number) => {
       fireWork(state, stove) *
       taigaWork(state, stove) *
       mojiWork(state, stove) *
+      bronzeWork(state, stove) *
       onsenWork(state, stove, seats);
     if (weather <= 0) continue;
     const boost = stoveHasCook(state, stove.id) ? cookBoost() : 1;
@@ -2761,6 +2830,8 @@ const updateStoves = (state: ShopState, dt: number) => {
       state.cooking[stove.id] = progress - 1;
       // 書き残した板は、街の「記録」として積みあがる（文字のはじまり）
       mojiMade(state, stove);
+      // 地金は配合の窓へ、できあがった器は王の名簿へ（青銅の王国）
+      bronzeMade(state, stove);
       // 1つ作ったら、材料を1つ・まきを1つ使う
       if (isRecipe(stove)) {
         const bag = state.parts[stove.id] ?? {};
@@ -3028,6 +3099,7 @@ const payOut = (
     (seat.value ?? 1) *
     payBonus(state, seat, festivalOn(state)) *
     mojiValue(state) *
+    bronzeValue(state) *
     (guestSpec(guest?.kind)?.pay ?? 1);
   notePleased(state);
   if (hasEquip(state, "ticket")) {
@@ -3210,10 +3282,9 @@ const updateCustomers = (state: ShopState, dt: number) => {
       }
     } else if (customer.state === "leaving") {
       // 来た方角へ帰る（火のはじまりは区画ごとに野へ戻っていく）
-      const away =
-        state.stageId === "fire"
-          ? { x: seat.pos.x, y: Math.min(worldHeight(state) - 10, seat.pos.y + 120) }
-          : streetFor(state, seat);
+      const away = localEntry(state)
+        ? { x: seat.pos.x, y: Math.min(worldHeight(state) - 10, seat.pos.y + 120) }
+        : streetFor(state, seat);
       if (walkTo(state, customer, away, 112, dt)) customer.id = -1;
     }
   }
@@ -4830,6 +4901,7 @@ export const update = (state: ShopState, input: Input, dt: number) => {
   updateOnsen(state, dt);
   updateTaiga(state, dt);
   updateMoji(state, dt);
+  updateBronze(state);
   updateStoves(state, dt);
   updateHunt(state, dt);
   updateForest(state, dt);

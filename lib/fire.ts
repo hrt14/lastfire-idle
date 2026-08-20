@@ -17,6 +17,7 @@
  */
 
 import { stageDefs } from "@/data/stages";
+import { bronzeCast } from "@/lib/bronze";
 import { mojiEngrave } from "@/lib/moji";
 import { taigaSail } from "@/lib/taiga";
 import type { ShopState, StoveSpec, Vec } from "@/lib/shop";
@@ -1154,6 +1155,7 @@ const finishBuilds = (state: ShopState) => {
     if (gives.sail) {
       if (state.stageId === "taiga") taigaSail(state);
       else if (state.stageId === "moji") mojiEngrave(state);
+      else if (state.stageId === "bronze") bronzeCast(state);
       else sailAway(state);
     }
   }

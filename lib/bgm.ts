@@ -21,7 +21,7 @@
 import { getCtx } from "@/lib/sfx";
 
 export type Scene = {
-  stage: "ramen" | "park" | "fire" | "taiga" | "moji";
+  stage: "ramen" | "park" | "fire" | "taiga" | "moji" | "bronze";
   /** いまプレイヤーが立っている区画（0始まり）。ラーメン・パークでは使わない */
   area: number;
   phase: "day" | "dusk" | "night";
@@ -293,10 +293,13 @@ export const updateBgm = (scene: Scene, dt: number) => {
   const now = ctx.currentTime;
   const RAMP = 1.4;
 
-  // 原始の3ステージ（火のはじまり・大河の文明・文字のはじまり）は、
+  // 原始の4ステージ（火のはじまり・大河の文明・文字のはじまり・青銅の王国）は、
   // 同じ「外の音」を土台にする
   const isFire =
-    scene.stage === "fire" || scene.stage === "taiga" || scene.stage === "moji";
+    scene.stage === "fire" ||
+    scene.stage === "taiga" ||
+    scene.stage === "moji" ||
+    scene.stage === "bronze";
   const area = scene.area;
   const isDay = scene.phase === "day";
   const isNight = scene.phase === "night";
@@ -311,12 +314,22 @@ export const updateBgm = (scene: Scene, dt: number) => {
   const blizzard = winter && scene.weather === "blizzard";
 
   // 焚き火: 谷と川辺では遠く／小さく、それ以外は常にそば
-  const crackleTarget = !isFire ? 0 : valley || river ? 0.3 : winter ? 1.15 : 0.85;
+  const crackleTarget = !isFire
+    ? 0
+    : scene.stage === "bronze"
+      // 青銅の王国は、どこにいても炉のそば。火の音がいちばん近い
+      ? 1.05
+      : valley || river
+        ? 0.3
+        : winter
+          ? 1.15
+          : 0.85;
   crackle.hiss.gain.linearRampToValueAtTime(0.055 * crackleTarget, now + RAMP);
 
   // 鳥・虫: 火のはじまりだけ。昼は鳥、夜は虫（夕方はどちらも控えめ）
-  const birdLevel = isFire ? (isDay ? 1 : scene.phase === "dusk" ? 0.35 : 0) * (winter ? 0.4 : 1) : 0;
-  const cricketLevel = isFire ? (isNight ? 1 : scene.phase === "dusk" ? 0.35 : 0) : 0;
+  const outdoors = isFire && scene.stage !== "bronze";
+  const birdLevel = outdoors ? (isDay ? 1 : scene.phase === "dusk" ? 0.35 : 0) * (winter ? 0.4 : 1) : 0;
+  const cricketLevel = outdoors ? (isNight ? 1 : scene.phase === "dusk" ? 0.35 : 0) : 0;
   birdTimer -= dt;
   if (birdLevel > 0.05 && birdTimer <= 0) {
     birdTimer = 1.6 + Math.random() * 3.4;
