@@ -45,17 +45,56 @@ const round2 = (value: number) => {
 };
 
 /**
- * 古代棟（22〜53区画）の解放価格。
+ * 古代棟（22〜53区画）の解放価格と観覧単価の伸び。
  *
  * 本館は1区画ごとに約3倍だが、古代棟は32区画あるので同じ倍率だと桁が壊れる。
- * 1区画ごと約1.55倍にして、展示の観覧単価（下の deepBoost）を同じ倍率で伸ばす。
- * こうすると「1区画あたり何人の来館で開くか」が本館と同じ感覚のまま、
- * 時代をさかのぼるテンポだけが速くなる。
+ *
+ * ここのテンポを決めているのは、じつは展示の観覧単価ではなく
+ * **観覧単価の強化（Lv1つで1.4倍・費用は1.6倍）** のほう。
+ * シミュレータで強化の上限を固定して測ると、区画を9つ増やして展示が24個増えても
+ * 1分あたりの収入はほとんど動かなかった（92兆 → 79兆）。
+ * 来館者は開いている150以上の展示から行き先をランダムに選ぶので、
+ * いちばん新しい3展示がどれだけ高くても、平均の観覧単価はほとんど上がらない。
+ * つまり収入を伸ばしているのは強化のほうで、展示の単価は
+ * 「強化を買うためのお金を少し増やす」役でしかない。
+ *
+ * だからこの3つの数字は、次のような役割分担になっている。
+ *
+ * - VALUE_GROWTH … 強化を買う元手をどれだけ供給するか。
+ *   大きすぎると強化が何段も一度に買えて（1段1.4倍なので）収入が跳ね、
+ *   40区画目あたりから1区画が十数秒で開いてしまう。1.36 で試して、そうなった。
+ *   小さすぎると強化が買えなくなり、収入が止まったまま値段だけ上がる ――
+ *   これが「41区画までしか開かない」の正体だった。
+ * - PRICE_GROWTH … 供給された収入を、どれだけの速さで吸うか。
+ *
+ * 値段の伸びは一定ではなく、館の奥へ向かって少しずつ速くする。
+ * 手前（失われた100年の海）は 1.28倍ずつ、いちばん奥（生命誕生の海）は 1.38倍ずつ。
+ * 一定の倍率だと、終盤に貯まった資金で強化を一度に何段も買えてしまい、
+ * 最後の6区画が合計3分で開く ―― いちばん見せたいカンブリア爆発から
+ * 生命誕生の海までが、いちばん素通りされる区画になる。
+ * 奥ほど重くして、時代をさかのぼるほど手ごたえが増えるようにした。
+ *
+ * ただし重くしすぎると、こんどは強化が買えなくなって収入が止まり、
+ * 値段だけが上がる ―― 「41区画で進まなくなる」が奥へ移動するだけになる
+ * （docs/aquarium-expansion-v6.md の 8.2）。
+ * 終点を 1.55 にして測ったときが、まさにそれだった（37区画目で1区画18分、
+ * そこから伸びる一方）。行きすぎない 1.38 に置く。
  */
-const ANCIENT_GROWTH = 1.55;
-const ancientPrices = Array.from({ length: 32 }, (_, i) =>
-  round2(1.2e14 * Math.pow(ANCIENT_GROWTH, i)),
-);
+const ANCIENT_PRICE_GROWTH_START = 1.28;
+const ANCIENT_PRICE_GROWTH_END = 1.38;
+const ANCIENT_VALUE_GROWTH = 1.20;
+const ancientPrices = (() => {
+  const list: number[] = [];
+  let price = 1.2e14;
+  for (let i = 0; i < 32; i += 1) {
+    list.push(round2(price));
+    const toEnd = i / 31;
+    price *=
+      ANCIENT_PRICE_GROWTH_START +
+      (ANCIENT_PRICE_GROWTH_END - ANCIENT_PRICE_GROWTH_START) * toEnd;
+  }
+  return list;
+})();
 
 const regionPrices = [
   0,
@@ -758,14 +797,13 @@ for (let area = 0; area < regions.length; area += 1) {
       cost: ticketCost,
       /*
        * 観覧単価。本館（0〜17）はこれまでと同じ式のまま。
-       * 施設棟から先は、区画の解放価格と同じ 1.55倍ずつで伸ばす。
-       * 「1区画を開くのに何人ぶん必要か」を本館と揃えたまま、
-       * 古いものほど価値が高い ―― という当たり前を、そのまま単価にする。
+       * 施設棟から先は ANCIENT_VALUE_GROWTH ずつ ―― 古いものほど価値が高い。
+       * 解放価格の伸びよりは遅い。理由は上の ANCIENT_VALUE_GROWTH のところに書いた。
        */
       value:
         ticketCost *
         (1.25 + Math.min(area, 17) * 0.08 + rawIndex * 0.05) *
-        (area <= 17 ? 1 : Math.pow(ANCIENT_GROWTH, area - 17)),
+        (area <= 17 ? 1 : Math.pow(ANCIENT_VALUE_GROWTH, area - 17)),
       unlockAfter: tank,
     });
   });
@@ -801,10 +839,10 @@ const aquariumHires: HireSpec[] = [
 const aquariumEquipment: EquipSpec[] = [
   { id: "gate", name: "自動入場ゲート", detail: "入場処理を自動化する", pos: { x: 112, y: 0 }, price: 18_000, area: 0, outside: true, unlockAfter: "gatekeeper-1" },
   { id: "announce", name: "館内アナウンス", detail: "展示の魅力を知らせて集客 1.35倍", pos: { x: 280, y: 0 }, price: 75_000, area: 0, outside: true, row: 1, draw: 1.35, unlockAfter: "area-2" },
-  { id: "jelly-light", name: "水槽ライティング", detail: "幻想的な照明で集客 1.45倍", pos: { x: 90, y: 6 * AREA_H + 120 }, price: 12_000_000, area: 6, draw: 1.45 },
-  { id: "ocean-sign", name: "海水館 巨大サイネージ", detail: "海水館オープンを告知。集客 1.6倍", pos: { x: 270, y: 8 * AREA_H + 120 }, price: 180_000_000, area: 8, draw: 1.6 },
+  { id: "jelly-light", name: "水槽ライティング", detail: "幻想的な照明で集客 1.45倍", pos: { x: 294, y: 6 * AREA_H + 120 }, price: 12_000_000, area: 6, draw: 1.45 },
+  { id: "ocean-sign", name: "海水館 巨大サイネージ", detail: "海水館オープンを告知。集客 1.6倍", pos: { x: 90, y: 8 * AREA_H + 132 }, price: 180_000_000, area: 8, draw: 1.6 },
   { id: "night", name: "ナイトアクアリウム", detail: "夜の水族館を開催。集客 1.8倍", pos: { x: 90, y: 12 * AREA_H + 120 }, price: 45_000_000_000, area: 12, draw: 1.8 },
-  { id: "world-pr", name: "WORLD OCEAN CAMPAIGN", detail: "世界水族館として話題になる。集客 2.2倍", pos: { x: 270, y: 15 * AREA_H + 120 }, price: 1_200_000_000_000, area: 15, draw: 2.2 },
+  { id: "world-pr", name: "WORLD OCEAN CAMPAIGN", detail: "世界水族館として話題になる。集客 2.2倍", pos: { x: 90, y: 15 * AREA_H + 120 }, price: 1_200_000_000_000, area: 15, draw: 2.2 },
 ];
 
 const aquariumUpgrades: Upgrade[] = [

@@ -1,4 +1,5 @@
 import type { EquipSpec, HireSpec, StoveSpec } from "@/lib/shop";
+import { formatYen } from "@/lib/format";
 import { aquariumCardDef, aquariumRuntimeDef } from "@/data/aquarium";
 import {
   AQUARIUM_ANCIENT_START,
@@ -153,7 +154,7 @@ if (!flagged.__expansionV6) {
   addHire({
     id: "server-1",
     kind: "server",
-    pos: at(RESTAURANT_AREA, 66, 150),
+    pos: at(RESTAURANT_AREA, 60, 150),
     price: Math.round(price(RESTAURANT_AREA) * 0.5),
     label: "レストラン配膳係",
     area: RESTAURANT_AREA,
@@ -162,7 +163,7 @@ if (!flagged.__expansionV6) {
   addHire({
     id: "busser-1",
     kind: "busser",
-    pos: at(RESTAURANT_AREA, 292, 150),
+    pos: at(RESTAURANT_AREA, 300, 150),
     price: Math.round(price(RESTAURANT_AREA) * 0.7),
     label: "レストラン片づけ係",
     area: RESTAURANT_AREA,
@@ -171,7 +172,7 @@ if (!flagged.__expansionV6) {
   addHire({
     id: "server-2",
     kind: "server",
-    pos: at(RESTAURANT_AREA, 108, 150),
+    pos: at(RESTAURANT_AREA, 120, 172),
     price: Math.round(price(RESTAURANT_AREA) * 1.8),
     label: "レストラン配膳係",
     area: RESTAURANT_AREA,
@@ -180,7 +181,7 @@ if (!flagged.__expansionV6) {
   addHire({
     id: "busser-2",
     kind: "busser",
-    pos: at(RESTAURANT_AREA, 250, 150),
+    pos: at(RESTAURANT_AREA, 240, 172),
     price: Math.round(price(RESTAURANT_AREA) * 2.2),
     label: "レストラン片づけ係",
     area: RESTAURANT_AREA,
@@ -195,7 +196,7 @@ if (!flagged.__expansionV6) {
     id: "terrarium-heat",
     name: "ケージ温調システム",
     detail: "両生類・爬虫類を通年で展示できる。集客 1.9倍",
-    pos: at(AMPHIBIAN_AREA, 90, 150),
+    pos: at(AMPHIBIAN_AREA, 294, 150),
     price: Math.round(price(AMPHIBIAN_AREA) * 1.2),
     area: AMPHIBIAN_AREA,
     draw: 1.9,
@@ -205,7 +206,7 @@ if (!flagged.__expansionV6) {
     id: "night-terrarium",
     name: "夜行性ゾーン",
     detail: "昼夜を反転したケージ。夜の生きものが動きだす。集客 2.0倍",
-    pos: at(REPTILE_AREA, 270, 150),
+    pos: at(REPTILE_AREA, 66, 150),
     price: Math.round(price(REPTILE_AREA) * 1.4),
     area: REPTILE_AREA,
     draw: 2.0,
@@ -336,6 +337,38 @@ if (!flagged.__expansionV6) {
    * 区画が3倍になったので、券をまとめて持てる量と館内の足も伸ばす。
    * 1回の往復で2展示ぶん配れると、広い館でも歩かされている感じが減る。
    */
+  /*
+   * 入場料の強化。
+   *
+   * 観覧料の収入は、館が大きくなるほど薄まる ―― 来館者は開いている162展示から
+   * 行き先をランダムに選ぶので、古くて安い展示に当たる確率が上がっていく。
+   * 入場料は入口で1人につき1回だけ取るので、この薄まりを受けない。
+   * 終盤の「どこへ投資するか」を、展示だけの一本道にしないための2本目の柱。
+   *
+   * 上限を Lv72 まで伸ばしてあるのは、観覧単価の強化がとびとびだから。
+   * あちらは1段 1.6倍ずつ高くなるので、終盤は1段買うのに何十分もかかる ――
+   * そのあいだ、ほかに買えるものが何もないと、区画が開かない時間がただ続く。
+   * 入場料はそれより一桁安いところを刻んでいくので、
+   * 高い1段を貯めているあいだの「いま買えるもの」になる。
+   * 費用の伸び（1.7）は入場料の伸び（1.45）より速いので、
+   * こちらも際限なくは買えず、どこで打ち切るかは投資判断のまま残る。
+   */
+  if (!runtime.upgrades.some((item) => item.id === "gate")) {
+    runtime.upgrades.push({
+      id: "gate",
+      name: "入場料",
+      detail: (n) => `入場料 1人 ${formatYen((runtime.admission ?? 30) * Math.pow(1.45, n))}`,
+      // 発券カウンターの下。外に出すとファサードの看板に重なる。
+      pos: at(0, 128, 172),
+      basePrice: 1_400,
+      growth: 1.7,
+      max: 72,
+      needServed: 60,
+      reveal: 5,
+    });
+    aquariumCardDef.upgrades = runtime.upgrades;
+  }
+
   const carry = upgrade("carry");
   if (carry) carry.max = 16;
   const speed = upgrade("speed");

@@ -1,4 +1,5 @@
 import { aquariumCardDef, aquariumRuntimeDef } from "@/data/aquarium";
+import { formatYen } from "@/lib/format";
 
 /**
  * 世界水族館 v2 バランス。
@@ -142,14 +143,22 @@ if (speed) {
 const price = upgrade("price");
 if (price) {
   price.basePrice = 140;
-  // 旧Lv20上限では中盤以降に収益の伸びしろが消える。
-  // Lv40以降も「次地域を開く / 単価を上げる」が同程度の投資判断になるよう、
-  // 強化費の伸びを1.6倍に抑えて継続できるようにする。
-  // 54区画（本館18＋施設棟4＋古代棟32）まで伸びたので上限も Lv64 へ。
+  /*
+   * 収入の伸びしろは、最後の区画まで切らさない。
+   *
+   * 上限を Lv64 に置いていたときは、古代棟の半ばで単価の伸びが止まり、
+   * そこから先は区画の値段だけが上がっていった。1区画に30分、40分とかかり、
+   * 41区画あたりで事実上進まなくなる ―― 上限がそのまま終点になっていた。
+   *
+   * 54区画ぶん買い続けられるよう、上限だけを Lv100 まで伸ばす。
+   * 強化費の伸び（1.6）は単価の伸び（1.4）より速いので、
+   * 「いくらでも買える」にはならない ―― どこまで上げるかは、
+   * そのときの稼ぎと相談する投資判断のまま残る。
+   */
   price.growth = 1.6;
-  price.max = 64;
-  price.detail = (n) =>
-    `観覧単価 ${Math.round(AQUARIUM_BASE_VALUE * Math.pow(1.4, n)).toLocaleString("ja-JP")}円`;
+  price.max = 100;
+  // 終盤は単価が兆を超える。桁を並べず、万・億・兆・京・垓でまとめて出す。
+  price.detail = (n) => `観覧単価 ${formatYen(AQUARIUM_BASE_VALUE * Math.pow(1.4, n))}`;
   price.needServed = 5;
   price.reveal = 4;
   delete price.unlockAfter;

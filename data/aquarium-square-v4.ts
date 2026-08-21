@@ -128,8 +128,17 @@ if (!runtime.__squareHubV4) {
     const previous = rectFor(i - 1);
     const next = rectFor(i);
     target.padPos = padInPreviousArea(previous, next);
-    // 地域内の3展示は自由選択のまま、地域そのものは隣接区画から順に開く。
-    target.unlockAfter = `area-${i - 1}`;
+    /*
+     * 地域内の3展示は自由選択のまま、地域そのものは隣接区画から順に開く。
+     *
+     * ただし1区画目だけは「area-0 を買ってから」にできない。
+     * 入口の区画は値段0で、買うものではないので unlocked に入ることがなく、
+     * この条件は永久に満たされない ―― まっさらな状態で始めた人は、
+     * 日本の清流の枠が一生出ないまま入口に閉じこめられる。
+     * ここは来館実績（data/aquarium-balance-v2.ts の needServed）だけで開ける。
+     */
+    if (i > 1) target.unlockAfter = `area-${i - 1}`;
+    else delete target.unlockAfter;
   }
 
   const entrance = localPos(0, 180, 0);
@@ -217,7 +226,7 @@ if (!runtime.__squareHubV4) {
     {
       id: "aquarium-relief-collector-2",
       kind: "collector",
-      pos: localPos(10, 66, 132),
+      pos: localPos(10, 294, 132),
       price: 650_000_000,
       label: "海水館 集金担当",
       area: 10,
@@ -237,7 +246,7 @@ if (!runtime.__squareHubV4) {
     {
       id: "aquarium-relief-robot-3",
       kind: "robot",
-      pos: localPos(14, 66, 132),
+      pos: localPos(14, 294, 132),
       price: 120_000_000_000,
       label: "大型水槽 巡回ロボ",
       area: 14,

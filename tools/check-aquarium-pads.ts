@@ -58,22 +58,32 @@ const others: { id: string; pos: { x: number; y: number } }[] = [
   ...def.equipment.filter((e) => !e.outside).map((e) => ({ id: `equip-${e.id}`, pos: e.pos })),
 ];
 
+/*
+ * 近すぎる枠は、当たり判定が重なる前に「名前と値段の札」が重なって読めなくなる。
+ * 札はおよそ100px幅なので、中心どうしは 50 は離しておく。
+ */
+const LABEL_GAP = 50;
+
 let overlap = 0;
-for (let i = 1; i < areas.length; i += 1) {
-  const pad = areas[i].padPos;
-  for (const other of others) {
-    const away = Math.hypot(other.pos.x - pad.x, other.pos.y - pad.y);
-    if (away < PAD_RADIUS) {
+const spots: { id: string; pos: { x: number; y: number } }[] = [
+  ...others,
+  ...areas.filter((a) => a.price > 0).map((a) => ({ id: a.id, pos: a.padPos })),
+  ...def.upgrades.filter((u) => !u.outside).map((u) => ({ id: `up-${u.id}`, pos: u.pos })),
+];
+for (let i = 0; i < spots.length; i += 1) {
+  for (let k = i + 1; k < spots.length; k += 1) {
+    const away = Math.hypot(spots[i].pos.x - spots[k].pos.x, spots[i].pos.y - spots[k].pos.y);
+    if (away < LABEL_GAP) {
       overlap += 1;
-      console.log(`★ area-${i} の枠に ${other.id} が ${away.toFixed(1)} まで近い（${PAD_RADIUS}未満）`);
+      console.log(`★ ${spots[i].id} と ${spots[k].id} が ${away.toFixed(1)} しか離れていない（${LABEL_GAP}未満）`);
     }
   }
 }
 
 if (ng === 0 && overlap === 0) {
-  console.log(`54区画すべて、解放枠に手が届いて、ほかの枠とも重ならない（PAD_RADIUS=${PAD_RADIUS}）`);
+  console.log(`54区画すべて、解放枠に手が届いて、枠どうしも ${LABEL_GAP} 以上 離れている`);
 } else {
   if (ng > 0) console.log(`\n${ng}区画で解放枠に手が届かない`);
-  if (overlap > 0) console.log(`${overlap}件、解放枠がほかの枠と重なっている`);
+  if (overlap > 0) console.log(`${overlap}件、枠どうしが近すぎる`);
 }
 process.exit(ng === 0 && overlap === 0 ? 0 : 1);
